@@ -7,7 +7,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 ## Phases
 
 - [ ] **Phase 1: Modern Mac baseline** - A working macOS 26 / Apple Silicon fluid app establishes a visual reference. (plans complete; macOS 26 runtime verification deferred to milestone closeout by user)
-- [ ] **Phase 2: Modern iOS parity** - Both apps build and support familiar fluid interaction on current SDKs.
+- [x] **Phase 2: Modern iOS parity** - Both apps build and support familiar fluid interaction on current SDKs. (completed 2026-09-24)
 - [ ] **Phase 3: Reliable simulation state** - Pausing, resizing, and shared state changes work and have automated coverage.
 - [ ] **Phase 4: Discoverable visualization** - Both apps expose native pause and named field-selection controls.
 - [ ] **Phase 5: Live fluid tuning** - Both apps expose input, dye, swirl, and fade controls without source edits.
@@ -36,7 +36,10 @@ Bring the existing two-platform simulation onto current Apple platforms without 
   1. Both app schemes build under a current Xcode toolchain without Swift 4 compatibility settings or local deployment-target overrides.
   2. Users can drag to stir and deposit density on Mac and iOS at the default settings.
   3. Both apps remain usable with their existing platform input methods.
-**Plans:** TBD
+**Plans:** 3/3 plans complete
+- [x] 02-01-PLAN.md — Launch an iOS 26 fluid tracer and build both schemes without compatibility overrides (Wave 1).
+- [x] 02-02-PLAN.md — Add independent multi-touch stirring, clean tap shortcuts, and proportional iPad input (Wave 2; depends on Wave 1).
+- [x] 02-03-PLAN.md — Launch on iPhone/iPad simulators and record observed Mac/iOS parity (Wave 3; depends on Waves 1–2).
 
 ### Phase 3: Reliable simulation state
 **Goal:** Fluid interaction survives common lifecycle changes with automated checks of controllable state.
@@ -93,7 +96,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Modern Mac baseline | 1/1 | Implementation complete; runtime UAT deferred | - |
-| 2. Modern iOS parity | 0/TBD | Not started | - |
+| 2. Modern iOS parity | 3/3 | Complete   | 2026-09-24 |
 | 3. Reliable simulation state | 0/TBD | Not started | - |
 | 4. Discoverable visualization | 0/TBD | Not started | - |
 | 5. Live fluid tuning | 0/TBD | Not started | - |

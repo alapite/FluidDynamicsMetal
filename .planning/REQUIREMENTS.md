@@ -8,12 +8,12 @@
 ### Platform and build
 
 - [ ] **PLAT-01**: Users can launch the macOS app on an Apple Silicon Mac running macOS 26 without an Intel or earlier-macOS compatibility build.
-- [ ] **PLAT-02**: Users can launch the iOS app on iOS 26 on a supported iPhone or iPad.
-- [ ] **PLAT-03**: Developers can build both app schemes with a current Xcode toolchain without local deployment-target overrides or Swift 4 compatibility settings.
+- [x] **PLAT-02**: Users can launch the iOS app on iOS 26 on a supported iPhone or iPad.
+- [x] **PLAT-03**: Developers can build both app schemes with a current Xcode toolchain without local deployment-target overrides or Swift 4 compatibility settings.
 
 ### Simulation continuity
 
-- [ ] **SIM-01**: Users can stir and add density to the fluid with mouse drag on macOS and touch drag on iOS, with visually familiar response at default settings.
+- [x] **SIM-01**: Users can stir and add density to the fluid with mouse drag on macOS and touch drag on iOS, with visually familiar response at default settings.
 - [ ] **SIM-02**: Users can resize the Mac window or rotate/resize an iOS view without losing the ability to interact with and display the fluid.
 - [ ] **SIM-03**: Users can pause and resume the simulation without corrupting the displayed field or losing input responsiveness after resume.
 
@@ -51,9 +51,9 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PLAT-01 | Phase 1 | Pending |
-| PLAT-02 | Phase 2 | Pending |
-| PLAT-03 | Phase 2 | Pending |
-| SIM-01 | Phase 2 | Pending |
+| PLAT-02 | Phase 2 | Complete |
+| PLAT-03 | Phase 2 | Complete |
+| SIM-01 | Phase 2 | Complete |
 | SIM-02 | Phase 3 | Pending |
 | SIM-03 | Phase 3 | Pending |
 | VER-01 | Phase 3 | Pending |
