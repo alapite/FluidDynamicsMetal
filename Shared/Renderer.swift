@@ -70,6 +70,7 @@ class Renderer: NSObject {
     private var positions: FloatTuple?
     private var directions: FloatTuple?
     private var touchContacts: [FluidContact] = []
+    private var pendingTapContacts: [FluidContact] = []
     private var touchRadius: Float?
 
     //Surfaces
@@ -118,6 +119,14 @@ class Renderer: NSObject {
         touchRadius = 150 * scale * scale
     }
 
+    func enqueueTap(at position: float2, in view: MTKView) {
+        // Keep the splat until draw consumes it; recognizer callbacks can precede the next frame.
+        pendingTapContacts.append(FluidContact(position: position, impulse: float2()))
+        let shortSide = max(1, min(view.bounds.width, view.bounds.height))
+        let scale = Float(shortSide / 375)
+        touchRadius = 150 * scale * scale
+    }
+
     private final func initSurfaces(width: Int, height: Int) {
         velocity = Slab(width: width, height: height, format: .rg16Float, name: "Velocity")
         density = Slab(width: width, height: height, format: .rg16Float, name: "Density")
@@ -151,7 +160,9 @@ class Renderer: NSObject {
         withUnsafeMutableBytes(of: &data.positions) { bytes in
             let slots = bytes.bindMemory(to: float2.self)
             for (index, contact) in contacts.prefix(Renderer.ContactCapacity).enumerated() {
-                slots[index] = contact.position / Renderer.ScreenScaleAdjustment
+                // Zero is the shader's unused-slot sentinel; preserve a contact at the origin.
+                let position = contact.position.x == 0 && contact.position.y == 0 ? float2(0.01, 0.01) : contact.position
+                slots[index] = position / Renderer.ScreenScaleAdjustment
             }
         }
         withUnsafeMutableBytes(of: &data.impulses) { bytes in
@@ -301,6 +312,8 @@ extension Renderer: MTKViewDelegate {
         let commandBuffer = MetalDevice.sharedInstance.newCommandBuffer()
 
         var contacts = touchContacts
+        contacts.append(contentsOf: pendingTapContacts)
+        pendingTapContacts.removeAll()
         if let points = positions {
             let previous = directions ?? points
             let current = [points.0, points.1, points.2, points.3, points.4]
