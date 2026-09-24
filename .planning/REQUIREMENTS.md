@@ -1,0 +1,60 @@
+# Requirements: FluidDynamicsMetal Modernization
+
+**Defined:** 2026-09-24
+**Core Value:** People can interact with a responsive, visually familiar fluid simulation on both supported platforms and adjust it without editing source code.
+
+## v1 Requirements
+
+### Platform and build
+
+- [ ] **PLAT-01**: Users can launch the macOS app on an Apple Silicon Mac running macOS 26 without an Intel or earlier-macOS compatibility build.
+- [ ] **PLAT-02**: Users can launch the iOS app on iOS 26 on a supported iPhone or iPad.
+- [ ] **PLAT-03**: Developers can build both app schemes with a current Xcode toolchain without local deployment-target overrides or Swift 4 compatibility settings.
+
+### Simulation continuity
+
+- [ ] **SIM-01**: Users can stir and add density to the fluid with mouse drag on macOS and touch drag on iOS, with visually familiar response at default settings.
+- [ ] **SIM-02**: Users can resize the Mac window or rotate/resize an iOS view without losing the ability to interact with and display the fluid.
+- [ ] **SIM-03**: Users can pause and resume the simulation without corrupting the displayed field or losing input responsiveness after resume.
+
+### Native controls
+
+- [ ] **CTRL-01**: Users on both platforms can select density, pressure, velocity, or vorticity by named on-screen controls and identify the active view.
+- [ ] **CTRL-02**: Users on both platforms can adjust input force and added dye/density intensity without editing code.
+- [ ] **CTRL-03**: Users on both platforms can adjust swirl (vorticity confinement) strength without editing code.
+- [ ] **CTRL-04**: Users on both platforms can adjust fluid fade/dissipation without editing code.
+- [ ] **CTRL-05**: Users on both platforms can adjust simulation resolution using a bounded quality/performance control without breaking rendering or interaction.
+- [ ] **CTRL-06**: Users on both platforms can restore tuning defaults from within the app; a fresh launch starts with those defaults.
+- [ ] **CTRL-07**: Users can discover and operate pause, view selection, and tuning controls with native platform input (keyboard/pointer on macOS, touch on iOS) and accessible labels.
+
+### Verification
+
+- [ ] **VER-01**: Developers can run automated checks for tuning value bounds, default/reset behavior, and field/pause state changes.
+- [ ] **VER-02**: Developers have documented steps to build both schemes and manually confirm default rendering, dragging, pause/resume, field switching, and tuning on macOS and iOS.
+
+## v2 Requirements
+
+- **PRESET-01**: Users can save and recall named tuning presets, if later needed.
+- **EXPORT-01**: Users can export a still image or recording, if later needed.
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Intel Mac or macOS before 26 | Excluded by the agreed Mac baseline. |
+| iOS before 26 | Latest iOS baseline selected. |
+| Intentional solver redesign or new effects | Preserve the existing simulation's character. |
+| Persist tuning between launches | Each launch starts from reproducible defaults. |
+
+## Traceability
+
+Phase assignment is pending roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+
+**Coverage:** 15 v1 requirements; 0 mapped; 15 pending roadmap mapping.
+
+---
+*Requirements defined: 2026-09-24*
+*Last updated: 2026-09-24 after initial definition*
