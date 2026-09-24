@@ -31,7 +31,7 @@ People can interact with a responsive, visually familiar fluid simulation on bot
 ## Context
 
 - The codebase has two storyboard-backed app targets and shared Swift/Metal sources compiled into both; see `.planning/codebase/ARCHITECTURE.md` and `.planning/codebase/STACK.md`.
-- The project currently targets Swift 4, macOS 10.13, and iOS 10.x; it has no automated test target or settings UI. Values are hard-coded in `Shared/Renderer.swift` and `Shared/Shaders.metal`.
+- Both targets now use Swift 5 and deployment minimums of macOS 26 / iOS 26; no automated test target or settings UI exists yet. Values remain hard-coded in `Shared/Renderer.swift` and `Shared/Shaders.metal`.
 - The simulation runs a series of fragment-shader passes each frame, including 40 pressure iterations. Swift shader names and uniform-buffer layouts must continue to match their Metal counterparts.
 - Native UI direction: keep the fluid canvas central while exposing understandable, platform-appropriate parameter and display controls. Exact layout, parameters, and verification strategy will be specified during planning.
 
@@ -45,10 +45,14 @@ People can interact with a responsive, visually familiar fluid simulation on bot
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Modernize both macOS and iOS apps | Both existing apps remain part of the product | — Pending |
-| Use macOS 26 / Apple Silicon and iOS 26 baselines | Prioritize current-platform APIs over backward compatibility | — Pending |
+| Modernize both macOS and iOS apps | Both existing apps remain part of the product | Phase 2 both-scheme Debug builds and iPhone/iPad simulator interactions verified; Mac macOS 26 runtime deferred. |
+| Use macOS 26 / Apple Silicon and iOS 26 baselines | Prioritize current-platform APIs over backward compatibility | Both targets build without deployment overrides using Swift 5. |
 | Redesign the UI around native controls and parameter tuning | Make the simulation approachable without source edits | — Pending |
 | Preserve solver behavior during modernization | Maintain the existing experience as a reference point | — Pending |
+
+## Current State
+
+Phase 2 complete: the iOS 26 simulator app launches on iPhone/iPad and the user observed familiar blue fluid and drag/tap interaction; the Mac scheme still builds. `02-HUMAN-UAT.md` retains untested two-finger, concurrent-contact, and proportional-stroke checks. Phase 1 macOS 26 runtime remains deferred to milestone closeout. Phase 3 will address reliable lifecycle, resize and shared-state checks.
 
 ## Evolution
 
@@ -59,4 +63,4 @@ This document evolves at phase transitions and milestone boundaries.
 **After each milestone:** reassess the core value, scope boundaries, and current technical context.
 
 ---
-*Last updated: 2026-09-24 after initialization*
+*Last updated: 2026-09-24 after Phase 2*
