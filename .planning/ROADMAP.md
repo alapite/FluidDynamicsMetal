@@ -6,7 +6,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 
 ## Phases
 
-- [ ] **Phase 1: Modern Mac baseline** - A working macOS 26 / Apple Silicon fluid app establishes a visual reference.
+- [ ] **Phase 1: Modern Mac baseline** - A working macOS 26 / Apple Silicon fluid app establishes a visual reference. (plans complete; macOS 26 runtime verification pending)
 - [ ] **Phase 2: Modern iOS parity** - Both apps build and support familiar fluid interaction on current SDKs.
 - [ ] **Phase 3: Reliable simulation state** - Pausing, resizing, and shared state changes work and have automated coverage.
 - [ ] **Phase 4: Discoverable visualization** - Both apps expose native pause and named field-selection controls.
@@ -24,8 +24,8 @@ Bring the existing two-platform simulation onto current Apple platforms without 
   1. The macOS app builds for Apple Silicon and launches on macOS 26 without a deployment-target override.
   2. Mouse dragging produces the familiar density and motion in the Metal canvas.
   3. A reference of the existing default look and interactions is available for later parity checks.
-**Plans:** 1 plan
-- [ ] 01-01-PLAN.md — Build the Apple Silicon Mac fluid slice and record its visual baseline.
+**Plans:** 1/1 plans complete
+- [x] 01-01-PLAN.md — Build the Apple Silicon Mac fluid slice and record its visual baseline.
 
 ### Phase 2: Modern iOS parity
 **Goal:** The iOS 26 app joins the working Mac build with the same familiar fluid interaction.
@@ -92,7 +92,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Modern Mac baseline | 0/1 | Planned | - |
+| 1. Modern Mac baseline | 1/1 | Awaiting macOS 26 verification | - |
 | 2. Modern iOS parity | 0/TBD | Not started | - |
 | 3. Reliable simulation state | 0/TBD | Not started | - |
 | 4. Discoverable visualization | 0/TBD | Not started | - |
