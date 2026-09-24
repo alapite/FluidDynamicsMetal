@@ -13,16 +13,16 @@ created: 2026-09-24
 
 | Property | Value |
 |----------|-------|
-| Framework | Xcode 27 `xcodebuild` builds, Python 3 `unittest` build-settings/bundle/simulator checks, and human interaction checks; no XCTest target |
-| Config file | `FluidDynamicsMetal.xcodeproj/project.pbxproj`; `test_phase02_bundle.py`; `test_phase02_settings.py` |
+| Framework | Xcode 27 `xcodebuild` builds, Python 3 `unittest` bundle/settings/simulator checks, an offscreen Swift/Metal GPU integration check, and human interaction checks; no XCTest target |
+| Config file | `FluidDynamicsMetal.xcodeproj/project.pbxproj`; `test_phase02_bundle.py`; `test_phase02_settings.py`; `test_phase02_metal.py` and `test_phase02_metal.swift` |
 | Quick run command | `xcodebuild -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetaliOS -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.4' CODE_SIGNING_ALLOWED=NO build` |
-| Full suite command | Quick iOS build; `xcodebuild -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build`; `python3 -m unittest -v test_phase02_bundle test_phase02_settings`; then manual gesture/visual checks |
-| Estimated runtime | Builds vary with local caches; simulator smoke test ~1 minute; manual checks ~5 minutes per layout |
+| Full suite command | Quick iOS build; `xcodebuild -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build`; `python3 -m unittest -v test_phase02_bundle test_phase02_settings test_phase02_metal`; then manual gesture/visual checks |
+| Estimated runtime | Builds vary with local caches; Python suite ~15 seconds with booted simulators; manual checks ~5 minutes per layout |
 
 ## Sampling Rate
 
 - **After each source-change task:** Run the iOS Debug build without a deployment override. After each `Shared/` edit, also run the Mac Debug build.
-- **After each wave:** Check iOS bundle `MinimumOSVersion=26.0`, `default.metallib`, and no Swift 4 effective setting, then run iPhone and iPad simulator checks when runnable.
+- **After each wave:** Check iOS bundle `MinimumOSVersion=26.0`, `default.metallib`, no Swift 4 effective setting, the offscreen GPU contact pass, and iPhone/iPad simulator launches when runnable.
 - **Before `/gsd-verify-work`:** Both builds green; iPhone and iPad observations recorded; physical multi-finger behavior is explicitly `NOT TESTED` if simulator cannot establish it.
 - **Max feedback latency:** One incremental iOS build per edit; hardware-dependent visuals use an end-of-wave manual checkpoint.
 
@@ -30,15 +30,16 @@ created: 2026-09-24
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 02-01-01 | 01 | 1 | PLAT-02, PLAT-03, SIM-01 | — | iOS bundle requires Metal-capable device; no external data | build + bundle + settings | iOS Debug build; `python3 -m unittest -v test_phase02_bundle test_phase02_settings` | ✅ both test files | ◐ partial: bundle/settings/launch covered; SIM-01 interaction manual |
-| 02-01-02 | 01 | 1 | PLAT-02, PLAT-03 | — | simulator bundle has Metal library | bundle + settings + Mac build | Mac Debug build; `python3 -m unittest -v test_phase02_bundle test_phase02_settings` | ✅ both test files | ✅ covered for build, metadata, settings and launch |
-| 02-02-01 | 02 | 2 | SIM-01 | — | bound input slots and deterministic touch lifetime | build + state inspection | iOS Debug build and Mac Debug build after `Shared/` changes | ❌ no behavior test | ◐ partial: no automated touch-state test; physical multi-touch untested |
-| 02-02-02 | 02 | 2 | SIM-01, PLAT-02 | — | gesture shortcuts do not inject stale splats | build + simulator | iOS Debug build; simulator gesture observation is manual | ❌ no gesture test | ◐ partial: one-finger observed; two-finger untested |
-| 02-03-01 | 03 | 3 | PLAT-02, PLAT-03, SIM-01 | — | evidence distinguishes tested and untested device behaviors | bundle + settings + simulator | Both Debug builds; `python3 -m unittest -v test_phase02_bundle test_phase02_settings` | ✅ both test files | ◐ partial: automated builds/settings/launches; visual and multi-touch checks manual |
+| 02-01-01 | 01 | 1 | PLAT-02, PLAT-03, SIM-01 | — | iOS bundle requires Metal-capable device; no external data | build + bundle + settings | iOS Debug build; `python3 -m unittest -v test_phase02_bundle test_phase02_settings` | ✅ bundle/settings | ◐ partial: bundle/settings/launch covered; SIM-01 interaction manual |
+| 02-01-02 | 01 | 1 | PLAT-02, PLAT-03 | — | simulator bundle has Metal library | bundle + settings + Mac build | Mac Debug build; `python3 -m unittest -v test_phase02_bundle test_phase02_settings` | ✅ bundle/settings | ✅ covered for build, metadata, settings and launch |
+| 02-02-01 | 02 | 2 | PLAT-02, PLAT-03, SIM-01 | — | bounded GPU contact slots and no stale force after release | build + offscreen GPU | Both Debug builds; `python3 -m unittest -v test_phase02_metal` | ✅ Metal test/harness | ◐ partial: tenth-slot shader force/dye and empty-input GPU pass covered; UIKit lifecycle and >10 batching untested |
+| 02-02-02 | 02 | 2 | PLAT-02, PLAT-03, SIM-01 | — | gesture shortcuts do not inject stale splats | build + simulator + GPU | iOS Debug build; `python3 -m unittest -v test_phase02_metal` | ✅ Metal test/harness; no gesture automation | ◐ partial: one-finger observed, two-finger and proportional width untested |
+| 02-03-01 | 03 | 3 | PLAT-02, PLAT-03, SIM-01 | — | evidence distinguishes tested and untested device behaviors | bundle + settings + simulator | Both Debug builds; `python3 -m unittest -v test_phase02_bundle test_phase02_settings test_phase02_metal` | ✅ three Python modules + Swift harness | ◐ partial: automated builds/settings/launches/GPU; visual interactions require human |
+| 02-03-02 | 03 | 3 | PLAT-02, PLAT-03, SIM-01 | — | unobserved hardware behavior is not reported as passed | human checkpoint | `02-PARITY.md` and `02-HUMAN-UAT.md`; no automated gesture command | ✅ observation records; no device test | ◐ partial: observed simulator drag/tap/pause; two-finger, concurrent contacts and stroke proportion pending |
 
 ## Wave 0 Requirements
 
-Existing Xcode project, schemes and iOS 26 simulator runtimes provide a build gate. `test_phase02_bundle.py` inspects the freshly built bundle and installs/launches it on available iOS 26 iPhone and iPad simulators. `test_phase02_settings.py` checks effective Debug/Release Swift and OS settings for both targets. Neither validates touch or GPU visuals. No XCTest target or isolated touch-state harness is present. A missing Metal Toolchain must be installed with `xcodebuild -downloadComponent MetalToolchain` before build verification.
+Existing Xcode project, schemes and iOS 26 simulator runtimes provide a build gate. `test_phase02_bundle.py` inspects the freshly built bundle and installs/launches it on available iOS 26 iPhone and iPad simulators. `test_phase02_settings.py` checks effective Debug/Release Swift and OS settings for both targets. `test_phase02_metal.py` runs `test_phase02_metal.swift` against the built Mac app's **shared** `default.metallib` on a local Metal GPU: an empty input injects no dye, slot ten injects dye and directional force, and an empty follow-up pass injects no additional dye or force. The GPU harness supplies its own uniform bytes; it does **not** drive the UIKit controller, test the Swift Renderer buffer writer/batching, or establish visual parity. No XCTest target or isolated UIKit touch-state harness is present. A missing Metal Toolchain must be installed with `xcodebuild -downloadComponent MetalToolchain` before build verification.
 
 ## Manual-Only Verifications
 
@@ -48,7 +49,7 @@ Existing Xcode project, schemes and iOS 26 simulator runtimes provide a build ga
 | One-finger double-tap pause, two-finger double-tap cycle without dye | SIM-01 | Gesture sequencing requires UI input | Try supported simulator touch input; record observed result or `NOT TESTED` if gesture simulation cannot express it. |
 | Multiple independent live fingers incl. lift/cancel | SIM-01 | Single mouse pointer is not physical multi-touch | Use simulator multi-touch if convincingly available; otherwise record `NOT TESTED — device-only` per D-11, without claiming device coverage. |
 | Mac input parity | PLAT-03, SIM-01 | Compile does not prove mouse/keyboard response | Rebuild Mac and use `01-BASELINE.md`'s recorded macOS 27 interaction; only claim a *new* interaction pass if re-observed. macOS 26 host testing stays at milestone closeout. |
-| Touch identity, >10 contacts, lift/cancel and stale-force prevention | SIM-01 | GPU-bound touch/Metal state has no separable test harness or XCTest target in this phase; build and static inspection do not prove behavior | Exercise simultaneous drags, overflow where hardware allows, and lifting/cancelling one finger on a physical device; confirm survivors continue and released contacts stop painting. Add automated shared-state tests in Phase 3. |
+| Touch identity, >10 contacts, lift/cancel and stale-force prevention | SIM-01 | Offscreen Metal checks shader behavior only; they do not drive UIKit or the Renderer batching/lifetime path | Exercise simultaneous drags, overflow where hardware allows, and lifting/cancelling one finger on a physical device; confirm survivors continue and released contacts stop painting. |
 | Two-finger double-tap field cycle and clean density | SIM-01 | Not observed in the available simulator input session | Use a reliable two-finger input source; double-tap through all four fields and verify no dye blot. |
 | iPhone/iPad proportional stroke width | SIM-01 | No observed side-by-side canvas-relative comparison | Compare stroke width as a fraction of the short canvas side on both devices. |
 
@@ -57,10 +58,10 @@ Existing Xcode project, schemes and iOS 26 simulator runtimes provide a build ga
 - [x] Each planned code task has an automated build gate; built-bundle checks and fresh simulator launch are automated; visual/touch behavior has an explicit manual checkpoint.
 - [x] Existing Xcode scheme and simulator are sufficient for wave 0; no test target is assumed.
 - [x] No watch-mode flags; no claims that a build establishes runtime behavior.
-- [x] Both Debug builds and three Python tests (bundle, simulator, effective settings) passed on 2026-09-24; previously observed manual cases are recorded in `02-PARITY.md`.
+- [x] Both Debug builds and four Python tests (bundle, simulator, effective settings, offscreen Metal) passed on 2026-09-24; previously observed manual cases are recorded in `02-PARITY.md`.
 - [ ] Physical multi-touch, two-finger shortcut, proportional stroke and macOS 26 runtime are directly observed; SIM-01 is only partially verified.
 
-**Approval:** Partial. `PLAT-02` and `PLAT-03` have repeatable build/bundle/settings/launch checks; `SIM-01` retains manual-only interaction gaps.
+**Approval:** Partial. `PLAT-02` and `PLAT-03` have repeatable build/bundle/settings/launch checks; `SIM-01` has an offscreen GPU contract check and simulator-observed basic interaction, but its unobserved gestures and device-only multi-touch remain manual. No further automated test is claimed without a testable UIKit/Renderer seam.
 
 ## Validation Audit 2026-09-24
 
@@ -81,3 +82,13 @@ Both no-override scheme builds and `python3 -m unittest -v test_phase02_bundle` 
 | Escalated | 1 (SIM-01 behavior requires a touch-state harness and device/simulator interaction checks) |
 
 Both no-override Debug builds and `python3 -m unittest -v test_phase02_bundle test_phase02_settings` passed (3 tests). Effective settings are tested in both Debug and Release; Release binaries were not built. The observed SIM-01 simulator interactions remain documented in `02-PARITY.md`, and unobserved device-only cases remain in `02-HUMAN-UAT.md`.
+
+## Validation Audit 2026-09-24 (offscreen GPU follow-up)
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 2 SIM-01 sub-gaps (GPU contact application; UIKit/Renderer interaction) |
+| Resolved | 1 (real compiled Metal shader: tenth contact dye/force and no added dye/force with cleared input) |
+| Escalated | 1 (UIKit touch lifecycle, >10 batching, gestures and physical/visual checks remain manual) |
+
+Both no-override Debug scheme builds and `python3 -m unittest -v test_phase02_bundle test_phase02_settings test_phase02_metal` passed (4 tests) on 2026-09-24. This completes the feasible test-only automation for this phase; the pending observations in `02-HUMAN-UAT.md` are the remaining sign-off actions, not reasons to repeat the same Nyquist test-generation cycle.
