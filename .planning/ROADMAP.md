@@ -24,7 +24,8 @@ Bring the existing two-platform simulation onto current Apple platforms without 
   1. The macOS app builds for Apple Silicon and launches on macOS 26 without a deployment-target override.
   2. Mouse dragging produces the familiar density and motion in the Metal canvas.
   3. A reference of the existing default look and interactions is available for later parity checks.
-**Plans:** TBD
+**Plans:** 1 plan
+- [ ] 01-01-PLAN.md — Build the Apple Silicon Mac fluid slice and record its visual baseline.
 
 ### Phase 2: Modern iOS parity
 **Goal:** The iOS 26 app joins the working Mac build with the same familiar fluid interaction.
@@ -91,7 +92,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Modern Mac baseline | 0/TBD | Not started | - |
+| 1. Modern Mac baseline | 0/1 | Planned | - |
 | 2. Modern iOS parity | 0/TBD | Not started | - |
 | 3. Reliable simulation state | 0/TBD | Not started | - |
 | 4. Discoverable visualization | 0/TBD | Not started | - |

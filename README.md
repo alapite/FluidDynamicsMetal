@@ -19,6 +19,14 @@ By default, the density field is displayed, but you can also see the pressure, v
  ### 2. `FluidDynamicsMetalOSX`
   
 Interacting with the `OSX` version is similar, you use the *mouse* to interact with the fluid, the *space bar* to pause the simulation and the *S key* to change the surface.
+
+To build the Apple Silicon Mac app and place it in the project root, run from a terminal:
+
+```bash
+./build-macos.sh
+```
+
+The script uses the Mac scheme with a macOS 26 deployment target and requires Xcode's Metal Toolchain (`xcodebuild -downloadComponent MetalToolchain` if it is missing). Open `FluidDynamicsMetalOSX.app` in the project root when you are ready to test; screen or audio recording permissions are not needed to interact with the fluid.
  
  ## Changing parameters
  
