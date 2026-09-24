@@ -48,8 +48,8 @@ fragment half4 visualizeVector(VertexOut fragmentIn [[stage_in]], texture2d<floa
 //Fluid Dynamics Render Encoder
 
 struct BufferData {
-    float2 positions[5];
-    float2 impulses[5];
+    float2 positions[10];
+    float2 impulses[10];
 
     float2 impulseScalar;
     float2 offsets;
@@ -89,7 +89,7 @@ fragment half2 applyForceVector(VertexOut fragmentIn [[stage_in]], texture2d<flo
     half2 color = half2(input.sample(fluid_sampler, fragmentIn.textureCoorinates).xy);
     half2 final = color;
 
-    for (int i=0; i<5; ++i) {
+    for (int i=0; i<10; ++i) {
         half2 impulse = half2(bufferData.impulses[i]);
         half2 location = half2(bufferData.positions[i]);
 
@@ -115,7 +115,7 @@ fragment half2 applyForceScalar(VertexOut fragmentIn [[stage_in]], texture2d<flo
     half2 color = half2(input.sample(fluid_sampler, fragmentIn.textureCoorinates).xy);
     half2 final = color;
 
-    for (int i=0; i<5; ++i) {
+    for (int i=0; i<10; ++i) {
         half2 location = half2(bufferData.positions[i]);
 
         if (location.x == location.y && location.x == 0) {

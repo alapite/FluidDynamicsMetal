@@ -14,6 +14,9 @@ let MaxBuffers = 3
 class RenderViewController: UIViewController {
 
     var renderer: Renderer!
+    private var touchOrder: [UITouch] = []
+    private var positions: [UITouch: CGPoint] = [:]
+    private var previousPositions: [UITouch: CGPoint] = [:]
     var metalView: MTKView {
         return view as! MTKView
     }
@@ -24,7 +27,7 @@ class RenderViewController: UIViewController {
         renderer = Renderer(metalView: metalView)
         metalView.delegate = renderer
 
-        metalView.isExclusiveTouch = true
+        metalView.isMultipleTouchEnabled = true
 
         let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(doubleTap))
         doubleTapGesture.numberOfTapsRequired = 2
@@ -55,45 +58,50 @@ class RenderViewController: UIViewController {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        let positions = touches.map { (touch) -> float2 in
-            let position = touch.location(in: touch.view)
-            return float2(Float(position.x), Float(position.y))
+        for touch in touches {
+            if positions[touch] == nil {
+                touchOrder.append(touch)
+            }
+            let location = touch.location(in: metalView)
+            positions[touch] = location
+            previousPositions[touch] = location
         }
-
-        let tupleSize = MemoryLayout<FloatTuple>.size
-        let arraySize = MemoryLayout<float2>.size * positions.count
-
-        let tuple = malloc(tupleSize).assumingMemoryBound(to: FloatTuple.self)
-
-        memset(tuple, 0, tupleSize)
-        memcpy(tuple, positions, arraySize)
-
-        renderer.updateInteraction(points: tuple.pointee, in: metalView)
+        submitTouches()
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        let positions = touches.map { (touch) -> float2 in
-            let position = touch.location(in: touch.view)
-            return float2(Float(position.x), Float(position.y))
+        for touch in touches where positions[touch] != nil {
+            previousPositions[touch] = positions[touch]
+            positions[touch] = touch.location(in: metalView)
         }
-
-        let tupleSize = MemoryLayout<FloatTuple>.size
-        let arraySize = MemoryLayout<float2>.size * positions.count
-
-        let tuple = malloc(tupleSize).assumingMemoryBound(to: FloatTuple.self)
-
-        memset(tuple, 0, tupleSize)
-        memcpy(tuple, positions, arraySize)
-
-        renderer.updateInteraction(points: tuple.pointee, in: metalView)
+        submitTouches()
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        renderer.updateInteraction(points: nil, in: metalView)
+        removeTouches(touches)
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        renderer.updateInteraction(points: nil, in: metalView)
+        removeTouches(touches)
+    }
+
+    private func removeTouches(_ touches: Set<UITouch>) {
+        for touch in touches {
+            positions.removeValue(forKey: touch)
+            previousPositions.removeValue(forKey: touch)
+        }
+        touchOrder.removeAll { touches.contains($0) }
+        submitTouches()
+    }
+
+    private func submitTouches() {
+        let contacts = touchOrder.compactMap { touch -> FluidContact? in
+            guard let location = positions[touch] else { return nil }
+            let previous = previousPositions[touch] ?? location
+            return FluidContact(position: float2(Float(location.x), Float(location.y)),
+                                impulse: float2(Float(location.x - previous.x), Float(location.y - previous.y)))
+        }
+        renderer.updateTouchInteraction(contacts: contacts, in: metalView)
     }
 
     @objc func changeSource() {
