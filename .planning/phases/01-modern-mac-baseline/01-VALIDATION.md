@@ -52,6 +52,7 @@ Existing Xcode project and build command provide the automated gate. Optional Me
 - [x] No missing test infrastructure is mistaken for a phase requirement.
 - [x] No watch-mode flags.
 - [x] Build and bundle evidence collected during execution.
-- [ ] Drag/pause/field-selection and actual macOS 26 runtime evidence collected.
+- [x] Drag/pause/field-selection observed by the user on macOS 27 and recorded in `01-BASELINE.md`.
+- [ ] Actual macOS 26 runtime launch/drag evidence collected.
 
-**Approval:** Pending execution and manual Mac checks.
+**Approval:** Manual interaction confirmed on macOS 27; macOS 26 runtime sign-off remains pending.
