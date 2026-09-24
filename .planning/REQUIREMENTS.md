@@ -48,13 +48,26 @@
 
 ## Traceability
 
-Phase assignment is pending roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| PLAT-01 | Phase 1 | Pending |
+| PLAT-02 | Phase 2 | Pending |
+| PLAT-03 | Phase 2 | Pending |
+| SIM-01 | Phase 2 | Pending |
+| SIM-02 | Phase 3 | Pending |
+| SIM-03 | Phase 3 | Pending |
+| VER-01 | Phase 3 | Pending |
+| CTRL-01 | Phase 4 | Pending |
+| CTRL-02 | Phase 5 | Pending |
+| CTRL-03 | Phase 5 | Pending |
+| CTRL-04 | Phase 5 | Pending |
+| CTRL-05 | Phase 6 | Pending |
+| CTRL-06 | Phase 6 | Pending |
+| CTRL-07 | Phase 6 | Pending |
+| VER-02 | Phase 6 | Pending |
 
-**Coverage:** 15 v1 requirements; 0 mapped; 15 pending roadmap mapping.
+**Coverage:** 15 v1 requirements; 15 mapped to exactly one phase; 0 unmapped.
 
 ---
 *Requirements defined: 2026-09-24*
-*Last updated: 2026-09-24 after initial definition*
+*Last updated: 2026-09-24 after initial roadmap creation*
