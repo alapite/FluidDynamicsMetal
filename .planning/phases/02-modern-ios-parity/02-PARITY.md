@@ -37,9 +37,9 @@ xcrun simctl launch 1FB7D6F2-2DCF-43F9-BB1A-7031F4702A21 ro.andreisergiupitis.Fl
 | Stationary brief single tap adds dye | PASS | User tried the brief single tap and observed dye on both iOS 26.4 simulator layouts, 2026-09-24. |
 | Prompt moving touch stirs | PASS | User observed a prompt drag stirring fluid on both iOS 26.4 simulator layouts, 2026-09-24. |
 | One-finger double tap pauses/resumes | PASS | User observed pause/resume on both iOS 26.4 simulator layouts, 2026-09-24. |
-| Two-finger double tap cycles density → pressure → velocity → vorticity → density | NOT TESTED | Requires reliable simulator two-finger gesture input. |
+| Two-finger double tap cycles density → pressure → velocity → vorticity → density | NOT TESTED — device-only | Two-finger gestures cannot be tested with the available simulator; physical-device observation deferred without blocking later phases. |
 | One-finger double tap leaves no dye blot | PASS | User reported the tested one-finger shortcut left no dye blot on both iOS 26.4 simulators, 2026-09-24. |
-| Two-finger double tap leaves no dye blot | NOT TESTED | User did not perform the two-finger shortcut. |
+| Two-finger double tap leaves no dye blot | NOT TESTED — device-only | Two-finger gesture unavailable in the simulator; physical-device observation deferred. |
 | Independent concurrent touches | NOT TESTED — device-only | No convincing simulator multi-touch observation or physical device test was reported. |
 | Lift/cancel one touch while another continues | NOT TESTED — device-only | No convincing simulator multi-touch observation or physical device test was reported. |
 | iPad/iPhone proportional stroke width | NOT TESTED | No explicit canvas-relative stroke-width comparison was reported. |
@@ -49,4 +49,4 @@ xcrun simctl launch 1FB7D6F2-2DCF-43F9-BB1A-7031F4702A21 ro.andreisergiupitis.Fl
 
 ## Human verification checkpoint
 
-The user confirmed blue-on-black, drag/release, swirl/fade, brief single-tap dye, and one-finger pause/resume on both devices after opening the iOS scheme in Xcode. The two-finger shortcut was not tried; independent simultaneous touches and lift/cancel were not reproduced convincingly and remain `NOT TESTED — device-only`. No explicit stroke-width comparison was reported. macOS 26 runtime remains deferred to milestone closeout.
+The user confirmed blue-on-black, drag/release, swirl/fade, brief single-tap dye, and one-finger pause/resume on both devices after opening the iOS scheme in Xcode. Two-finger gestures cannot be tested using the available simulator; independent simultaneous touches and lift/cancel were not reproduced convincingly. All remain `NOT TESTED — device-only` and do not block later milestone implementation. No explicit stroke-width comparison was reported. macOS 26 runtime remains deferred to milestone closeout.

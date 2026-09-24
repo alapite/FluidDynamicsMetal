@@ -23,7 +23,7 @@ created: 2026-09-24
 
 - **After each source-change task:** Run the iOS Debug build without a deployment override. After each `Shared/` edit, also run the Mac Debug build.
 - **After each wave:** Check iOS bundle `MinimumOSVersion=26.0`, `default.metallib`, no Swift 4 effective setting, the offscreen GPU contact pass, and iPhone/iPad simulator launches when runnable.
-- **Before `/gsd-verify-work`:** Both builds green; iPhone and iPad observations recorded; physical multi-finger behavior is explicitly `NOT TESTED` if simulator cannot establish it.
+- **Before `/gsd-verify-work`:** Both builds green; iPhone and iPad observations recorded; physical multi-finger behavior is explicitly `NOT TESTED — device-only`. Simulator-inaccessible two-finger gestures are a non-blocking follow-up.
 - **Max feedback latency:** One incremental iOS build per edit; hardware-dependent visuals use an end-of-wave manual checkpoint.
 
 ## Per-Task Verification Map
@@ -46,11 +46,11 @@ Existing Xcode project, schemes and iOS 26 simulator runtimes provide a build ga
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
 | iPhone and iPad black canvas / blue density, swirl and fade | PLAT-02, SIM-01 | GPU appearance cannot be certified by compile | Launch on both iOS 26 simulator device types, swipe, compare recognizable look to `01-BASELINE.md` and `FluidDynamicsMetal.gif`; record actual observations. |
-| One-finger double-tap pause, two-finger double-tap cycle without dye | SIM-01 | Gesture sequencing requires UI input | Try supported simulator touch input; record observed result or `NOT TESTED` if gesture simulation cannot express it. |
+| One-finger double-tap pause | SIM-01 | Gesture sequencing requires UI input | Use the recorded iPhone/iPad simulator observations in `02-PARITY.md`; recheck after relevant input changes. |
 | Multiple independent live fingers incl. lift/cancel | SIM-01 | Single mouse pointer is not physical multi-touch | Use simulator multi-touch if convincingly available; otherwise record `NOT TESTED — device-only` per D-11, without claiming device coverage. |
 | Mac input parity | PLAT-03, SIM-01 | Compile does not prove mouse/keyboard response | Rebuild Mac and use `01-BASELINE.md`'s recorded macOS 27 interaction; only claim a *new* interaction pass if re-observed. macOS 26 host testing stays at milestone closeout. |
 | Touch identity, >10 contacts, lift/cancel and stale-force prevention | SIM-01 | Offscreen Metal checks shader behavior only; they do not drive UIKit or the Renderer batching/lifetime path | Exercise simultaneous drags, overflow where hardware allows, and lifting/cancelling one finger on a physical device; confirm survivors continue and released contacts stop painting. |
-| Two-finger double-tap field cycle and clean density | SIM-01 | Not observed in the available simulator input session | Use a reliable two-finger input source; double-tap through all four fields and verify no dye blot. |
+| Two-finger double-tap field cycle and clean density | SIM-01 | This two-finger gesture cannot be tested with the available simulator; no device result exists | When a physical iOS device is available, double-tap through all four fields and verify no dye blot. Record `NOT TESTED — device-only` until then; do not gate later milestone implementation on this check. |
 | iPhone/iPad proportional stroke width | SIM-01 | No observed side-by-side canvas-relative comparison | Compare stroke width as a fraction of the short canvas side on both devices. |
 
 ## Validation Sign-Off
@@ -59,9 +59,10 @@ Existing Xcode project, schemes and iOS 26 simulator runtimes provide a build ga
 - [x] Existing Xcode scheme and simulator are sufficient for wave 0; no test target is assumed.
 - [x] No watch-mode flags; no claims that a build establishes runtime behavior.
 - [x] Both Debug builds and four Python tests (bundle, simulator, effective settings, offscreen Metal) passed on 2026-09-24; previously observed manual cases are recorded in `02-PARITY.md`.
-- [ ] Physical multi-touch, two-finger shortcut, proportional stroke and macOS 26 runtime are directly observed; SIM-01 is only partially verified.
+- [x] Phase 2 sign-off permits later milestone implementation with unobserved device-only gestures explicitly deferred and unclaimed.
+- [ ] Physical multi-touch, two-finger shortcut and proportional stroke are directly observed; SIM-01 remains partially verified. The separately deferred macOS 26 runtime check belongs to Phase 1.
 
-**Approval:** Partial. `PLAT-02` and `PLAT-03` have repeatable build/bundle/settings/launch checks; `SIM-01` has an offscreen GPU contract check and simulator-observed basic interaction, but its unobserved gestures and device-only multi-touch remain manual. No further automated test is claimed without a testable UIKit/Renderer seam.
+**Approval:** Partial, **non-blocking for the rest of the milestone**. `PLAT-02` and `PLAT-03` have repeatable build/bundle/settings/launch checks; `SIM-01` has an offscreen GPU contract check and simulator-observed basic interaction. Two-finger gestures cannot be tested using the available simulator, so keep them `NOT TESTED — device-only` until a physical device is available. No further automated test is claimed without a testable UIKit/Renderer seam; do not repeat Nyquist validation or delay Phase 3+ on the simulator limitation.
 
 ## Validation Audit 2026-09-24
 
@@ -92,3 +93,5 @@ Both no-override Debug builds and `python3 -m unittest -v test_phase02_bundle te
 | Escalated | 1 (UIKit touch lifecycle, >10 batching, gestures and physical/visual checks remain manual) |
 
 Both no-override Debug scheme builds and `python3 -m unittest -v test_phase02_bundle test_phase02_settings test_phase02_metal` passed (4 tests) on 2026-09-24. This completes the feasible test-only automation for this phase; the pending observations in `02-HUMAN-UAT.md` are the remaining sign-off actions, not reasons to repeat the same Nyquist test-generation cycle.
+
+**Follow-up decision:** The user confirmed that two-finger gestures cannot be tested in the simulator and explicitly approved continuing milestone implementation. Keep those observations deferred to a physical device; their `NOT TESTED` status is not a phase dependency or a failed test.

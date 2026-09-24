@@ -69,6 +69,7 @@ None yet.
 |----------|------|--------|-------------|
 | UX | Saved presets, image/recording export | v2 | Initialization |
 | Verification | Phase 1 macOS 26 launch and drag (`01-HUMAN-UAT.md`, PLAT-01) | Pending milestone closeout | 2026-09-24, user-approved |
+| Verification | Phase 2 two-finger gesture and concurrent-touch observations (`02-HUMAN-UAT.md`) | NOT TESTED — device-only; non-blocking for Phase 3+ | 2026-09-24, user-approved |
 
 ## Session Continuity
 
