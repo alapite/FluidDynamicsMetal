@@ -8,7 +8,7 @@ updated: 2026-09-24T19:20:00Z
 
 ## Current Test
 
-Awaiting runtime testing on an Apple Silicon macOS 26 system (physical or virtual with a usable Metal device).
+Runtime testing on an Apple Silicon macOS 26 system (physical or virtual with a usable Metal device) was explicitly deferred by the user to milestone closeout on 2026-09-24. Keep the test pending. The resumable VM download path is recorded in `01-BASELINE.md`.
 
 ## Tests
 

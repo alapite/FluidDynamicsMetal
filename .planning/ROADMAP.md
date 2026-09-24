@@ -6,7 +6,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 
 ## Phases
 
-- [ ] **Phase 1: Modern Mac baseline** - A working macOS 26 / Apple Silicon fluid app establishes a visual reference. (plans complete; macOS 26 runtime verification pending)
+- [ ] **Phase 1: Modern Mac baseline** - A working macOS 26 / Apple Silicon fluid app establishes a visual reference. (plans complete; macOS 26 runtime verification deferred to milestone closeout by user)
 - [ ] **Phase 2: Modern iOS parity** - Both apps build and support familiar fluid interaction on current SDKs.
 - [ ] **Phase 3: Reliable simulation state** - Pausing, resizing, and shared state changes work and have automated coverage.
 - [ ] **Phase 4: Discoverable visualization** - Both apps expose native pause and named field-selection controls.
@@ -92,9 +92,13 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Modern Mac baseline | 1/1 | Awaiting macOS 26 verification | - |
+| 1. Modern Mac baseline | 1/1 | Implementation complete; runtime UAT deferred | - |
 | 2. Modern iOS parity | 0/TBD | Not started | - |
 | 3. Reliable simulation state | 0/TBD | Not started | - |
 | 4. Discoverable visualization | 0/TBD | Not started | - |
 | 5. Live fluid tuning | 0/TBD | Not started | - |
 | 6. Quality, reset, and accessibility | 0/TBD | Not started | - |
+
+## Milestone Closeout Checks
+
+- [ ] Complete the deferred Phase 1 macOS 26 runtime launch/drag test on a physical Apple Silicon Mac or a macOS 26 VM with a usable Metal device. See `01-BASELINE.md` for the resumable `curl -C -` restore-image download and verification instructions. Resolve `01-HUMAN-UAT.md`, then re-verify PLAT-01 and mark Phase 1 complete. This check was explicitly deferred on 2026-09-24 to allow Phase 2 discussion/planning and later work to proceed.

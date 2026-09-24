@@ -55,3 +55,16 @@
 | Screenshot of running dragged density | NOT TESTED | Optional only; an agent screenshot attempt returned `could not create image from window`. Do not grant recording permissions solely for this reference. |
 
 The original GIF above is the existing visual reference; it is not a screenshot of this build. The app itself contains no screen or audio capture code. The recording permission prompt may have been triggered by the agent's screenshot attempt; **no recording permission is needed** to open the app and test the mouse and keys. The user confirmed drag/Space/S behavior at phase closeout on macOS 27. Actual macOS 26 runtime compatibility remains untested. A macOS 26 virtual machine on Apple Silicon is a possible test host; confirm that its guest exposes a usable Metal device before using it for the fluid interaction check. Add a screenshot link only if an image already exists without prompting for permissions.
+
+## Milestone closeout: macOS 26 runtime check
+
+Deferred by user on 2026-09-24 so development can continue with Phase 2. This is still `NOT TESTED` and PLAT-01 is not verified. The macOS 27 host is Apple Silicon; a macOS 26 guest can provide OS-version coverage if its paravirtualized GPU supports this Metal app. VM performance is not a proxy for physical GPU performance.
+
+Tart's `clone ghcr.io/cirruslabs/macos-tahoe-base:latest` started downloading a 27.3 GB compressed image, but after interruption it restarted at 0% rather than resuming. Do not repeat that download for this checkpoint. Instead, Apple's macOS 26.6.2 virtual-Mac restore image supports HTTP byte ranges (`206 Partial Content` observed), so the download can be resumed using `curl -C -`. A partially downloaded file at `.build/UniversalMac_26.6.2_25G83_Restore.ipsw` was retained (16,632,070,144 of 19,772,231,540 bytes when paused); `.build/` is ignored by Git. From the project root:
+
+```bash
+curl -fL -C - -o .build/UniversalMac_26.6.2_25G83_Restore.ipsw 'https://updates.cdn-apple.com/2026SummerFCS/fullrestores/140-75212/A2A24B94-1FC1-45A3-93F7-C51B02AF1F4D/UniversalMac_26.6.2_25G83_Restore.ipsw'
+shasum -a 256 .build/UniversalMac_26.6.2_25G83_Restore.ipsw
+```
+
+Expected SHA-256: `885503b7f4b06609e9a512f2befd40f59730640a3f1233e3892d60affdd51c95`. Do not create a VM from an incomplete or mismatched image. Once verified, Tart can install it with `tart create fluid-macos26 --from-ipsw .build/UniversalMac_26.6.2_25G83_Restore.ipsw` (with `TART_HOME` set to `"$(pwd)/.build/tart"` if keeping VM storage ignored alongside build artifacts). Inside the guest, check `sw_vers -productVersion`, query `MTLCreateSystemDefaultDevice()` for a non-nil Metal device, then launch and drag the copied `.app`. Record the actual guest OS/version, Metal device name, and observed result in the table above before closing `01-HUMAN-UAT.md`.
