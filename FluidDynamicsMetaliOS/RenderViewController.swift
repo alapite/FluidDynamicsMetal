@@ -11,7 +11,7 @@ import MetalKit
 
 let MaxBuffers = 3
 
-class RenderViewController: UIViewController {
+class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
 
     var renderer: Renderer!
     private var touchOrder: [UITouch] = []
@@ -21,6 +21,16 @@ class RenderViewController: UIViewController {
     private var activeTouches: Set<UITouch> = []
     private var pendingHolds: [UITouch: DispatchWorkItem] = [:]
     private var lastCanvasSize: CGSize = .zero
+    private let hud = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+    private let caption = UILabel()
+    private let activeSummary = UILabel()
+    private let fieldStack = UIStackView()
+    private let fieldScroll = UIScrollView()
+    private let pauseButton = UIButton(type: .system)
+    private var fieldButtons: [DisplayField: UIButton] = [:]
+    private var hudWidth: NSLayoutConstraint?
+    private var hudHeight: NSLayoutConstraint?
+    private var fieldColumns = 0
     var metalView: MTKView {
         return view as! MTKView
     }
@@ -33,25 +43,192 @@ class RenderViewController: UIViewController {
 
         metalView.isMultipleTouchEnabled = true
 
+        installControls()
+
         let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(doubleTap))
         doubleTapGesture.numberOfTapsRequired = 2
         doubleTapGesture.numberOfTouchesRequired = 1
+        doubleTapGesture.delegate = self
         view.addGestureRecognizer(doubleTapGesture)
 
         let gestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(changeSource))
         gestureRecognizer.numberOfTapsRequired = 2
         gestureRecognizer.numberOfTouchesRequired = 2
+        gestureRecognizer.delegate = self
         view.addGestureRecognizer(gestureRecognizer)
 
         // A two-finger shortcut takes precedence over a one-finger double tap.
         doubleTapGesture.require(toFail: gestureRecognizer)
         let singleTapGesture = UITapGestureRecognizer(target: self, action: #selector(singleTap(_:)))
+        singleTapGesture.delegate = self
         singleTapGesture.require(toFail: doubleTapGesture)
         singleTapGesture.require(toFail: gestureRecognizer)
         view.addGestureRecognizer(singleTapGesture)
 
         NotificationCenter.default.addObserver(self, selector: #selector(willResignActive), name: UIApplication.willResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateAppearance), name: UIAccessibility.reduceTransparencyStatusDidChangeNotification, object: nil)
+    }
+
+    private func installControls() {
+        hud.translatesAutoresizingMaskIntoConstraints = false
+        hud.layer.cornerRadius = 12
+        hud.clipsToBounds = true
+        metalView.addSubview(hud)
+
+        caption.text = "View"
+        caption.font = .preferredFont(forTextStyle: .caption1)
+        caption.textColor = .secondaryLabel
+        activeSummary.font = .preferredFont(forTextStyle: .caption1)
+        activeSummary.textColor = .label
+        activeSummary.isHidden = true
+
+        fieldStack.axis = .vertical
+        fieldStack.spacing = 8
+        fieldStack.isAccessibilityElement = false
+        fieldStack.accessibilityLabel = "Display field"
+        for field in DisplayField.allCases {
+            let button = UIButton(type: .system)
+            button.tag = field.rawValue
+            button.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
+            button.titleLabel?.adjustsFontForContentSizeCategory = true
+            button.titleLabel?.numberOfLines = 0
+            button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+            button.backgroundColor = .secondarySystemBackground
+            button.layer.cornerRadius = 8
+            button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+            button.addTarget(self, action: #selector(selectField(_:)), for: .touchUpInside)
+            fieldButtons[field] = button
+        }
+        fieldScroll.translatesAutoresizingMaskIntoConstraints = false
+        fieldScroll.addSubview(fieldStack)
+        fieldStack.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            fieldStack.leadingAnchor.constraint(equalTo: fieldScroll.contentLayoutGuide.leadingAnchor),
+            fieldStack.trailingAnchor.constraint(equalTo: fieldScroll.contentLayoutGuide.trailingAnchor),
+            fieldStack.topAnchor.constraint(equalTo: fieldScroll.contentLayoutGuide.topAnchor),
+            fieldStack.bottomAnchor.constraint(equalTo: fieldScroll.contentLayoutGuide.bottomAnchor),
+            fieldStack.widthAnchor.constraint(equalTo: fieldScroll.frameLayoutGuide.widthAnchor)
+        ])
+
+        pauseButton.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
+        pauseButton.titleLabel?.adjustsFontForContentSizeCategory = true
+        pauseButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        pauseButton.addTarget(self, action: #selector(pauseFromHUD(_:)), for: .touchUpInside)
+
+        let content = UIStackView(arrangedSubviews: [caption, activeSummary, fieldScroll, pauseButton])
+        content.axis = .vertical
+        content.spacing = 8
+        content.translatesAutoresizingMaskIntoConstraints = false
+        hud.contentView.addSubview(content)
+        hudWidth = hud.widthAnchor.constraint(equalToConstant: 300)
+        hudHeight = hud.heightAnchor.constraint(equalToConstant: 208)
+        let safe = metalView.safeAreaLayoutGuide
+        NSLayoutConstraint.activate([
+            hud.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
+            hud.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -16),
+            hud.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 16),
+            hud.topAnchor.constraint(greaterThanOrEqualTo: safe.topAnchor, constant: 16),
+            hudWidth!, hudHeight!,
+            content.leadingAnchor.constraint(equalTo: hud.contentView.leadingAnchor, constant: 16),
+            content.trailingAnchor.constraint(equalTo: hud.contentView.trailingAnchor, constant: -16),
+            content.topAnchor.constraint(equalTo: hud.contentView.topAnchor, constant: 16),
+            content.bottomAnchor.constraint(equalTo: hud.contentView.bottomAnchor, constant: -16)
+        ])
+        updateAppearance()
+        refreshControls()
+    }
+
+    private func fieldTitle(_ field: DisplayField) -> String {
+        switch field {
+        case .density: return "Density"
+        case .pressure: return "Pressure"
+        case .velocity: return "Velocity"
+        case .vorticity: return "Vorticity"
+        }
+    }
+
+    @objc private func updateAppearance() {
+        hud.effect = UIAccessibility.isReduceTransparencyEnabled ? nil : UIBlurEffect(style: .systemMaterial)
+        hud.backgroundColor = UIAccessibility.isReduceTransparencyEnabled ? .systemBackground : .clear
+    }
+
+    private func updateControlLayout() {
+        let safe = metalView.safeAreaLayoutGuide.layoutFrame
+        guard safe.width > 32, safe.height > 32 else { return }
+        let width = safe.width - 32
+        let height = safe.height - 32
+        let font = UIFont.preferredFont(forTextStyle: .subheadline)
+        let buttonWidth = DisplayField.allCases.map {
+            ("✓ \(fieldTitle($0))" as NSString).size(withAttributes: [.font: font]).width + 32
+        }.max() ?? 120
+        let columns = width >= 4 * buttonWidth + 24 + 32 && height < 280 ? 4 : (width >= 2 * buttonWidth + 8 + 32 ? 2 : 1)
+        if columns != fieldColumns {
+            fieldColumns = columns
+            for row in fieldStack.arrangedSubviews { fieldStack.removeArrangedSubview(row); row.removeFromSuperview() }
+            let fields = DisplayField.allCases
+            for index in stride(from: 0, to: fields.count, by: columns) {
+                let row = UIStackView(arrangedSubviews: Array(fields[index..<min(index + columns, fields.count)]).compactMap { fieldButtons[$0] })
+                row.axis = .horizontal
+                row.distribution = .fillEqually
+                row.spacing = 8
+                fieldStack.addArrangedSubview(row)
+            }
+        }
+        let fieldHeight = CGFloat((4 + columns - 1) / columns) * max(44, font.lineHeight + 16) + CGFloat((4 + columns - 1) / columns - 1) * 8
+        let compactHeight = height < fieldHeight + 44 + 32 + 16 + caption.intrinsicContentSize.height
+        let needsScroll = height < fieldHeight + 44 + 32 + (compactHeight ? 8 : 16) + (compactHeight ? 0 : caption.intrinsicContentSize.height)
+        caption.isHidden = compactHeight
+        activeSummary.isHidden = !needsScroll
+        activeSummary.text = "View: \(fieldTitle(renderer.state.field))"
+        fieldScroll.isScrollEnabled = needsScroll
+        let desiredWidth = CGFloat(columns) * buttonWidth + CGFloat(columns - 1) * 8 + 32
+        let newWidth = min(width, max(desiredWidth, 192))
+        let newHeight = min(height, fieldHeight + 44 + 32 + (compactHeight ? 8 : 16) + (compactHeight ? 0 : caption.intrinsicContentSize.height) + (needsScroll ? activeSummary.intrinsicContentSize.height + 8 : 0))
+        if hudWidth?.constant != newWidth { hudWidth?.constant = newWidth }
+        if hudHeight?.constant != newHeight { hudHeight?.constant = newHeight }
+    }
+
+    private func refreshControls() {
+        for (field, button) in fieldButtons {
+            let selected = renderer.state.field == field
+            button.setTitle(selected ? "✓ \(fieldTitle(field))" : fieldTitle(field), for: .normal)
+            button.titleLabel?.font = UIFont.preferredFont(forTextStyle: .subheadline).withWeight(selected ? .semibold : .regular)
+            button.layer.borderWidth = selected ? 2 : 0
+            button.layer.borderColor = view.tintColor.cgColor
+            button.tintColor = selected ? view.tintColor : .label
+            button.accessibilityLabel = fieldTitle(field)
+            button.accessibilityValue = selected ? "Selected" : "Not selected"
+        }
+        pauseButton.setTitle(renderer.state.userPaused ? "Resume" : "Pause", for: .normal)
+        pauseButton.accessibilityLabel = renderer.state.userPaused ? "Resume simulation" : "Pause simulation"
+        updateControlLayout()
+    }
+
+    @objc private func selectField(_ sender: UIButton) {
+        guard let field = DisplayField(rawValue: sender.tag) else { return }
+        renderer.selectField(field)
+        refreshControls()
+    }
+
+    @objc private func pauseFromHUD(_ sender: UIButton) {
+        cancelPendingHolds()
+        clearTouches()
+        renderer.togglePause()
+        refreshControls()
+    }
+
+    private func isHUDTouch(_ touch: UITouch) -> Bool {
+        var touchedView = touch.view
+        while let candidate = touchedView {
+            if candidate === hud { return true }
+            touchedView = candidate.superview
+        }
+        return hud.bounds.contains(touch.location(in: hud))
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        return !isHUDTouch(touch)
     }
 
     deinit {
@@ -64,6 +241,7 @@ class RenderViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateControlLayout()
         guard renderer != nil, metalView.bounds.size != lastCanvasSize else { return }
         lastCanvasSize = metalView.bounds.size
         cancelPendingHolds()
@@ -86,7 +264,7 @@ class RenderViewController: UIViewController {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard renderer.state.shouldAdvance else { return }
-        for touch in touches {
+        for touch in touches where !isHUDTouch(touch) {
             if positions[touch] == nil {
                 touchOrder.append(touch)
             }
@@ -159,6 +337,7 @@ class RenderViewController: UIViewController {
         guard !renderer.state.inactive else { return }
         cancelPendingHolds()
         renderer.nextSlab()
+        refreshControls()
     }
 
     @objc final func doubleTap() {
@@ -166,11 +345,13 @@ class RenderViewController: UIViewController {
         cancelPendingHolds()
         clearTouches()
         renderer.togglePause()
+        refreshControls()
     }
 
     @objc private func singleTap(_ recognizer: UITapGestureRecognizer) {
         guard renderer.state.shouldAdvance else { return }
         let point = recognizer.location(in: metalView)
+        guard !hud.bounds.contains(recognizer.location(in: hud)) else { return }
         renderer.enqueueTap(at: float2(Float(point.x), Float(point.y)), in: metalView)
     }
 
@@ -196,5 +377,12 @@ class RenderViewController: UIViewController {
 
     @objc final func didBecomeActive() {
         renderer.becomeActive()
+        refreshControls()
+    }
+}
+
+private extension UIFont {
+    func withWeight(_ weight: UIFont.Weight) -> UIFont {
+        return UIFont.systemFont(ofSize: pointSize, weight: weight)
     }
 }
