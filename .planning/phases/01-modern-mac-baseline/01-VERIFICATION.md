@@ -47,7 +47,7 @@ score: 2/3 must-haves verified
 
 ## Gaps Summary
 
-No code failure observed. Phase sign-off remains pending the macOS 26 runtime check, deferred to milestone closeout by the user on 2026-09-24. Do not mark PLAT-01 or Phase 1 complete yet; subsequent phase work may proceed under this explicit deferral.
+No code failure observed. Runtime sign-off remains pending the macOS 26 check. On 2026-09-25 the user explicitly allowed v1.0 to close with this check deferred beyond the milestone; do not mark PLAT-01 verified or claim a macOS 26 runtime PASS. Phase 1 implementation and its plan are complete, while this verification result remains `human_needed`.
 
 ## Verification Metadata
 
