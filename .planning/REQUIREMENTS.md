@@ -14,7 +14,7 @@
 ### Simulation continuity
 
 - [x] **SIM-01**: Users can stir and add density to the fluid with mouse drag on macOS and touch drag on iOS, with visually familiar response at default settings.
-- [ ] **SIM-02**: Users can resize the Mac window or rotate/resize an iOS view without losing the ability to interact with and display the fluid.
+- [x] **SIM-02**: Users can resize the Mac window or rotate/resize an iOS view without losing the ability to interact with and display the fluid.
 - [x] **SIM-03**: Users can pause and resume the simulation without corrupting the displayed field or losing input responsiveness after resume.
 
 ### Native controls
@@ -54,7 +54,7 @@
 | PLAT-02 | Phase 2 | Complete |
 | PLAT-03 | Phase 2 | Complete |
 | SIM-01 | Phase 2 | Complete |
-| SIM-02 | Phase 3 | Pending |
+| SIM-02 | Phase 3 | Complete |
 | SIM-03 | Phase 3 | Complete |
 | VER-01 | Phase 3 | Complete |
 | CTRL-01 | Phase 4 | Pending |
