@@ -6,24 +6,24 @@
 
 | Host / tool | Actual version / device | Evidence |
 |-------------|-------------------------|----------|
-| Mac host / architecture | NOT TESTED | Pending `sw_vers -productVersion`, `uname -m`. |
-| Xcode | NOT TESTED | Pending `xcodebuild -version`. |
-| iPhone simulator | NOT TESTED | Select from `xcrun simctl list devices available`. |
-| iPad simulator | NOT TESTED | Select from `xcrun simctl list devices available`. |
+| Mac host / architecture | Apple Silicon arm64, macOS 27.0 | `uname -m` → `arm64`; `sw_vers -productVersion` → `27.0`. This is not a macOS 26 runtime check. |
+| Xcode | 27.0 (27A266a) | `xcodebuild -version`; Xcode macOS and iPhone Simulator SDKs 27.0 in build output. |
+| iPhone simulator | iPhone 17 Pro, iOS 26.4, `8393A81F-69D4-439E-AF8E-ED7665022800` (Booted) | `xcrun simctl list devices available`; selected for attempted UI suite. |
+| iPad simulator | iPad Pro 13-inch (M5), iOS 26.4, `98C63B09-8AB0-4B26-B9C4-5277D60FCBD5` (Booted) | `xcrun simctl list devices available`; selected for attempted UI suite. |
 
 ## Builds, bundle and automated checks
 
 | Check | Command / procedure | Host, OS, Xcode or simulator | Result | Evidence |
 |-------|---------------------|------------------------------|--------|----------|
-| Mac Debug arm64 build without overrides | `xcodebuild -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build` | Pending | NOT TESTED | Pending command result. |
-| Root Mac app build/copy | `./build-macos.sh` | Pending | NOT TESTED | Pending command result and root app path. |
-| Mac bundle architecture/minimum OS/Metal library | Inspect root `.app` with `lipo -archs`, `/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion'`, and `test -f Contents/Resources/default.metallib` | Pending | NOT TESTED | Pending bundle inspection. |
-| Mac state + HUD UI automated tests | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO` | Pending | NOT TESTED | Pending test count and result bundle. |
-| Metal regression | `python3 -m unittest test_phase05_metal.py` after fresh Mac build | Pending | NOT TESTED | Pending command result. |
-| iOS Simulator Debug build without overrides | `xcodebuild -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetaliOS -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build` | Pending | NOT TESTED | Pending command result. |
-| iOS built app minimum OS/Metal library | Locate actual `Debug-iphonesimulator/FluidDynamicsMetaliOS.app` build product; inspect `MinimumOSVersion` and `default.metallib` | Pending | NOT TESTED | Pending bundle inspection. |
-| iPhone HUD UI automated tests | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetaliOS -configuration Debug -destination 'platform=iOS Simulator,id=<chosen-iPhone-id>' CODE_SIGNING_ALLOWED=NO` | Pending | NOT TESTED | Pending device/version, count, result. |
-| iPad HUD UI automated tests | Same iOS test command with an available iPad ID | Pending | NOT TESTED | Pending device/version, count, result or timeout. |
+| Mac Debug arm64 build without overrides | `xcodebuild -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build` | arm64 Mac, macOS 27.0, Xcode 27.0 | PASS | Exit 0; `** BUILD SUCCEEDED **` (2026-09-25). |
+| Root Mac app build/copy | `./build-macos.sh` | arm64 Mac, macOS 27.0, Xcode 27.0 | PASS | Exit 0; `** BUILD SUCCEEDED **`; `App ready: .../FluidDynamicsMetalOSX.app` in project root. |
+| Mac bundle architecture/minimum OS/Metal library | `lipo -archs FluidDynamicsMetalOSX.app/Contents/MacOS/FluidDynamicsMetalOSX`; `/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' FluidDynamicsMetalOSX.app/Contents/Info.plist`; `test -f FluidDynamicsMetalOSX.app/Contents/Resources/default.metallib` | Build from arm64 Mac, macOS 27.0, Xcode 27.0 | PASS | `arm64`; `26.0`; Metal library file exists (test exit 0). Minimum OS is metadata, not a macOS 26 launch. |
+| Mac state + HUD UI automated tests | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO` | arm64 Mac, macOS 27.0, Xcode 27.0 | PASS | `** TEST SUCCEEDED **`; 11 state/renderer-contact tests + 5 Mac HUD UI tests, 0 failures; `Test-FluidDynamicsMetalOSX-2026.09.25_22-13-13-+0100.xcresult` under Xcode DerivedData `Logs/Test`. Tested the existing uncommitted Mac controller/UI-test workspace edits (see Phase 05 review WR-01). |
+| Metal regression | `python3 -m unittest test_phase05_metal.py` after fresh Mac Debug build | arm64 Mac, macOS 27.0, Xcode 27.0 | PASS | Exit 0; `Ran 1 test ... OK` (production Metal RG16F readback). |
+| iOS Simulator Debug build without overrides | `xcodebuild -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetaliOS -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build` | arm64 Mac, macOS 27.0, Xcode 27.0; generic iOS Simulator destination | PASS | Exit 0; `** BUILD SUCCEEDED **`; build alone does not establish process launch or fluid interaction. |
+| iOS built app minimum OS/Metal library | `/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' '/Users/abiola/Library/Developer/Xcode/DerivedData/FluidDynamicsMetal-azjwdezmeqzeuibhoxwuigioomfx/Build/Products/Debug-iphonesimulator/FluidDynamicsMetaliOS.app/Info.plist'`; `test -f '/Users/abiola/Library/Developer/Xcode/DerivedData/FluidDynamicsMetal-azjwdezmeqzeuibhoxwuigioomfx/Build/Products/Debug-iphonesimulator/FluidDynamicsMetaliOS.app/default.metallib'` | Build from arm64 Mac, macOS 27.0, Xcode 27.0 | PASS | `MinimumOSVersion = 26.0`; `default.metallib` exists (test exit 0). Actual product path taken from iOS build output. |
+| iPhone HUD UI automated tests | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetaliOS -configuration Debug -destination 'platform=iOS Simulator,id=8393A81F-69D4-439E-AF8E-ED7665022800' CODE_SIGNING_ALLOWED=NO` | iPhone 17 Pro, iOS 26.4 simulator; macOS 27.0 / Xcode 27.0 | NOT TESTED | Invocation timed out after 600 s; no completed test summary or usable `.xcresult` (missing `Info.plist`). Test counts cannot be claimed. Earlier Phase 05 iPhone 6/6 PASS is historical, not this run. |
+| iPad HUD UI automated tests | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetaliOS -configuration Debug -destination 'platform=iOS Simulator,id=98C63B09-8AB0-4B26-B9C4-5277D60FCBD5' CODE_SIGNING_ALLOWED=NO` | iPad Pro 13-inch (M5), iOS 26.4 simulator; macOS 27.0 / Xcode 27.0 | NOT TESTED | Invocation timed out after 260 s; no completed test summary or usable `.xcresult` (missing `Info.plist`). Earlier Phase 05 iPad UI timeout remains historical. |
 
 ## Phase 06 live observations — human checkpoint
 
