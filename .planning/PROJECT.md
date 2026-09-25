@@ -14,13 +14,15 @@ People can interact with a responsive, visually familiar fluid simulation on bot
 
 - ✓ Both app targets render an interactive Metal fluid simulation — existing code in `Shared/Renderer.swift` and both `RenderViewController.swift` files.
 - ✓ Users can pause and switch between density, pressure, velocity, and vorticity views — existing controllers and `Shared/Renderer.swift`.
+- ✓ Shared pause/field transitions and bounded tuning defaults/reset have a runnable production-state XCTest suite — validated in Phase 3: Reliable simulation state.
+- ✓ Fluid survives Mac live resize and iOS simulator rotation/view resize; observed pause/resume and return remain responsive — validated on available hosts in Phase 3.
 
 ### Active
 
 - [ ] Both app targets build and run using current Xcode/Swift for macOS 26 (Apple Silicon only) and iOS 26.
 - [ ] Preserve the existing fluid simulation's characteristic appearance and interaction while modernizing the implementation.
 - [ ] Provide platform-native, discoverable controls for pausing, selecting the displayed field, and tuning meaningful simulation parameters without changing code.
-- [ ] Establish repeatable verification for the shared simulation and both app targets.
+- [ ] Complete repeatable verification for the final native controls and on physical iOS devices.
 
 ### Out of Scope
 
@@ -31,7 +33,7 @@ People can interact with a responsive, visually familiar fluid simulation on bot
 ## Context
 
 - The codebase has two storyboard-backed app targets and shared Swift/Metal sources compiled into both; see `.planning/codebase/ARCHITECTURE.md` and `.planning/codebase/STACK.md`.
-- Both targets now use Swift 5 and deployment minimums of macOS 26 / iOS 26; no automated test target or settings UI exists yet. Values remain hard-coded in `Shared/Renderer.swift` and `Shared/Shaders.metal`.
+- Both targets use Swift 5 and deployment minimums of macOS 26 / iOS 26; a Mac XCTest state target and an offscreen Metal regression harness now run. There is no settings UI yet. Solver values remain hard-coded in `Shared/Renderer.swift` and `Shared/Shaders.metal`.
 - The simulation runs a series of fragment-shader passes each frame, including 40 pressure iterations. Swift shader names and uniform-buffer layouts must continue to match their Metal counterparts.
 - Native UI direction: keep the fluid canvas central while exposing understandable, platform-appropriate parameter and display controls. Exact layout, parameters, and verification strategy will be specified during planning.
 
@@ -49,10 +51,11 @@ People can interact with a responsive, visually familiar fluid simulation on bot
 | Use macOS 26 / Apple Silicon and iOS 26 baselines | Prioritize current-platform APIs over backward compatibility | Both targets build without deployment overrides using Swift 5. |
 | Redesign the UI around native controls and parameter tuning | Make the simulation approachable without source edits | — Pending |
 | Preserve solver behavior during modernization | Maintain the existing experience as a reference point | — Pending |
+| Preserve fields across canvas changes and separate manual pause from lifecycle inactivity | Avoid reset, catch-up, or stale-input impulses | Phase 3 Mac and iOS simulator checks passed; two-finger gestures still need a physical device. |
 
 ## Current State
 
-Phase 2 complete: the iOS 26 simulator app launches on iPhone/iPad and the user observed familiar blue fluid and drag/tap interaction; the Mac scheme still builds. `02-HUMAN-UAT.md` retains untested two-finger, concurrent-contact, and proportional-stroke checks. Phase 1 macOS 26 runtime remains deferred to milestone closeout. Phase 3 will address reliable lifecycle, resize and shared-state checks.
+Phase 3 complete on available hosts: Mac and iPhone/iPad simulator resize, pause/resume, and iOS lifecycle/return behavior passed user observation. Four shared-state XCTest methods and two offscreen Metal regression checks passed; both schemes build. The two-finger iOS field gesture remains NOT TESTED on simulators, and physical concurrent-touch coverage remains in `02-HUMAN-UAT.md`. Phase 1 macOS 26 runtime remains deferred to milestone closeout. Phase 4 adds named native display controls.
 
 ## Evolution
 
@@ -63,4 +66,4 @@ This document evolves at phase transitions and milestone boundaries.
 **After each milestone:** reassess the core value, scope boundaries, and current technical context.
 
 ---
-*Last updated: 2026-09-24 after Phase 2*
+*Last updated: 2026-09-25 after Phase 3*
