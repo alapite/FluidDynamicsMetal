@@ -35,6 +35,20 @@ final class SimulationStateTests: XCTestCase {
         XCTAssertEqual(running.field, .pressure)
     }
 
+    func testPauseChangedDuringInactivityIsStillTheUserChoiceOnReturn() {
+        var state = SimulationState()
+        state.resignActive()
+        state.nextField()
+        state.togglePause()
+        XCTAssertFalse(state.shouldAdvance)
+        state.becomeActive()
+        XCTAssertEqual(state.field, .pressure)
+        XCTAssertTrue(state.userPaused)
+        XCTAssertFalse(state.shouldAdvance)
+        state.togglePause()
+        XCTAssertTrue(state.shouldAdvance)
+    }
+
     func testTuningDefaultsBoundsAndNonFinite() {
         var tuning = SimulationTuning()
         XCTAssertEqual(tuning.force, 1)
@@ -67,9 +81,17 @@ final class SimulationStateTests: XCTestCase {
         state.nextField()
         state.togglePause()
         state.tuning.force = 2
+        state.tuning.dye = 0
+        state.tuning.radius = 400
+        state.tuning.swirl = 2
+        state.tuning.retention = 0
         state.tuning.pressureIterations = 80
         state.resetTuning()
         XCTAssertEqual(state.tuning.force, 1)
+        XCTAssertEqual(state.tuning.dye, 0.8)
+        XCTAssertEqual(state.tuning.radius, 150)
+        XCTAssertEqual(state.tuning.swirl, 0.4)
+        XCTAssertEqual(state.tuning.retention, 0.998)
         XCTAssertEqual(state.tuning.pressureIterations, 40)
         XCTAssertEqual(state.field, .pressure)
         XCTAssertTrue(state.userPaused)

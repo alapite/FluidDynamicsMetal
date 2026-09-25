@@ -13,7 +13,7 @@ class Phase03MetalTests(unittest.TestCase):
         self.assertTrue(library.is_file(), "Build the Mac Debug scheme first")
         result = subprocess.run(("xcrun", "swift", "test_phase03_metal.swift", str(library)), capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("PASS: RG16F full-canvas resample", result.stdout)
+        self.assertIn("PASS: RG16F full-canvas resample both aspect directions, five fields", result.stdout)
 
 
 if __name__ == "__main__":
