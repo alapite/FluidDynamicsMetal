@@ -86,11 +86,12 @@ class Renderer: NSObject {
 
     private let semaphore = DispatchSemaphore(value: MaxBuffers)
 
-    //Index of the displayed slab
-    private var currentIndex = 0
+    private(set) var state = SimulationState()
+    private weak var metalView: MTKView?
 
     init(metalView: MTKView) {
         super.init()
+        self.metalView = metalView
         metalView.device = MetalDevice.sharedInstance.device
         metalView.colorPixelFormat = .bgra8Unorm
         metalView.framebufferOnly = true
@@ -100,10 +101,38 @@ class Renderer: NSObject {
     }
 
     func nextSlab() {
-        currentIndex = (currentIndex + 1) % 4
+        state.nextField()
+        if !state.shouldAdvance && !state.inactive { metalView?.draw() }
+    }
+
+    func togglePause() {
+        state.togglePause()
+        clearInput()
+        metalView?.isPaused = !state.shouldAdvance
+    }
+
+    func resignActive() {
+        state.resignActive()
+        clearInput()
+        metalView?.isPaused = true
+    }
+
+    func becomeActive() {
+        state.becomeActive()
+        metalView?.isPaused = !state.shouldAdvance
+        if !state.shouldAdvance { metalView?.draw() }
+    }
+
+    func clearInput() {
+        positions = nil
+        directions = nil
+        touchContacts.removeAll()
+        pendingTapContacts.removeAll()
+        touchRadius = nil
     }
 
     func updateInteraction(points: FloatTuple?, in view: MTKView) {
+        guard state.shouldAdvance else { clearInput(); return }
         touchContacts = []
         touchRadius = nil
         positions = points
@@ -111,6 +140,7 @@ class Renderer: NSObject {
     }
 
     func updateTouchInteraction(contacts: [FluidContact], in view: MTKView) {
+        guard state.shouldAdvance else { clearInput(); return }
         positions = nil
         directions = nil
         touchContacts = contacts
@@ -120,6 +150,7 @@ class Renderer: NSObject {
     }
 
     func enqueueTap(at position: float2, in view: MTKView) {
+        guard state.shouldAdvance else { return }
         // Keep the splat until draw consumes it; recognizer callbacks can precede the next frame.
         pendingTapContacts.append(FluidContact(position: position, impulse: float2()))
         let shortSide = max(1, min(view.bounds.width, view.bounds.height))
@@ -184,14 +215,14 @@ class Renderer: NSObject {
     }
 
     private final func drawSlab() -> Slab {
-        switch currentIndex {
-        case 1:
+        switch state.field {
+        case .pressure:
             return pressure
-        case 2:
+        case .velocity:
             return velocity
-        case 3:
+        case .vorticity:
             return velocityVorticity
-        default:
+        case .density:
             return density
         }
     }
@@ -292,7 +323,7 @@ extension Renderer {
     }
 
     private final func render(commandBuffer: MTLCommandBuffer, destination: MTLTexture) {
-        if currentIndex >= 2 {
+        if state.field == .velocity || state.field == .vorticity {
             renderVector.calculateWithCommandBuffer(buffer: commandBuffer, indices: indexData, count: Renderer.indices.count, texture: destination) { (commandEncoder) in
                 commandEncoder.setVertexBuffer(self.vertData, offset: 0, index: 0)
                 commandEncoder.setFragmentTexture(self.drawSlab().ping, index: 0)
@@ -311,6 +342,18 @@ extension Renderer: MTKViewDelegate {
         semaphore.wait()
         let commandBuffer = MetalDevice.sharedInstance.newCommandBuffer()
 
+        commandBuffer.addCompletedHandler({ _ in self.semaphore.signal() })
+
+        guard state.shouldAdvance else {
+            clearInput()
+            if let drawable = view.currentDrawable, density != nil {
+                render(commandBuffer: commandBuffer, destination: drawable.texture)
+                commandBuffer.present(drawable)
+            }
+            commandBuffer.commit()
+            return
+        }
+
         var contacts = touchContacts
         contacts.append(contentsOf: pendingTapContacts)
         pendingTapContacts.removeAll()
@@ -323,10 +366,6 @@ extension Renderer: MTKViewDelegate {
             }
         }
         let dataBuffer = nextBuffer(contacts: Array(contacts.prefix(Renderer.ContactCapacity)))
-
-        commandBuffer.addCompletedHandler({ (commandBuffer) in
-            self.semaphore.signal()
-        })
 
         advect(commandBuffer: commandBuffer, dataBuffer: dataBuffer, velocity: velocity, source: velocity, destination: velocity)
         advect(commandBuffer: commandBuffer, dataBuffer: dataBuffer, velocity: velocity, source: density, destination: density)

@@ -68,6 +68,7 @@ class RenderViewController: UIViewController {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard renderer.state.shouldAdvance else { return }
         for touch in touches {
             if positions[touch] == nil {
                 touchOrder.append(touch)
@@ -77,7 +78,7 @@ class RenderViewController: UIViewController {
             previousPositions[touch] = location
             startPositions[touch] = location
             let hold = DispatchWorkItem { [weak self, weak touch] in
-                guard let self = self, let touch = touch, self.positions[touch] != nil else { return }
+                guard let self = self, let touch = touch, self.positions[touch] != nil, self.renderer.state.shouldAdvance else { return }
                 self.pendingHolds.removeValue(forKey: touch)
                 self.activeTouches.insert(touch)
                 self.submitTouches()
@@ -89,6 +90,7 @@ class RenderViewController: UIViewController {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard renderer.state.shouldAdvance else { return }
         for touch in touches where positions[touch] != nil {
             let location = touch.location(in: metalView)
             let start = startPositions[touch] ?? location
@@ -125,6 +127,7 @@ class RenderViewController: UIViewController {
     }
 
     private func submitTouches() {
+        guard renderer.state.shouldAdvance else { renderer.clearInput(); return }
         let contacts = touchOrder.compactMap { touch -> FluidContact? in
             guard activeTouches.contains(touch) else { return nil }
             guard let location = positions[touch] else { return nil }
@@ -136,16 +139,20 @@ class RenderViewController: UIViewController {
     }
 
     @objc func changeSource() {
+        guard !renderer.state.inactive else { return }
         cancelPendingHolds()
         renderer.nextSlab()
     }
 
     @objc final func doubleTap() {
+        guard !renderer.state.inactive else { return }
         cancelPendingHolds()
-        metalView.isPaused = !metalView.isPaused
+        clearTouches()
+        renderer.togglePause()
     }
 
     @objc private func singleTap(_ recognizer: UITapGestureRecognizer) {
+        guard renderer.state.shouldAdvance else { return }
         let point = recognizer.location(in: metalView)
         renderer.enqueueTap(at: float2(Float(point.x), Float(point.y)), in: metalView)
     }
@@ -155,11 +162,22 @@ class RenderViewController: UIViewController {
         pendingHolds.removeAll()
     }
 
+    private func clearTouches() {
+        cancelPendingHolds()
+        touchOrder.removeAll()
+        positions.removeAll()
+        previousPositions.removeAll()
+        startPositions.removeAll()
+        activeTouches.removeAll()
+        renderer.clearInput()
+    }
+
     @objc final func willResignActive() {
-        metalView.isPaused = true
+        clearTouches()
+        renderer.resignActive()
     }
 
     @objc final func didBecomeActive() {
-        metalView.isPaused = false
+        renderer.becomeActive()
     }
 }

@@ -11,6 +11,8 @@ import MetalKit
 
 class RenderViewController: NSViewController {
     var renderer: Renderer!
+    private var mouseHeld = false
+    private var rebaseDrag = false
     var metalView: MTKView {
         return view as! MTKView
     }
@@ -34,7 +36,10 @@ class RenderViewController: NSViewController {
     }
 
     override func mouseDown(with event: NSEvent) {
-        let point = event.locationInWindow
+        mouseHeld = true
+        rebaseDrag = false
+        guard renderer.state.shouldAdvance else { return }
+        let point = metalView.convert(event.locationInWindow, from: nil)
 
         let position = float2(Float(point.x), Float(metalView.bounds.height - point.y))
         let tuple = FloatTuple(position, float2(), float2(), float2(), float2())
@@ -42,14 +47,21 @@ class RenderViewController: NSViewController {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        let point = event.locationInWindow
+        guard renderer.state.shouldAdvance else { return }
+        let point = metalView.convert(event.locationInWindow, from: nil)
 
         let position = float2(Float(point.x), Float(metalView.bounds.height - point.y))
         let tuple = FloatTuple(position, float2(), float2(), float2(), float2())
+        if rebaseDrag {
+            renderer.clearInput()
+            rebaseDrag = false
+        }
         renderer.updateInteraction(points: tuple, in: metalView)
     }
 
     override func mouseUp(with event: NSEvent) {
+        mouseHeld = false
+        rebaseDrag = false
         renderer.updateInteraction(points: nil, in: metalView)
     }
 
@@ -69,6 +81,7 @@ class RenderViewController: NSViewController {
     }
 
     private func changePauseState() {
-        metalView.isPaused = !metalView.isPaused
+        renderer.togglePause()
+        if mouseHeld { rebaseDrag = true }
     }
 }
