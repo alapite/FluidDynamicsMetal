@@ -8,7 +8,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 
 - [ ] **Phase 1: Modern Mac baseline** - A working macOS 26 / Apple Silicon fluid app establishes a visual reference. (plans complete; macOS 26 runtime verification deferred to milestone closeout by user)
 - [x] **Phase 2: Modern iOS parity** - Both apps build and support familiar fluid interaction on current SDKs. (completed 2026-09-24)
-- [ ] **Phase 3: Reliable simulation state** - Pausing, resizing, and shared state changes work and have automated coverage.
+- [x] **Phase 3: Reliable simulation state** - Pausing, resizing, and shared state changes work and have automated coverage. (completed 2026-09-25)
 - [ ] **Phase 4: Discoverable visualization** - Both apps expose native pause and named field-selection controls.
 - [ ] **Phase 5: Live fluid tuning** - Both apps expose input, dye, swirl, and fade controls without source edits.
 - [ ] **Phase 6: Quality, reset, and accessibility** - Resolution and reset controls, accessible interactions, and complete verification finish the experience.
@@ -50,13 +50,13 @@ Bring the existing two-platform simulation onto current Apple platforms without 
   1. A user can resize the Mac window or rotate/resize the iOS view and keep interacting with visible fluid.
   2. A user can pause and resume without breaking the displayed field or later input.
   3. Developers can run automated checks covering state transitions, parameter bounds, and defaults/reset behavior.
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 **Wave 1**
 - [x] 03-01-PLAN.md — Shared pause/field/lifecycle state and executable bounds/default/reset checks (Wave 1).
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 03-02-PLAN.md — Preserve all GPU fields through resize/rotation and rebase held input (Wave 2; depends on Wave 1).
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 03-03-PLAN.md — Run both-app verification and observe resized, paused and returned fluid (Wave 3; depends on Waves 1–2).
+- [x] 03-03-PLAN.md — Run both-app verification and observe resized, paused and returned fluid (Wave 3; depends on Waves 1–2).
 
 ### Phase 4: Discoverable visualization
 **Goal:** Users can clearly see and switch the simulation view on either platform.
@@ -103,7 +103,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 |-------|----------------|--------|-----------|
 | 1. Modern Mac baseline | 1/1 | Implementation complete; runtime UAT deferred | - |
 | 2. Modern iOS parity | 3/3 | Complete   | 2026-09-24 |
-| 3. Reliable simulation state | 2/3 | In Progress|  |
+| 3. Reliable simulation state | 3/3 | Complete   | 2026-09-25 |
 | 4. Discoverable visualization | 0/TBD | Not started | - |
 | 5. Live fluid tuning | 0/TBD | Not started | - |
 | 6. Quality, reset, and accessibility | 0/TBD | Not started | - |
