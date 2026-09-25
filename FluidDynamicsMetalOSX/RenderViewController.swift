@@ -172,7 +172,7 @@ class RenderViewController: NSViewController {
                 row.widthAnchor.constraint(equalTo: fieldGroup.widthAnchor).isActive = true
             }
         }
-        let scrolling = oneColumn && availableHeight < 260
+        let scrolling = oneColumn && availableHeight < 284
         activeSummary.isHidden = !scrolling
         caption.isHidden = scrolling
         hudWidth?.constant = min(availableWidth, max(oneColumn ? buttonWidth + 32 : twoColumnWidth, 192))
@@ -223,6 +223,8 @@ class RenderViewController: NSViewController {
     }
 
     override func mouseDown(with event: NSEvent) {
+        let hudPoint = hud.convert(event.locationInWindow, from: nil)
+        guard !hud.bounds.contains(hudPoint) else { return }
         mouseHeld = true
         rebaseDrag = false
         guard renderer.state.shouldAdvance else { return }
@@ -234,7 +236,7 @@ class RenderViewController: NSViewController {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard renderer.state.shouldAdvance else { return }
+        guard mouseHeld, renderer.state.shouldAdvance else { return }
         let point = metalView.convert(event.locationInWindow, from: nil)
 
         let position = float2(Float(point.x), Float(metalView.bounds.height - point.y))
