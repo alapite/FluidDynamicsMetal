@@ -1,8 +1,8 @@
 ---
 phase: 4
 slug: discoverable-visualization
-status: awaiting-human-verification
-nyquist_compliant: false
+status: verified-with-follow-ups
+nyquist_compliant: true
 wave_0_complete: true
 created: 2026-09-25
 ---
@@ -39,9 +39,9 @@ created: 2026-09-25
 
 | Task area | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |-----------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| Shared direct field selection and paused presentation | CTRL-01, D-05, D-06 | — | Active field and user pause remain consistent, no stale input replay | XCTest + Mac build | Quick run command | ✅ 6 production tests executed, including direct selection | ✅ automated; live pending |
-| Mac floating controls and shortcut sync | CTRL-01, D-01–D-07 | — | HUD hit area does not steal canvas pointer events | Mac build + manual input/visual check | Mac build from full suite | ✅ Mac Debug build succeeds | ✅ automated; live pending |
-| iOS floating controls and touch routing | CTRL-01, D-01–D-07 | — | HUD taps do not inject dye, outside touches still stir | iOS build + manual input/visual check | iOS build from full suite | ✅ iOS Simulator Debug build succeeds | ✅ automated; live pending |
+| Shared direct field selection and paused presentation | CTRL-01, D-05, D-06 | — | Active field and user pause remain consistent, no stale input replay | XCTest + Mac build | Quick run command | ✅ 6 production tests executed, including direct selection | ✅ automated; core flow approved |
+| Mac floating controls and shortcut sync | CTRL-01, D-01–D-07 | — | HUD hit area does not steal canvas pointer events | Mac build + manual input/visual check | Mac build from full suite | ✅ Mac Debug build succeeds | ✅ automated; core flow approved |
+| iOS floating controls and touch routing | CTRL-01, D-01–D-07 | — | HUD taps do not inject dye, outside touches still stir | iOS build + manual input/visual check | iOS build from full suite | ✅ iOS Simulator Debug build succeeds | ✅ automated; core flow approved |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -66,13 +66,13 @@ created: 2026-09-25
 
 ## Validation Sign-Off
 
-- [ ] Each executable task has a relevant automated build/test check or a preceding test dependency.
-- [ ] No three consecutive tasks without an automated verification step.
-- [ ] Existing state target is used for direct-selection assertions, not a duplicate state implementation.
-- [ ] No watch-mode commands.
-- [ ] Manual checks distinguish observed Mac, simulator, and physical-device-only behaviors.
-- [ ] `nyquist_compliant` reflects actual evidence rather than build success alone.
+- [x] Each executable task has a relevant automated build/test check or a preceding test dependency.
+- [x] No three consecutive tasks without an automated verification step.
+- [x] Existing state target is used for direct-selection assertions, not a duplicate state implementation.
+- [x] No watch-mode commands.
+- [x] Manual checks distinguish approved Mac and simulator core behavior from unreported settings variants and physical-device-only behavior.
+- [x] `nyquist_compliant` reflects passing automated evidence and the user's core-flow approval; remaining NOT TESTED items are explicit.
 
 **Automated evidence:** PASS on 2026-09-25; exact commands and separate live-observation statuses: `04-HUD-VERIFICATION.md`.
 
-**Approval:** pending human HUD checkpoint; `nyquist_compliant: false` until real observations are recorded.
+**Approval:** user approved Mac, iPhone and iPad core flow on 2026-09-25; per-check settings and physical multitouch not explicitly reported remain NOT TESTED in `04-HUD-VERIFICATION.md`.
