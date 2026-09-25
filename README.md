@@ -4,6 +4,22 @@ Interactive Metal fluid simulation for **macOS 26 on Apple Silicon** and **iOS/i
 
 ![fluiddynamics](https://github.com/andreipitis/FluidDynamicsMetal/blob/master/FluidDynamicsMetal.gif?raw=true)
 
+## Project layout
+
+```text
+Sources/
+  Shared/       Simulation state, renderer, Metal helpers and shaders
+  macOS/        Mac app code, storyboards, assets and configuration
+  iOS/          iPhone/iPad app code, storyboards, assets and configuration
+Tests/
+  Unit/         Simulation state and renderer contact tests
+  UI/macOS/     Mac HUD tests
+  UI/iOS/       iPhone/iPad HUD tests
+  Integration/  Python build/bundle checks and Swift GPU harnesses
+```
+
+The Xcode project and `build-macos.sh` remain at the repository root. Shared sources compile directly into both app targets. Existing scheme and target names are unchanged.
+
 ## Build and run
 
 Open `FluidDynamicsMetal.xcodeproj` with Xcode 26 or later (Swift 6.2+). Install Xcode's Metal Toolchain if the build reports it missing: `xcodebuild -downloadComponent MetalToolchain`. From the project root, build both existing schemes without Swift-version or deployment-target overrides:
@@ -29,10 +45,12 @@ Mac state and HUD tests run with:
 
 ```bash
 xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO
-python3 -m unittest test_phase05_metal.py
+python3 -m unittest discover -s Tests/Integration -p 'test_*metal.py'
 ```
 
 Run the Metal regression check after a fresh Mac Debug build. An arm64 build on a newer Mac does **not** establish that the app launches on macOS 26; see the pending [macOS 26 runtime check](.planning/phases/01-modern-mac-baseline/01-HUMAN-UAT.md).
+
+Run build-setting checks with `python3 -m unittest Tests.Integration.test_phase02_settings`. To include bundle installation and launch checks on iPhone and iPad simulators, build both Debug schemes first, then run `python3 -m unittest discover -s Tests/Integration`. Integration checks locate the project and Swift harnesses relative to their own files; they can also be run directly from another working directory.
 
 ## Manual compatibility checklist
 

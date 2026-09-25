@@ -1,6 +1,6 @@
 """Phase 2 built-app and simulator smoke checks.
 
-Run after the iOS Debug build: python3 -m unittest test_phase02_bundle
+Run after the iOS Debug build: python3 -m unittest Tests.Integration.test_phase02_bundle
 The simulator test installs the current build on an available iOS 26 iPhone
 and iPad, and launches it. It does not assert visual or touch behavior.
 """
@@ -12,7 +12,10 @@ import unittest
 from pathlib import Path
 
 
-PROJECT = "FluidDynamicsMetal.xcodeproj"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+PROJECT = str(PROJECT_ROOT / "FluidDynamicsMetal.xcodeproj")
 SCHEME = "FluidDynamicsMetaliOS"
 BUNDLE_ID = "ro.andreisergiupitis.FluidDynamicsMetaliOS"
 

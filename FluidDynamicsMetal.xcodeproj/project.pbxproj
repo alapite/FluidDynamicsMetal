@@ -42,6 +42,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		C60000000000000000000004 /* Integration */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Integration; sourceTree = "<group>"; };
 		B40000000000000000000003 /* Mac HUDUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDUITests.swift; sourceTree = "<group>"; };
 		B40000000000000000000004 /* iOS HUDUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDUITests.swift; sourceTree = "<group>"; };
 		B40000000000000000000005 /* FluidDynamicsMetalOSXUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluidDynamicsMetalOSXUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -94,9 +95,38 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		B40000000000000000000009 /* FluidDynamicsMetalOSXUITests */ = {isa = PBXGroup; children = (B40000000000000000000003 /* Mac HUDUITests.swift */,); path = FluidDynamicsMetalOSXUITests; sourceTree = "<group>"; };
-		B4000000000000000000000A /* FluidDynamicsMetaliOSUITests */ = {isa = PBXGroup; children = (B40000000000000000000004 /* iOS HUDUITests.swift */,); path = FluidDynamicsMetaliOSUITests; sourceTree = "<group>"; };
-		A30000000000000000000009 /* FluidDynamicsMetalStateTests */ = {isa = PBXGroup; children = (A30000000000000000000006 /* SimulationStateTests.swift */, A30000000000000000000011 /* RendererContactTests.swift */,); path = FluidDynamicsMetalStateTests; sourceTree = "<group>"; };
+		C60000000000000000000001 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				75D520A71FE553B4003525F9 /* Shared */,
+				75D520931FE5539E003525F9 /* FluidDynamicsMetalOSX */,
+				75F3F06A1F311D4A00A3EC4A /* FluidDynamicsMetaliOS */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		C60000000000000000000002 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				A30000000000000000000009 /* FluidDynamicsMetalStateTests */,
+				C60000000000000000000003 /* UI */,
+				C60000000000000000000004 /* Integration */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		C60000000000000000000003 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				B40000000000000000000009 /* FluidDynamicsMetalOSXUITests */,
+				B4000000000000000000000A /* FluidDynamicsMetaliOSUITests */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		B40000000000000000000009 /* FluidDynamicsMetalOSXUITests */ = {isa = PBXGroup; children = (B40000000000000000000003 /* Mac HUDUITests.swift */,); path = macOS; sourceTree = "<group>"; };
+		B4000000000000000000000A /* FluidDynamicsMetaliOSUITests */ = {isa = PBXGroup; children = (B40000000000000000000004 /* iOS HUDUITests.swift */,); path = iOS; sourceTree = "<group>"; };
+		A30000000000000000000009 /* FluidDynamicsMetalStateTests */ = {isa = PBXGroup; children = (A30000000000000000000006 /* SimulationStateTests.swift */, A30000000000000000000011 /* RendererContactTests.swift */,); path = Unit; sourceTree = "<group>"; };
 		75D520931FE5539E003525F9 /* FluidDynamicsMetalOSX */ = {
 			isa = PBXGroup;
 			children = (
@@ -107,7 +137,7 @@
 				75D520A21FE5539E003525F9 /* Info.plist */,
 				75D520A31FE5539E003525F9 /* FluidDynamicsMetalOSX.entitlements */,
 			);
-			path = FluidDynamicsMetalOSX;
+			path = macOS;
 			sourceTree = "<group>";
 		};
 		75D520A71FE553B4003525F9 /* Shared */ = {
@@ -127,12 +157,8 @@
 		75F3F05F1F311D4A00A3EC4A = {
 			isa = PBXGroup;
 			children = (
-				75D520A71FE553B4003525F9 /* Shared */,
-				75F3F06A1F311D4A00A3EC4A /* FluidDynamicsMetaliOS */,
-				75D520931FE5539E003525F9 /* FluidDynamicsMetalOSX */,
-				A30000000000000000000009 /* FluidDynamicsMetalStateTests */,
-				B40000000000000000000009 /* FluidDynamicsMetalOSXUITests */,
-				B4000000000000000000000A /* FluidDynamicsMetaliOSUITests */,
+				C60000000000000000000001 /* Sources */,
+				C60000000000000000000002 /* Tests */,
 				75F3F0691F311D4A00A3EC4A /* Products */,
 				75F3F07D1F311D7800A3EC4A /* Frameworks */,
 			);
@@ -160,7 +186,7 @@
 				75F3F0741F311D4A00A3EC4A /* LaunchScreen.storyboard */,
 				75F3F0771F311D4A00A3EC4A /* Info.plist */,
 			);
-			path = FluidDynamicsMetaliOS;
+			path = iOS;
 			sourceTree = "<group>";
 		};
 		75F3F07D1F311D7800A3EC4A /* Frameworks */ = {
@@ -386,12 +412,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CODE_SIGN_ENTITLEMENTS = FluidDynamicsMetalOSX/FluidDynamicsMetalOSX.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Sources/macOS/FluidDynamicsMetalOSX.entitlements;
 				CODE_SIGN_IDENTITY = "Mac Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = SC5NQW88NN;
-				INFOPLIST_FILE = FluidDynamicsMetalOSX/Info.plist;
+				INFOPLIST_FILE = Sources/macOS/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.andreisergiupitis.FluidDynamicsMetalOSX;
@@ -407,12 +433,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CODE_SIGN_ENTITLEMENTS = FluidDynamicsMetalOSX/FluidDynamicsMetalOSX.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Sources/macOS/FluidDynamicsMetalOSX.entitlements;
 				CODE_SIGN_IDENTITY = "Mac Developer";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = SC5NQW88NN;
-				INFOPLIST_FILE = FluidDynamicsMetalOSX/Info.plist;
+				INFOPLIST_FILE = Sources/macOS/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.andreisergiupitis.FluidDynamicsMetalOSX;
@@ -538,7 +564,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				DEVELOPMENT_TEAM = SC5NQW88NN;
 				GCC_OPTIMIZATION_LEVEL = 0;
-				INFOPLIST_FILE = "$(SRCROOT)/FluidDynamicsMetaliOS/Info.plist";
+				INFOPLIST_FILE = "$(SRCROOT)/Sources/iOS/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = ro.andreisergiupitis.FluidDynamicsMetaliOS;
@@ -554,7 +580,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				DEVELOPMENT_TEAM = SC5NQW88NN;
-				INFOPLIST_FILE = "$(SRCROOT)/FluidDynamicsMetaliOS/Info.plist";
+				INFOPLIST_FILE = "$(SRCROOT)/Sources/iOS/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = ro.andreisergiupitis.FluidDynamicsMetaliOS;

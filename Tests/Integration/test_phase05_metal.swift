@@ -10,7 +10,7 @@ let indices: [UInt16] = [2, 1, 0, 1, 2, 3]
 let vertexBuffer = device.makeBuffer(bytes: vertices, length: MemoryLayout<Vertex>.stride * vertices.count, options: [])!
 let indexBuffer = device.makeBuffer(bytes: indices, length: MemoryLayout<UInt16>.stride * indices.count, options: [])!
 
-// Match Shared/Renderer.swift StaticData and Shared/Shaders.metal BufferData exactly.
+// Match Sources/Shared/Renderer.swift StaticData and Sources/Shared/Shaders.metal BufferData exactly.
 struct Uniforms {
     var positions = [SIMD2<Float>](repeating: .zero, count: 10)
     var impulses = [SIMD2<Float>](repeating: .zero, count: 10)

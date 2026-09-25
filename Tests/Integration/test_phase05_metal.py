@@ -5,13 +5,16 @@ import unittest
 from pathlib import Path
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
 class Phase05MetalTests(unittest.TestCase):
     def test_tuning_reaches_real_metal_passes(self):
-        settings = subprocess.run(("xcodebuild", "-project", "FluidDynamicsMetal.xcodeproj", "-scheme", "FluidDynamicsMetalOSX", "-configuration", "Debug", "-destination", "platform=macOS,arch=arm64", "CODE_SIGNING_ALLOWED=NO", "-showBuildSettings", "-json"), capture_output=True, text=True, check=True)
+        settings = subprocess.run(("xcodebuild", "-project", str(PROJECT_ROOT / "FluidDynamicsMetal.xcodeproj"), "-scheme", "FluidDynamicsMetalOSX", "-configuration", "Debug", "-destination", "platform=macOS,arch=arm64", "CODE_SIGNING_ALLOWED=NO", "-showBuildSettings", "-json"), capture_output=True, text=True, check=True)
         target = next(x["buildSettings"] for x in json.loads(settings.stdout) if x["target"] == "FluidDynamicsMetalOSX")
         library = Path(target["TARGET_BUILD_DIR"]) / target["WRAPPER_NAME"] / "Contents/Resources/default.metallib"
         self.assertTrue(library.is_file(), "Build the Mac Debug scheme before the GPU test")
-        result = subprocess.run(("xcrun", "swift", "-swift-version", "6", "test_phase05_metal.swift", str(library)), capture_output=True, text=True)
+        result = subprocess.run(("xcrun", "swift", "-swift-version", "6", str(Path(__file__).with_name("test_phase05_metal.swift")), str(library)), capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("PASS: force/dye independent; retention endpoints on both fields; swirl on stored vorticity", result.stdout)
 

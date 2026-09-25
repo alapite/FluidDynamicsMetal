@@ -1,11 +1,15 @@
 """Phase 2 effective build-setting checks for both application schemes.
 
-Run with: python3 -m unittest -v test_phase02_settings
+Run with: python3 -m unittest -v Tests.Integration.test_phase02_settings
 """
 
 import json
 import subprocess
 import unittest
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Phase02SettingsTests(unittest.TestCase):
@@ -18,7 +22,7 @@ class Phase02SettingsTests(unittest.TestCase):
             for configuration in ("Debug", "Release"):
                 with self.subTest(scheme=scheme, configuration=configuration):
                     result = subprocess.run(
-                        ("xcodebuild", "-project", "FluidDynamicsMetal.xcodeproj",
+                        ("xcodebuild", "-project", str(PROJECT_ROOT / "FluidDynamicsMetal.xcodeproj"),
                          "-scheme", scheme, "-configuration", configuration,
                          "-destination", destination, "CODE_SIGNING_ALLOWED=NO",
                          "-showBuildSettings", "-json"),

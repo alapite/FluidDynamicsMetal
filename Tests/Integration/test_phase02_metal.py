@@ -1,6 +1,6 @@
 """Run offscreen GPU behavior checks against the freshly built shared Mac metallib.
 
-Run after the macOS Debug build: python3 -m unittest -v test_phase02_metal
+Run after the macOS Debug build: python3 -m unittest -v Tests.Integration.test_phase02_metal
 """
 
 import json
@@ -9,10 +9,13 @@ import unittest
 from pathlib import Path
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
 class Phase02MetalTests(unittest.TestCase):
     def test_shared_shader_applies_last_contact_and_clears_released_input(self):
         settings = subprocess.run(
-            ("xcodebuild", "-project", "FluidDynamicsMetal.xcodeproj", "-scheme",
+            ("xcodebuild", "-project", str(PROJECT_ROOT / "FluidDynamicsMetal.xcodeproj"), "-scheme",
              "FluidDynamicsMetalOSX", "-configuration", "Debug", "-destination",
              "platform=macOS,arch=arm64", "CODE_SIGNING_ALLOWED=NO",
              "-showBuildSettings", "-json"),
@@ -24,7 +27,7 @@ class Phase02MetalTests(unittest.TestCase):
                    "Contents/Resources/default.metallib")
         self.assertTrue(library.is_file(), "Build the Mac Debug scheme first")
         result = subprocess.run(
-            ("xcrun", "swift", "-swift-version", "6", "test_phase02_metal.swift", str(library)),
+            ("xcrun", "swift", "-swift-version", "6", str(Path(__file__).with_name("test_phase02_metal.swift")), str(library)),
             capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
