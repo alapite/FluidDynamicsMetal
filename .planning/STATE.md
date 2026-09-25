@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: ready_to_plan
-stopped_at: Phase 03 complete (3/3) — ready to discuss Phase 4
-last_updated: 2026-09-25T08:02:03.986Z
+stopped_at: Phase 04 complete (3/3) — ready to discuss Phase 5
+last_updated: 2026-09-25T09:34:32.890Z
 last_activity: 2026-09-25
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 50
+  completed_phases: 4
+  total_plans: 10
+  completed_plans: 10
+  percent: 67
 ---
 
 # Project State
@@ -21,11 +21,11 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-25)
 
 **Core value:** People can interact with a responsive, visually familiar fluid simulation on both supported platforms and adjust it without editing source code.
-**Current focus:** Phase 4 — discoverable visualization
+**Current focus:** Phase 5 — live fluid tuning
 
 ## Current Position
 
-Phase: 4
+Phase: 5
 Plan: Not started
 Status: Ready to plan
 Last activity: 2026-09-25
@@ -36,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 7
+- Total plans completed: 10
 - Average duration: N/A
 - Total execution time: 0 hours
 
@@ -50,6 +50,7 @@ Progress: [██████████] 100%
 
 - Modernize both targets for macOS 26 / Apple Silicon and iOS 26; preserve the familiar fluid behavior.
 - Introduce native UI controls and tuning with reset-on-launch defaults.
+- Xcode 27 Device Hub two-finger touch simulation is unavailable ([developer forum report](https://developer.apple.com/forums/thread/846533)); retain device-only checks as NOT TESTED but do not gate later phases or milestone completion on them (user decision, 2026-09-25).
 
 ### Pending Todos
 
@@ -70,14 +71,17 @@ None yet.
 |----------|------|--------|-------------|
 | UX | Saved presets, image/recording export | v2 | Initialization |
 | Verification | Phase 1 macOS 26 launch and drag (`01-HUMAN-UAT.md`, PLAT-01) | Pending milestone closeout | 2026-09-24, user-approved |
-| Verification | Phase 2 two-finger gesture and concurrent-touch observations (`02-HUMAN-UAT.md`) | NOT TESTED — device-only; non-blocking for Phase 3+ | 2026-09-24, user-approved |
-| Verification | Phase 3 iPhone/iPad two-finger field cycling (`03-STATE-VERIFICATION.md`) | NOT TESTED — simulator cannot reproduce two-finger gesture; physical-device follow-up | 2026-09-25, user-approved |
+| Verification | Phase 2 two-finger gesture and concurrent-touch observations (`02-HUMAN-UAT.md`) | NOT TESTED — device-only; non-blocking for further phases and milestone completion | 2026-09-24, clarified 2026-09-25 by user |
+| Verification | Phase 3–4 iPhone/iPad two-finger field cycling and HUD/concurrent-touch observations (`03-STATE-VERIFICATION.md`, `04-HUD-VERIFICATION.md`) | NOT TESTED — Device Hub limitation; physical-device follow-up, non-blocking for further phases and milestone completion | 2026-09-25, user-approved |
 | Phase 03 P01 | 12 min | 2 tasks | 7 files |
 | Phase 03 P02 | 12 min | 2 tasks | 6 files |
 | Phase 03 P03 | 10 min | 2 tasks | 2 files |
+| Phase 04 P01 | 5 min | 2 tasks | 4 files |
+| Phase 04 P02 | 4 min | 2 tasks | 1 files |
+| Phase 04 P03 | 11 min | 2 tasks | 2 files |
 
 ## Session Continuity
 
-Last session: 2026-09-25T07:58:40.368Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-09-25T09:29:46.923Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None

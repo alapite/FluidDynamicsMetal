@@ -19,7 +19,7 @@
 
 ### Native controls
 
-- [ ] **CTRL-01**: Users on both platforms can select density, pressure, velocity, or vorticity by named on-screen controls and identify the active view.
+- [x] **CTRL-01**: Users on both platforms can select density, pressure, velocity, or vorticity by named on-screen controls and identify the active view.
 - [ ] **CTRL-02**: Users on both platforms can adjust input force and added dye/density intensity without editing code.
 - [ ] **CTRL-03**: Users on both platforms can adjust swirl (vorticity confinement) strength without editing code.
 - [ ] **CTRL-04**: Users on both platforms can adjust fluid fade/dissipation without editing code.
@@ -57,7 +57,7 @@
 | SIM-02 | Phase 3 | Complete |
 | SIM-03 | Phase 3 | Complete |
 | VER-01 | Phase 3 | Complete |
-| CTRL-01 | Phase 4 | Pending |
+| CTRL-01 | Phase 4 | Complete |
 | CTRL-02 | Phase 5 | Pending |
 | CTRL-03 | Phase 5 | Pending |
 | CTRL-04 | Phase 5 | Pending |

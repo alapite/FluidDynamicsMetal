@@ -9,7 +9,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 - [ ] **Phase 1: Modern Mac baseline** - A working macOS 26 / Apple Silicon fluid app establishes a visual reference. (plans complete; macOS 26 runtime verification deferred to milestone closeout by user)
 - [x] **Phase 2: Modern iOS parity** - Both apps build and support familiar fluid interaction on current SDKs. (completed 2026-09-24)
 - [x] **Phase 3: Reliable simulation state** - Pausing, resizing, and shared state changes work and have automated coverage. (completed 2026-09-25)
-- [ ] **Phase 4: Discoverable visualization** - Both apps expose native pause and named field-selection controls.
+- [x] **Phase 4: Discoverable visualization** - Both apps expose native pause and named field-selection controls. (completed 2026-09-25)
 - [ ] **Phase 5: Live fluid tuning** - Both apps expose input, dye, swirl, and fade controls without source edits.
 - [ ] **Phase 6: Quality, reset, and accessibility** - Resolution and reset controls, accessible interactions, and complete verification finish the experience.
 
@@ -67,7 +67,13 @@ Bring the existing two-platform simulation onto current Apple platforms without 
   1. Both apps show named controls for density, pressure, velocity, and vorticity and indicate the active field.
   2. The fluid remains the central, interactive canvas while switching fields.
   3. Both apps expose an on-screen pause/resume control without removing existing interaction.
-**Plans:** TBD
+**Plans:** 3/3 plans complete
+**Wave 1**
+- [x] 04-01-PLAN.md — Select named fields and pause from a native Mac HUD backed by shared direct-selection state and tests (Wave 1).
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 04-02-PLAN.md — Add an adaptive touch-safe native iOS HUD over the full-bleed fluid canvas (Wave 2; depends on Wave 1).
+**Wave 3** *(blocked on Wave 2 completion)*
+- [x] 04-03-PLAN.md — Run both-app checks and observe named field, pause, layout and canvas interactions (Wave 3; depends on Waves 1–2).
 **UI hint:** yes
 
 ### Phase 5: Live fluid tuning
@@ -104,10 +110,12 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 | 1. Modern Mac baseline | 1/1 | Implementation complete; runtime UAT deferred | - |
 | 2. Modern iOS parity | 3/3 | Complete   | 2026-09-24 |
 | 3. Reliable simulation state | 3/3 | Complete   | 2026-09-25 |
-| 4. Discoverable visualization | 0/TBD | Not started | - |
+| 4. Discoverable visualization | 3/3 | Complete   | 2026-09-25 |
 | 5. Live fluid tuning | 0/TBD | Not started | - |
 | 6. Quality, reset, and accessibility | 0/TBD | Not started | - |
 
 ## Milestone Closeout Checks
 
 - [ ] Complete the deferred Phase 1 macOS 26 runtime launch/drag test on a physical Apple Silicon Mac or a macOS 26 VM with a usable Metal device. See `01-BASELINE.md` for the resumable `curl -C -` restore-image download and verification instructions. Resolve `01-HUMAN-UAT.md`, then re-verify PLAT-01 and mark Phase 1 complete. This check was explicitly deferred on 2026-09-24 to allow Phase 2 discussion/planning and later work to proceed.
+
+**Non-blocking Device Hub coverage:** Xcode 27 Device Hub cannot currently reproduce the former Option-key two-finger tap/pan simulation ([developer forum report](https://developer.apple.com/forums/thread/846533)). Phase 2–4 two-finger gestures and concurrent physical contacts remain NOT TESTED without a device. Per the user's 2026-09-25 decision, this tooling limitation must not delay Phase 5/6 or milestone completion; keep it visible as a follow-up, not a completion prerequisite.
