@@ -19,8 +19,13 @@ class RenderViewController: NSViewController {
     private let caption = NSTextField(labelWithString: "View")
     private let activeSummary = NSTextField(labelWithString: "")
     private let fieldGroup = NSStackView()
-    private let fieldScroll = NSScrollView()
+    private let controlsScroll = NSScrollView()
     private let pauseButton = NSButton(title: "Pause", target: nil, action: nil)
+    private let tuningButton = NSButton(title: "Show Tuning", target: nil, action: nil)
+    private let tuningGroup = NSStackView()
+    private var tuningSliders: [TuningControl: NSSlider] = [:]
+    private var tuningValues: [TuningControl: NSTextField] = [:]
+    private var isTuningExpanded = false
     private var fieldButtons: [DisplayField: NSButton] = [:]
     private var hudWidth: NSLayoutConstraint?
     private var hudHeight: NSLayoutConstraint?
@@ -44,9 +49,10 @@ class RenderViewController: NSViewController {
             // A focused native button owns Space. The monitor owns it elsewhere.
             if $0.keyCode == 0x31,
                let button = $0.window?.firstResponder as? NSButton,
-               self.fieldButtons.values.contains(where: { $0 === button }) || button === self.pauseButton {
+               self.fieldButtons.values.contains(where: { $0 === button }) || button === self.pauseButton || button === self.tuningButton {
                 return $0
             }
+            if $0.window?.firstResponder is NSSlider { return $0 }
             if $0.keyCode == 0x31 || $0.keyCode == 0x01 {
                 self.keyDown(with: $0)
                 return nil
@@ -101,23 +107,57 @@ class RenderViewController: NSViewController {
             fieldButtons[field] = button
         }
 
-        fieldScroll.drawsBackground = false
-        fieldScroll.hasVerticalScroller = true
-        fieldScroll.autohidesScrollers = true
-        fieldScroll.documentView = fieldGroup
-        fieldScroll.translatesAutoresizingMaskIntoConstraints = false
-
         pauseButton.target = self
         pauseButton.action = #selector(togglePause(_:))
         pauseButton.bezelStyle = .rounded
         pauseButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
 
-        let content = NSStackView(views: [caption, activeSummary, fieldScroll, pauseButton])
+        tuningButton.target = self
+        tuningButton.action = #selector(toggleTuning(_:))
+        tuningButton.bezelStyle = .rounded
+        tuningButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
+        tuningGroup.orientation = .vertical
+        tuningGroup.spacing = 8
+        tuningGroup.setAccessibilityLabel("Fluid tuning")
+        for control in TuningControl.allCases {
+            let label = NSTextField(labelWithString: control.title)
+            label.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            let value = NSTextField(labelWithString: "")
+            value.alignment = .right
+            tuningValues[control] = value
+            let heading = NSStackView(views: [label, value])
+            heading.orientation = .horizontal
+            heading.distribution = .fill
+            let slider = NSSlider(value: 0, minValue: 0, maxValue: 1, target: self, action: #selector(changeTuning(_:)))
+            slider.isContinuous = true
+            slider.tag = control.rawValue
+            slider.setAccessibilityLabel(control.title)
+            tuningSliders[control] = slider
+            let row = NSStackView(views: [heading, slider])
+            row.orientation = .vertical
+            row.spacing = 8
+            tuningGroup.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: tuningGroup.widthAnchor).isActive = true
+        }
+        let fadeHint = NSTextField(labelWithString: "Higher Fade = faster fade")
+        fadeHint.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        fadeHint.textColor = .secondaryLabelColor
+        tuningGroup.addArrangedSubview(fadeHint)
+        tuningGroup.isHidden = true
+
+        let content = NSStackView(views: [caption, fieldGroup, pauseButton, tuningButton, tuningGroup])
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = 8
         content.translatesAutoresizingMaskIntoConstraints = false
-        hud.addSubview(content)
+        controlsScroll.drawsBackground = false
+        controlsScroll.hasVerticalScroller = true
+        controlsScroll.autohidesScrollers = true
+        controlsScroll.translatesAutoresizingMaskIntoConstraints = false
+        controlsScroll.documentView = content
+        hud.addSubview(activeSummary)
+        hud.addSubview(controlsScroll)
+        activeSummary.translatesAutoresizingMaskIntoConstraints = false
         hudWidth = hud.widthAnchor.constraint(equalToConstant: 248)
         hudHeight = hud.heightAnchor.constraint(equalToConstant: 168)
         NSLayoutConstraint.activate([
@@ -126,13 +166,18 @@ class RenderViewController: NSViewController {
             hud.leadingAnchor.constraint(greaterThanOrEqualTo: metalView.leadingAnchor, constant: 16),
             hud.bottomAnchor.constraint(lessThanOrEqualTo: metalView.bottomAnchor, constant: -16),
             hudWidth!, hudHeight!,
-            content.leadingAnchor.constraint(equalTo: hud.leadingAnchor, constant: 16),
-            content.trailingAnchor.constraint(equalTo: hud.trailingAnchor, constant: -16),
-            content.topAnchor.constraint(equalTo: hud.topAnchor, constant: 16),
-            content.bottomAnchor.constraint(equalTo: hud.bottomAnchor, constant: -16),
-            fieldScroll.widthAnchor.constraint(equalTo: content.widthAnchor),
+            activeSummary.leadingAnchor.constraint(equalTo: hud.leadingAnchor, constant: 16),
+            activeSummary.topAnchor.constraint(equalTo: hud.topAnchor, constant: 8),
+            controlsScroll.leadingAnchor.constraint(equalTo: hud.leadingAnchor, constant: 16),
+            controlsScroll.trailingAnchor.constraint(equalTo: hud.trailingAnchor, constant: -16),
+            controlsScroll.topAnchor.constraint(equalTo: hud.topAnchor, constant: 16),
+            controlsScroll.bottomAnchor.constraint(equalTo: hud.bottomAnchor, constant: -16),
+            content.widthAnchor.constraint(equalTo: controlsScroll.contentView.widthAnchor),
+            fieldGroup.widthAnchor.constraint(equalTo: content.widthAnchor),
             pauseButton.widthAnchor.constraint(equalTo: content.widthAnchor)
         ])
+        tuningButton.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+        tuningGroup.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         NotificationCenter.default.addObserver(self, selector: #selector(updateAppearance), name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         updateAppearance()
         refreshControls()
@@ -172,16 +217,15 @@ class RenderViewController: NSViewController {
                 row.widthAnchor.constraint(equalTo: fieldGroup.widthAnchor).isActive = true
             }
         }
-        let scrolling = oneColumn && availableHeight < 284
+        let scrolling = availableHeight < (isTuningExpanded ? 440 : oneColumn ? 284 : 176)
         activeSummary.isHidden = !scrolling
         caption.isHidden = scrolling
-        hudWidth?.constant = min(availableWidth, max(oneColumn ? buttonWidth + 32 : twoColumnWidth, 192))
-        let wantedHeight: CGFloat = oneColumn ? 252 : 160
+        hudWidth?.constant = min(320, availableWidth, max(oneColumn ? buttonWidth + 32 : twoColumnWidth, 192))
+        let wantedHeight: CGFloat = (oneColumn ? 252 : 160) + 36 + (isTuningExpanded ? 260 : 0)
         hudHeight?.constant = min(availableHeight, wantedHeight)
-        fieldScroll.hasVerticalScroller = scrolling
         fieldGroup.frame.size.width = max(1, (hudWidth?.constant ?? 248) - 32)
         fieldGroup.layoutSubtreeIfNeeded()
-        fieldGroup.frame.size.height = max(fieldGroup.fittingSize.height, fieldScroll.bounds.height)
+        controlsScroll.contentView.scroll(to: .zero)
     }
 
     @objc private func selectField(_ sender: NSButton) {
@@ -191,6 +235,29 @@ class RenderViewController: NSViewController {
     }
 
     @objc private func togglePause(_ sender: NSButton) { changePauseState() }
+
+    @objc private func toggleTuning(_ sender: NSButton) {
+        isTuningExpanded.toggle()
+        tuningGroup.isHidden = !isTuningExpanded
+        tuningButton.title = isTuningExpanded ? "Hide Tuning" : "Show Tuning"
+        refreshControls()
+    }
+
+    @objc private func changeTuning(_ sender: NSSlider) {
+        guard let control = TuningControl(rawValue: sender.tag) else { return }
+        renderer.setTuningPosition(Float(sender.doubleValue), for: control)
+        refreshTuningValues()
+    }
+
+    private func refreshTuningValues() {
+        for control in TuningControl.allCases {
+            let position = renderer.state.tuning.position(for: control)
+            tuningSliders[control]?.floatValue = position
+            let value = "\(Int((position * 100).rounded()))%"
+            tuningValues[control]?.stringValue = value
+            tuningSliders[control]?.setAccessibilityValue(value)
+        }
+    }
 
     private func refreshControls() {
         for (field, button) in fieldButtons {
@@ -205,6 +272,7 @@ class RenderViewController: NSViewController {
         activeSummary.stringValue = "View: \(fieldTitle(renderer.state.field))"
         pauseButton.title = renderer.state.userPaused ? "Resume" : "Pause"
         pauseButton.setAccessibilityLabel(renderer.state.userPaused ? "Resume simulation" : "Pause simulation")
+        refreshTuningValues()
         updateControlLayout()
     }
 
