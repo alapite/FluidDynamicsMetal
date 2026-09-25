@@ -68,6 +68,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(willResignActive), name: UIApplication.willResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateAppearance), name: UIAccessibility.reduceTransparencyStatusDidChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateTextSize), name: UIContentSizeCategory.didChangeNotification, object: nil)
     }
 
     private func installControls() {
@@ -78,8 +79,10 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
 
         caption.text = "View"
         caption.font = .preferredFont(forTextStyle: .caption1)
+        caption.adjustsFontForContentSizeCategory = true
         caption.textColor = .secondaryLabel
         activeSummary.font = .preferredFont(forTextStyle: .caption1)
+        activeSummary.adjustsFontForContentSizeCategory = true
         activeSummary.textColor = .label
         activeSummary.isHidden = true
 
@@ -151,6 +154,12 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     @objc private func updateAppearance() {
         hud.effect = UIAccessibility.isReduceTransparencyEnabled ? nil : UIBlurEffect(style: .systemMaterial)
         hud.backgroundColor = UIAccessibility.isReduceTransparencyEnabled ? .systemBackground : .clear
+    }
+
+    @objc private func updateTextSize() {
+        caption.font = .preferredFont(forTextStyle: .caption1)
+        activeSummary.font = .preferredFont(forTextStyle: .caption1)
+        refreshControls()
     }
 
     private func updateControlLayout() {
