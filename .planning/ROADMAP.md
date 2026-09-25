@@ -10,7 +10,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 - [x] **Phase 2: Modern iOS parity** - Both apps build and support familiar fluid interaction on current SDKs. (completed 2026-09-24)
 - [x] **Phase 3: Reliable simulation state** - Pausing, resizing, and shared state changes work and have automated coverage. (completed 2026-09-25)
 - [x] **Phase 4: Discoverable visualization** - Both apps expose native pause and named field-selection controls. (completed 2026-09-25)
-- [ ] **Phase 5: Live fluid tuning** - Both apps expose input, dye, swirl, and fade controls without source edits.
+- [x] **Phase 5: Live fluid tuning** - Both apps expose input, dye, swirl, and fade controls without source edits. (completed 2026-09-25)
 - [ ] **Phase 6: Quality, reset, and accessibility** - Resolution and reset controls, accessible interactions, and complete verification finish the experience.
 
 ## Phase Details
@@ -85,13 +85,13 @@ Bring the existing two-platform simulation onto current Apple platforms without 
   1. Both apps offer bounded controls for stirring force and added dye/density intensity with immediate, observable effects.
   2. Both apps offer bounded swirl strength and fade/dissipation controls with immediate, observable effects.
   3. At default control values, the fluid still resembles the original simulation.
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 **Wave 1**
 - [x] 05-01-PLAN.md — Run Mac tuning sliders through bounded shared state and Metal, with GPU/UI checks (Wave 1).
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 05-02-PLAN.md — Add native adaptive iOS tuning to the existing HUD (Wave 2; depends on Wave 1).
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 05-03-PLAN.md — Verify both app paths and observe live/default fluid behavior (Wave 3; depends on Waves 1–2).
+- [x] 05-03-PLAN.md — Verify both app paths and observe live/default fluid behavior (Wave 3; depends on Waves 1–2).
 **UI hint:** yes
 
 ### Phase 6: Quality, reset, and accessibility
@@ -117,7 +117,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 | 2. Modern iOS parity | 3/3 | Complete   | 2026-09-24 |
 | 3. Reliable simulation state | 3/3 | Complete   | 2026-09-25 |
 | 4. Discoverable visualization | 3/3 | Complete   | 2026-09-25 |
-| 5. Live fluid tuning | 2/3 | In Progress|  |
+| 5. Live fluid tuning | 3/3 | Complete   | 2026-09-25 |
 | 6. Quality, reset, and accessibility | 0/TBD | Not started | - |
 
 ## Milestone Closeout Checks
