@@ -129,4 +129,12 @@ check(still.x, 0, "zero swirl x")
 check(still.y, 0, "zero swirl y")
 let turning = try pixel(render("vorticityConfinement", empty, curl, Uniforms()))
 guard abs(turning.x) > 0.01 || abs(turning.y) > 0.01 else { fatalError("default swirl failed to affect existing fluid") }
+print("GPU RG16F: default force=\(try pixel(render("applyForceVector", empty, nil, normal)).x), default dye=\(try pixel(render("applyForceScalar", empty, nil, normal)).x); zero-force velocity=\(try pixel(render("applyForceVector", empty, nil, dyeOnly)).x), zero-dye density=\(try pixel(render("applyForceScalar", empty, nil, forceOnly)).x)")
+print("GPU RG16F: retention 0.998 -> \(try pixel(render("advect", empty, stored, Uniforms())).x), retention 0.9905 -> \(try pixel(render("advect", empty, stored, fadeWithFasterRetention())).x); swirl 0 -> \(still), swirl 0.4 -> \(turning)")
 print("PASS: force/dye independent; retention on both fields; swirl on stored vorticity")
+
+func fadeWithFasterRetention() -> Uniforms {
+    var data = Uniforms()
+    data.tuning.x = 0.9905
+    return data
+}

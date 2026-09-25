@@ -39,13 +39,13 @@ created: 2026-09-25
 
 | Planned behavior (assign task ID after planning) | Requirement | Test type | Automated command | File exists | Status |
 |--------------------------------------------------|-------------|-----------|-------------------|-------------|--------|
-| Slider mapping: four positions, endpoint bounds, default values, Fade direction/roundtrip | CTRL-02, CTRL-03, CTRL-04; D-08–D-10 | Shared XCTest | Mac quick run | Existing state tests; new mapping cases ❌ W0 | ⬜ pending |
-| Force and Dye independence on real inputs including zero values, default impulses | CTRL-02; D-04–D-05 | Offscreen Metal behavior + Mac app interaction | Focused GPU harness after Mac Debug build; Mac quick run | Existing GPU harness example; new cases ❌ W0 | ⬜ pending |
-| Swirl and shared velocity/density retention on existing nonempty fields without new contacts | CTRL-03, CTRL-04; D-06–D-07 | Offscreen Metal behavior + visual observation | Focused GPU harness after Mac Debug build | Existing GPU harness example; new cases ❌ W0 | ⬜ pending |
-| Mac closed-by-default Tuning group, slider values, pause/field and keyboard/drag boundaries | CTRL-02–04; D-01–D-03, D-08 | Mac XCUITest + manual compact layout | Mac quick run | `FluidDynamicsMetalOSXUITests/HUDUITests.swift`; new cases ❌ W0 | ⬜ pending |
-| iOS closed-by-default Tuning group, slider values, pause/field, touch/scroll boundaries | CTRL-02–04; D-01–D-03, D-08 | iPhone XCUITest + manual iPhone/iPad layout | iOS full-suite command with available simulator | `FluidDynamicsMetaliOSUITests/HUDUITests.swift`; new cases ❌ W0 | ⬜ pending |
+| Slider mapping: four positions, endpoint bounds, default values, Fade direction/roundtrip | CTRL-02, CTRL-03, CTRL-04; D-08–D-10 | Shared XCTest | Mac quick run | New mapping tests in `SimulationStateTests.swift` | PASS — 8/8 state tests; 2 new |
+| Force and Dye independence on real inputs including zero values, default impulses | CTRL-02; D-04–D-05 | Offscreen Metal behavior + Mac app interaction | Focused GPU harness after Mac Debug build; Mac quick run | `test_phase05_metal.py` and `.swift` | PASS numeric GPU splats; live observation pending |
+| Swirl and shared velocity/density retention on existing nonempty fields without new contacts | CTRL-03, CTRL-04; D-06–D-07 | Offscreen Metal behavior + visual observation | Focused GPU harness after Mac Debug build | `test_phase05_metal.py` and `.swift` | PASS numeric GPU readback; live observation pending |
+| Mac closed-by-default Tuning group, slider values, pause/field and keyboard/drag boundaries | CTRL-02–04; D-01–D-03, D-08 | Mac XCUITest + manual compact layout | Mac quick run | `FluidDynamicsMetalOSXUITests/HUDUITests.swift` | PASS 5/5 HUD UI tests; 320×240 visual check pending |
+| iOS closed-by-default Tuning group, slider values, pause/field, touch/scroll boundaries | CTRL-02–04; D-01–D-03, D-08 | iPhone XCUITest + manual iPhone/iPad layout | iOS full-suite command with available simulator | `FluidDynamicsMetaliOSUITests/HUDUITests.swift` | PASS 6/6 iPhone HUD UI tests; iPad test timed out; live observation pending |
 
-*❌ W0 = behavior-specific test to write before claiming coverage; ⬜ pending = execution has not begun. No threat-model-specific external exposure is expected: controls modify only local in-memory solver state.*
+*Automated PASS is restricted to the checks actually run; live look/feel and compact-host observations remain pending in `05-TUNING-VERIFICATION.md`. No threat-model-specific external exposure is expected: controls modify only local in-memory solver state.*
 
 ---
 
@@ -53,7 +53,7 @@ created: 2026-09-25
 
 - [x] Production-state XCTest and Mac/iPhone HUD XCUITest targets already exist in the two shared schemes.
 - [x] Existing offscreen Metal regression demonstrates how to run compiled shaders on `rg16Float` textures without changing the app.
-- [ ] Add mapping/default tests and actual force/dye/swirl/fade GPU behavior tests during the corresponding implementation tasks; no new test target required.
+- [x] Add mapping/default tests and actual force/dye/swirl/fade GPU behavior tests during the corresponding implementation tasks; no new test target required.
 
 ---
 
@@ -69,11 +69,11 @@ created: 2026-09-25
 
 ## Validation Sign-Off
 
-- [ ] Every finalized task has an automated check or explicit preceding Wave 0 dependency.
-- [ ] No three consecutive tasks without an automated verify step.
-- [ ] Newly needed behavior tests exist and have been run against production code/shaders.
+- [x] Every finalized task has an automated check or explicit preceding Wave 0 dependency.
+- [x] No three consecutive tasks without an automated verify step.
+- [x] Newly needed behavior tests exist and have been run against production code/shaders.
 - [x] Existing shared state, Mac UI, iOS UI and Metal test infrastructure can be extended without introducing a second simulation implementation.
 - [x] No watch-mode commands.
 - [ ] `nyquist_compliant: true` only after executing and recording sufficient behavior checks; do not infer it from this draft strategy.
 
-**Approval:** pending plans, UI-SPEC and execution evidence.
+**Approval:** automated evidence recorded 2026-09-25 in `05-TUNING-VERIFICATION.md`; human live-fluid and compact-layout checkpoint pending. Keep `status: draft` and `nyquist_compliant: false` until those observations are reported.
