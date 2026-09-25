@@ -228,7 +228,8 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         let buttonWidth = DisplayField.allCases.map {
             ("✓ \(fieldTitle($0))" as NSString).size(withAttributes: [.font: font]).width + 32
         }.max() ?? 120
-        let columns = width >= 4 * buttonWidth + 24 + 32 && height < 280 ? 4 : (width >= 2 * buttonWidth + 8 + 32 ? 2 : 1)
+        let usableWidth = isTuningExpanded ? min(width, 320) : width
+        let columns = usableWidth >= 4 * buttonWidth + 24 + 32 && height < 280 ? 4 : (usableWidth >= 2 * buttonWidth + 8 + 32 ? 2 : 1)
         if columns != fieldColumns {
             fieldColumns = columns
             for row in fieldStack.arrangedSubviews { fieldStack.removeArrangedSubview(row); row.removeFromSuperview() }
@@ -253,7 +254,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         if scrollTop?.constant != topInset { scrollTop?.constant = topInset }
         controlsScroll.isScrollEnabled = needsScroll
         let desiredWidth = CGFloat(columns) * buttonWidth + CGFloat(columns - 1) * 8 + 32
-        let newWidth = min(width, 320, max(desiredWidth, 192))
+        let newWidth = min(usableWidth, max(desiredWidth, 192))
         let newHeight = min(height, max(192, contentHeight + (needsScroll ? 20 : 0)))
         if hudWidth?.constant != newWidth { hudWidth?.constant = newWidth }
         if hudHeight?.constant != newHeight { hudHeight?.constant = newHeight }

@@ -58,6 +58,55 @@ final class HUDUITests: XCTestCase {
         }
     }
 
+    func testTuningPersistsThroughFieldPauseAndCanvasGestures() {
+        XCTAssertTrue(app.buttons["Show Tuning"].waitForExistence(timeout: 15))
+        app.buttons["Show Tuning"].tap()
+        let force = app.sliders["Force"]
+        XCTAssertTrue(force.exists)
+        force.adjust(toNormalizedSliderPosition: 0.75)
+        let changed = force.value as? String
+        XCTAssertNotEqual(changed, "50%")
+        app.buttons["Velocity"].tap()
+        app.buttons["Pause simulation"].tap()
+        XCTAssertTrue(app.buttons["Resume simulation"].exists)
+        XCTAssertTrue(app.buttons["Hide Tuning"].exists)
+        app.buttons["Hide Tuning"].tap()
+        XCTAssertFalse(app.sliders["Force"].exists)
+        app.buttons["Show Tuning"].tap()
+        XCTAssertEqual(app.sliders["Force"].value as? String, changed)
+        app.buttons["Hide Tuning"].doubleTap()
+        XCTAssertTrue(app.buttons["Resume simulation"].exists, "A HUD double tap must not toggle the canvas pause shortcut")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2)).doubleTap()
+        XCTAssertTrue(app.buttons["Pause simulation"].exists, "Outside-HUD double tap must still resume")
+    }
+
+    func testLandscapeKeepsFadeAndPauseReachableInsideHUD() {
+        XCTAssertTrue(app.buttons["Show Tuning"].waitForExistence(timeout: 15))
+        app.buttons["Show Tuning"].tap()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let fade = app.sliders["Fade"]
+        for _ in 0..<8 where !fade.isHittable {
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(fade.isHittable, "Fade must be scroll-reachable in landscape")
+        fade.adjust(toNormalizedSliderPosition: 0.8)
+        XCTAssertNotEqual(fade.value as? String, "17%")
+        for _ in 0..<8 where !app.buttons["Pause simulation"].isHittable {
+            app.scrollViews.firstMatch.swipeDown()
+        }
+        XCTAssertTrue(app.buttons["Pause simulation"].isHittable)
+    }
+
+    func testLandscapeClosedHudStillExposesAllFields() {
+        XCTAssertTrue(app.buttons["Show Tuning"].waitForExistence(timeout: 15))
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        for name in ["Density", "Pressure", "Velocity", "Vorticity"] {
+            XCTAssertTrue(app.buttons[name].isHittable, "\(name) must be reachable in landscape")
+        }
+    }
+
     private func assertSelected(_ expected: String, among fields: [String], file: StaticString = #file, line: UInt = #line) {
         for name in fields {
             XCTAssertEqual(app.buttons[name].value as? String, name == expected ? "Selected" : "Not selected", file: file, line: line)
