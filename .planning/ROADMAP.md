@@ -85,9 +85,9 @@ Bring the existing two-platform simulation onto current Apple platforms without 
   1. Both apps offer bounded controls for stirring force and added dye/density intensity with immediate, observable effects.
   2. Both apps offer bounded swirl strength and fade/dissipation controls with immediate, observable effects.
   3. At default control values, the fluid still resembles the original simulation.
-**Plans:** 3 plans (0 complete)
+**Plans:** 1/3 plans executed
 **Wave 1**
-- [ ] 05-01-PLAN.md — Run Mac tuning sliders through bounded shared state and Metal, with GPU/UI checks (Wave 1).
+- [x] 05-01-PLAN.md — Run Mac tuning sliders through bounded shared state and Metal, with GPU/UI checks (Wave 1).
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 05-02-PLAN.md — Add native adaptive iOS tuning to the existing HUD (Wave 2; depends on Wave 1).
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -117,7 +117,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 | 2. Modern iOS parity | 3/3 | Complete   | 2026-09-24 |
 | 3. Reliable simulation state | 3/3 | Complete   | 2026-09-25 |
 | 4. Discoverable visualization | 3/3 | Complete   | 2026-09-25 |
-| 5. Live fluid tuning | 0/3 | Planned | - |
+| 5. Live fluid tuning | 1/3 | In Progress|  |
 | 6. Quality, reset, and accessibility | 0/TBD | Not started | - |
 
 ## Milestone Closeout Checks
