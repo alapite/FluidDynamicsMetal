@@ -40,6 +40,17 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Resume simulation"].exists)
     }
 
+    func testFocusedFieldSpaceSelectsWithoutPausing() {
+        let vorticity = app.checkBoxes["Vorticity"]
+        XCTAssertTrue(vorticity.waitForExistence(timeout: 10))
+        vorticity.click()
+        // A click does not focus a button on macOS; Tab moves keyboard focus to Density.
+        app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
+        app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+        XCTAssertTrue(app.buttons["Pause simulation"].exists, "Space on a field control must not pause")
+        assertSelected("Density", among: ["Density", "Pressure", "Velocity", "Vorticity"])
+    }
+
     func testTuningDisclosureAndDefaultValuesSurvivePauseAndReopen() {
         XCTAssertTrue(app.buttons["Show Tuning"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.sliders["Force"].exists)

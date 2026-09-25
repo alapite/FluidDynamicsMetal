@@ -46,11 +46,13 @@ class RenderViewController: NSViewController {
 
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) {
             guard $0.window == self.view.window else { return $0 }
-            // A focused native button owns Space. The monitor owns it elsewhere.
+            // AppKit may forward a focused button's Space through keyDown to the
+            // controller. Activate it here so that forwarding cannot also pause.
             if $0.keyCode == 0x31,
                let button = $0.window?.firstResponder as? NSButton,
                self.fieldButtons.values.contains(where: { $0 === button }) || button === self.pauseButton || button === self.tuningButton {
-                return $0
+                button.performClick(nil)
+                return nil
             }
             if $0.window?.firstResponder is NSSlider { return $0 }
             if $0.keyCode == 0x31 || $0.keyCode == 0x01 {
