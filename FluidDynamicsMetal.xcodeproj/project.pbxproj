@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B40000000000000000000001 /* Mac HUDUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000003 /* Mac HUDUITests.swift */; };
+		B40000000000000000000002 /* iOS HUDUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000004 /* iOS HUDUITests.swift */; };
 		A30000000000000000000001 /* SimulationState.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SimulationState.swift */; };
 		A30000000000000000000002 /* SimulationState.swift in Mac Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SimulationState.swift */; };
 		A30000000000000000000003 /* SimulationState.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SimulationState.swift */; };
@@ -35,6 +37,10 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		B40000000000000000000003 /* Mac HUDUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDUITests.swift; sourceTree = "<group>"; };
+		B40000000000000000000004 /* iOS HUDUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDUITests.swift; sourceTree = "<group>"; };
+		B40000000000000000000005 /* FluidDynamicsMetalOSXUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluidDynamicsMetalOSXUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B40000000000000000000006 /* FluidDynamicsMetaliOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluidDynamicsMetaliOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000000000000000000004 /* SimulationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationState.swift; sourceTree = "<group>"; };
 		A30000000000000000000006 /* SimulationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationStateTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000007 /* FluidDynamicsMetalStateTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluidDynamicsMetalStateTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -62,6 +68,8 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		B40000000000000000000007 /* Mac UI Test Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B40000000000000000000008 /* iOS UI Test Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		A30000000000000000000008 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		75D5208F1FE5539E003525F9 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
@@ -80,6 +88,8 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		B40000000000000000000009 /* FluidDynamicsMetalOSXUITests */ = {isa = PBXGroup; children = (B40000000000000000000003 /* Mac HUDUITests.swift */,); path = FluidDynamicsMetalOSXUITests; sourceTree = "<group>"; };
+		B4000000000000000000000A /* FluidDynamicsMetaliOSUITests */ = {isa = PBXGroup; children = (B40000000000000000000004 /* iOS HUDUITests.swift */,); path = FluidDynamicsMetaliOSUITests; sourceTree = "<group>"; };
 		A30000000000000000000009 /* FluidDynamicsMetalStateTests */ = {isa = PBXGroup; children = (A30000000000000000000006 /* SimulationStateTests.swift */,); path = FluidDynamicsMetalStateTests; sourceTree = "<group>"; };
 		75D520931FE5539E003525F9 /* FluidDynamicsMetalOSX */ = {
 			isa = PBXGroup;
@@ -115,6 +125,8 @@
 				75F3F06A1F311D4A00A3EC4A /* FluidDynamicsMetaliOS */,
 				75D520931FE5539E003525F9 /* FluidDynamicsMetalOSX */,
 				A30000000000000000000009 /* FluidDynamicsMetalStateTests */,
+				B40000000000000000000009 /* FluidDynamicsMetalOSXUITests */,
+				B4000000000000000000000A /* FluidDynamicsMetaliOSUITests */,
 				75F3F0691F311D4A00A3EC4A /* Products */,
 				75F3F07D1F311D7800A3EC4A /* Frameworks */,
 			);
@@ -126,6 +138,8 @@
 				75F3F0681F311D4A00A3EC4A /* FluidDynamicsMetaliOS.app */,
 				75D520921FE5539E003525F9 /* FluidDynamicsMetalOSX.app */,
 				A30000000000000000000007 /* FluidDynamicsMetalStateTests.xctest */,
+				B40000000000000000000005 /* FluidDynamicsMetalOSXUITests.xctest */,
+				B40000000000000000000006 /* FluidDynamicsMetaliOSUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -154,6 +168,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		B4000000000000000000000B /* FluidDynamicsMetalOSXUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B40000000000000000000011 /* Build configuration list for PBXNativeTarget "FluidDynamicsMetalOSXUITests" */;
+			buildPhases = (B4000000000000000000000D /* Mac UI Test Sources */, B40000000000000000000007 /* Mac UI Test Frameworks */);
+			buildRules = ();
+			dependencies = (B40000000000000000000015 /* FluidDynamicsMetalOSX */);
+			name = FluidDynamicsMetalOSXUITests;
+			productName = FluidDynamicsMetalOSXUITests;
+			productReference = B40000000000000000000005 /* FluidDynamicsMetalOSXUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		B4000000000000000000000C /* FluidDynamicsMetaliOSUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B40000000000000000000012 /* Build configuration list for PBXNativeTarget "FluidDynamicsMetaliOSUITests" */;
+			buildPhases = (B4000000000000000000000E /* iOS UI Test Sources */, B40000000000000000000008 /* iOS UI Test Frameworks */);
+			buildRules = ();
+			dependencies = (B40000000000000000000016 /* FluidDynamicsMetaliOS */);
+			name = FluidDynamicsMetaliOSUITests;
+			productName = FluidDynamicsMetaliOSUITests;
+			productReference = B40000000000000000000006 /* FluidDynamicsMetaliOSUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		A3000000000000000000000A /* FluidDynamicsMetalStateTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A3000000000000000000000C /* Build configuration list for PBXNativeTarget "FluidDynamicsMetalStateTests" */;
@@ -209,6 +245,8 @@
 				LastUpgradeCheck = 0920;
 				ORGANIZATIONNAME = "Andrei-Sergiu Pițiș";
 				TargetAttributes = {
+					B4000000000000000000000B = {CreatedOnToolsVersion = 27.0; ProvisioningStyle = Automatic; TestTargetID = 75D520911FE5539E003525F9; };
+					B4000000000000000000000C = {CreatedOnToolsVersion = 27.0; ProvisioningStyle = Automatic; TestTargetID = 75F3F0671F311D4A00A3EC4A; };
 					A3000000000000000000000A = {CreatedOnToolsVersion = 27.0; ProvisioningStyle = Automatic; };
 					75D520911FE5539E003525F9 = {
 						CreatedOnToolsVersion = 9.2;
@@ -234,6 +272,8 @@
 			projectRoot = "";
 			targets = (
 				A3000000000000000000000A /* FluidDynamicsMetalStateTests */,
+				B4000000000000000000000B /* FluidDynamicsMetalOSXUITests */,
+				B4000000000000000000000C /* FluidDynamicsMetaliOSUITests */,
 				75F3F0671F311D4A00A3EC4A /* FluidDynamicsMetaliOS */,
 				75D520911FE5539E003525F9 /* FluidDynamicsMetalOSX */,
 			);
@@ -263,6 +303,8 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		B4000000000000000000000D /* Mac UI Test Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B40000000000000000000001 /* Mac HUDUITests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		B4000000000000000000000E /* iOS UI Test Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B40000000000000000000002 /* iOS HUDUITests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 		A3000000000000000000000B /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A30000000000000000000003 /* SimulationState.swift in Test Sources */, A30000000000000000000005 /* SimulationStateTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 		75D5208E1FE5539E003525F9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -326,6 +368,10 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		B4000000000000000000000F /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = com.andreisergiupitis.FluidDynamicsMetalOSXUITests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = macosx; SWIFT_VERSION = 5.0; TEST_TARGET_NAME = FluidDynamicsMetalOSX; }; name = Debug; };
+		B40000000000000000000010 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = com.andreisergiupitis.FluidDynamicsMetalOSXUITests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = macosx; SWIFT_VERSION = 5.0; TEST_TARGET_NAME = FluidDynamicsMetalOSX; }; name = Release; };
+		B40000000000000000000013 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = ro.andreisergiupitis.FluidDynamicsMetaliOSUITests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_TARGET_NAME = FluidDynamicsMetaliOS; }; name = Debug; };
+		B40000000000000000000014 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = ro.andreisergiupitis.FluidDynamicsMetaliOSUITests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_TARGET_NAME = FluidDynamicsMetaliOS; }; name = Release; };
 		A3000000000000000000000D /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = com.andreisergiupitis.FluidDynamicsMetalStateTests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = macosx; SWIFT_VERSION = 5.0; }; name = Debug; };
 		A3000000000000000000000E /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = com.andreisergiupitis.FluidDynamicsMetalStateTests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = macosx; SWIFT_VERSION = 5.0; }; name = Release; };
 		75D520A51FE5539E003525F9 /* Debug */ = {
@@ -515,6 +561,8 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		B40000000000000000000011 /* Build configuration list for PBXNativeTarget "FluidDynamicsMetalOSXUITests" */ = {isa = XCConfigurationList; buildConfigurations = (B4000000000000000000000F /* Debug */, B40000000000000000000010 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		B40000000000000000000012 /* Build configuration list for PBXNativeTarget "FluidDynamicsMetaliOSUITests" */ = {isa = XCConfigurationList; buildConfigurations = (B40000000000000000000013 /* Debug */, B40000000000000000000014 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		A3000000000000000000000C /* Build configuration list for PBXNativeTarget "FluidDynamicsMetalStateTests" */ = {isa = XCConfigurationList; buildConfigurations = (A3000000000000000000000D /* Debug */, A3000000000000000000000E /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		75D520A41FE5539E003525F9 /* Build configuration list for PBXNativeTarget "FluidDynamicsMetalOSX" */ = {
 			isa = XCConfigurationList;
@@ -544,6 +592,16 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin PBXContainerItemProxy section */
+		B40000000000000000000017 /* Mac app proxy */ = {isa = PBXContainerItemProxy; containerPortal = 75F3F0601F311D4A00A3EC4A /* Project object */; proxyType = 1; remoteGlobalIDString = 75D520911FE5539E003525F9; remoteInfo = FluidDynamicsMetalOSX; };
+		B40000000000000000000018 /* iOS app proxy */ = {isa = PBXContainerItemProxy; containerPortal = 75F3F0601F311D4A00A3EC4A /* Project object */; proxyType = 1; remoteGlobalIDString = 75F3F0671F311D4A00A3EC4A; remoteInfo = FluidDynamicsMetaliOS; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		B40000000000000000000015 /* FluidDynamicsMetalOSX */ = {isa = PBXTargetDependency; target = 75D520911FE5539E003525F9 /* FluidDynamicsMetalOSX */; targetProxy = B40000000000000000000017 /* Mac app proxy */; };
+		B40000000000000000000016 /* FluidDynamicsMetaliOS */ = {isa = PBXTargetDependency; target = 75F3F0671F311D4A00A3EC4A /* FluidDynamicsMetaliOS */; targetProxy = B40000000000000000000018 /* iOS app proxy */; };
+/* End PBXTargetDependency section */
 	};
 	rootObject = 75F3F0601F311D4A00A3EC4A /* Project object */;
 }
