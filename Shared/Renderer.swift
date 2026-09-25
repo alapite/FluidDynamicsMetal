@@ -108,6 +108,11 @@ class Renderer: NSObject {
         if !state.shouldAdvance && !state.inactive { metalView?.draw() }
     }
 
+    func selectField(_ field: DisplayField) {
+        state.selectField(field)
+        if !state.shouldAdvance && !state.inactive { metalView?.draw() }
+    }
+
     func togglePause() {
         state.togglePause()
         clearInput()

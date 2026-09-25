@@ -42,6 +42,8 @@ struct SimulationState {
         field = DisplayField(rawValue: (field.rawValue + 1) % DisplayField.allCases.count)!
     }
 
+    mutating func selectField(_ field: DisplayField) { self.field = field }
+
     mutating func togglePause() { userPaused = !userPaused }
     mutating func resignActive() { inactive = true }
     mutating func becomeActive() { inactive = false }

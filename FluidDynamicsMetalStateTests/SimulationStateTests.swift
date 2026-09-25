@@ -18,6 +18,31 @@ final class SimulationStateTests: XCTestCase {
         XCTAssertEqual(state.field, .pressure)
     }
 
+    func testDirectFieldSelectionPreservesPauseAndInactivity() {
+        var state = SimulationState()
+        state.selectField(.vorticity)
+        XCTAssertEqual(state.field, .vorticity)
+        XCTAssertTrue(state.shouldAdvance)
+
+        state.togglePause()
+        state.selectField(.pressure)
+        state.selectField(.pressure)
+        XCTAssertEqual(state.field, .pressure)
+        XCTAssertTrue(state.userPaused)
+        XCTAssertFalse(state.shouldAdvance)
+
+        state.resignActive()
+        state.selectField(.velocity)
+        XCTAssertEqual(state.field, .velocity)
+        XCTAssertTrue(state.inactive)
+        state.becomeActive()
+        XCTAssertEqual(state.field, .velocity)
+        XCTAssertTrue(state.userPaused)
+        XCTAssertFalse(state.shouldAdvance)
+        state.nextField()
+        XCTAssertEqual(state.field, .vorticity)
+    }
+
     func testInactivePreservesUserChoiceAndField() {
         var running = SimulationState()
         running.nextField()
