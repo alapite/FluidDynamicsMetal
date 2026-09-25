@@ -50,9 +50,9 @@ Bring the existing two-platform simulation onto current Apple platforms without 
   1. A user can resize the Mac window or rotate/resize the iOS view and keep interacting with visible fluid.
   2. A user can pause and resume without breaking the displayed field or later input.
   3. Developers can run automated checks covering state transitions, parameter bounds, and defaults/reset behavior.
-**Plans:** 0/3 plans complete
+**Plans:** 1/3 plans executed
 **Wave 1**
-- [ ] 03-01-PLAN.md — Shared pause/field/lifecycle state and executable bounds/default/reset checks (Wave 1).
+- [x] 03-01-PLAN.md — Shared pause/field/lifecycle state and executable bounds/default/reset checks (Wave 1).
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 03-02-PLAN.md — Preserve all GPU fields through resize/rotation and rebase held input (Wave 2; depends on Wave 1).
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -103,7 +103,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 |-------|----------------|--------|-----------|
 | 1. Modern Mac baseline | 1/1 | Implementation complete; runtime UAT deferred | - |
 | 2. Modern iOS parity | 3/3 | Complete   | 2026-09-24 |
-| 3. Reliable simulation state | 0/3 | Ready to execute | - |
+| 3. Reliable simulation state | 1/3 | In Progress|  |
 | 4. Discoverable visualization | 0/TBD | Not started | - |
 | 5. Live fluid tuning | 0/TBD | Not started | - |
 | 6. Quality, reset, and accessibility | 0/TBD | Not started | - |

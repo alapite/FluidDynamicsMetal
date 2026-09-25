@@ -15,7 +15,7 @@
 
 - [x] **SIM-01**: Users can stir and add density to the fluid with mouse drag on macOS and touch drag on iOS, with visually familiar response at default settings.
 - [ ] **SIM-02**: Users can resize the Mac window or rotate/resize an iOS view without losing the ability to interact with and display the fluid.
-- [ ] **SIM-03**: Users can pause and resume the simulation without corrupting the displayed field or losing input responsiveness after resume.
+- [x] **SIM-03**: Users can pause and resume the simulation without corrupting the displayed field or losing input responsiveness after resume.
 
 ### Native controls
 
@@ -29,7 +29,7 @@
 
 ### Verification
 
-- [ ] **VER-01**: Developers can run automated checks for tuning value bounds, default/reset behavior, and field/pause state changes.
+- [x] **VER-01**: Developers can run automated checks for tuning value bounds, default/reset behavior, and field/pause state changes.
 - [ ] **VER-02**: Developers have documented steps to build both schemes and manually confirm default rendering, dragging, pause/resume, field switching, and tuning on macOS and iOS.
 
 ## v2 Requirements
@@ -55,8 +55,8 @@
 | PLAT-03 | Phase 2 | Complete |
 | SIM-01 | Phase 2 | Complete |
 | SIM-02 | Phase 3 | Pending |
-| SIM-03 | Phase 3 | Pending |
-| VER-01 | Phase 3 | Pending |
+| SIM-03 | Phase 3 | Complete |
+| VER-01 | Phase 3 | Complete |
 | CTRL-01 | Phase 4 | Pending |
 | CTRL-02 | Phase 5 | Pending |
 | CTRL-03 | Phase 5 | Pending |
