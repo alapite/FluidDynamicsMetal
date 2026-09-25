@@ -13,6 +13,7 @@ class RenderViewController: NSViewController {
     var renderer: Renderer!
     private var mouseHeld = false
     private var rebaseDrag = false
+    private var lastCanvasSize: CGSize = .zero
     var metalView: MTKView {
         return view as! MTKView
     }
@@ -33,6 +34,14 @@ class RenderViewController: NSViewController {
 
     deinit {
         NSEvent.removeMonitor(eventMonitor as Any)
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        guard renderer != nil, metalView.bounds.size != lastCanvasSize else { return }
+        lastCanvasSize = metalView.bounds.size
+        renderer.clearInput()
+        if mouseHeld { rebaseDrag = true }
     }
 
     override func mouseDown(with event: NSEvent) {

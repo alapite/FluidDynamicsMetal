@@ -20,6 +20,7 @@ class RenderViewController: UIViewController {
     private var startPositions: [UITouch: CGPoint] = [:]
     private var activeTouches: Set<UITouch> = []
     private var pendingHolds: [UITouch: DispatchWorkItem] = [:]
+    private var lastCanvasSize: CGSize = .zero
     var metalView: MTKView {
         return view as! MTKView
     }
@@ -59,6 +60,22 @@ class RenderViewController: UIViewController {
 
     override var prefersStatusBarHidden: Bool {
         return true
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard renderer != nil, metalView.bounds.size != lastCanvasSize else { return }
+        lastCanvasSize = metalView.bounds.size
+        cancelPendingHolds()
+        for touch in touchOrder {
+            let location = touch.location(in: metalView)
+            positions[touch] = location
+            previousPositions[touch] = location
+            startPositions[touch] = location
+        }
+        renderer.clearInput()
+        // A continuing contact starts with zero displacement at its new location.
+        submitTouches()
     }
 
     override func didReceiveMemoryWarning() {
