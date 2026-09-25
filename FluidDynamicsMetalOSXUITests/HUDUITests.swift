@@ -1,10 +1,11 @@
 import XCTest
 
+@MainActor
 final class HUDUITests: XCTestCase {
     private var app: XCUIApplication!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         continueAfterFailure = false
         app = XCUIApplication()
         app.launch()
@@ -84,7 +85,7 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(app.checkBoxes["Velocity"].value as? String, "Selected")
     }
 
-    private func assertSelected(_ expected: String, among fields: [String], file: StaticString = #file, line: UInt = #line) {
+    private func assertSelected(_ expected: String, among fields: [String], file: StaticString = #filePath, line: UInt = #line) {
         for name in fields {
             XCTAssertEqual(app.checkBoxes[name].value as? String, name == expected ? "Selected" : "Not selected", file: file, line: line)
         }

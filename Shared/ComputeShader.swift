@@ -9,6 +9,7 @@
 import CoreMedia
 import Metal
 
+@MainActor
 class ComputeShader {
     var outputTexture: MTLTexture?
     var inputTexture: MTLTexture?

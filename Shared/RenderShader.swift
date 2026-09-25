@@ -17,6 +17,7 @@ struct PipelineStateConfiguration {
     let computeShader: String
 }
 
+@MainActor
 class RenderShader {
     private var pipelineState: PipelineStateConfiguration
     private var renderPipelineState: MTLRenderPipelineState?

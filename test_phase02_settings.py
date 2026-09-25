@@ -27,7 +27,7 @@ class Phase02SettingsTests(unittest.TestCase):
                     targets = json.loads(result.stdout)
                     settings = next(item["buildSettings"] for item in targets
                                     if item["target"] == scheme)
-                    self.assertEqual(settings["SWIFT_VERSION"], "5.0")
+                    self.assertEqual(settings["SWIFT_VERSION"], "6.0")
                     self.assertEqual(settings[deployment_key], "26.0")
                     if scheme == "FluidDynamicsMetaliOS":
                         self.assertEqual(settings["TARGETED_DEVICE_FAMILY"], "1,2")

@@ -33,6 +33,7 @@ pipeline.fragmentFunction = library.makeFunction(name: "resampleField")
 pipeline.colorAttachments[0].pixelFormat = .rg16Float
 let state = try device.makeRenderPipelineState(descriptor: pipeline)
 
+@MainActor
 func resample(_ source: MTLTexture, width: Int, height: Int, scale: SIMD2<Float>) -> MTLTexture {
     let output = texture(width, height)
     let pass = MTLRenderPassDescriptor()
@@ -54,6 +55,7 @@ func resample(_ source: MTLTexture, width: Int, height: Int, scale: SIMD2<Float>
     return output
 }
 
+@MainActor
 func verifyResize(sourceWidth: Int, sourceHeight: Int, width: Int, height: Int,
                   markers: [(Int, Int, Int, Int, SIMD2<Float>)]) {
     let fields = ["velocity", "density", "divergence", "vorticity", "pressure"]

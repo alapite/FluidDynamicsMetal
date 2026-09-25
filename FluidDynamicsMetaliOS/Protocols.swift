@@ -62,7 +62,7 @@ struct Targets<T: Comparable, ImageConsumer>: Sequence {
     }
     
     mutating func remove(target: T) {
-        if let index = targets.index(of: target) {
+        if let index = targets.firstIndex(of: target) {
             targets.remove(at: index)
         }
     }

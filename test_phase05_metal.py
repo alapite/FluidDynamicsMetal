@@ -11,7 +11,7 @@ class Phase05MetalTests(unittest.TestCase):
         target = next(x["buildSettings"] for x in json.loads(settings.stdout) if x["target"] == "FluidDynamicsMetalOSX")
         library = Path(target["TARGET_BUILD_DIR"]) / target["WRAPPER_NAME"] / "Contents/Resources/default.metallib"
         self.assertTrue(library.is_file(), "Build the Mac Debug scheme before the GPU test")
-        result = subprocess.run(("xcrun", "swift", "test_phase05_metal.swift", str(library)), capture_output=True, text=True)
+        result = subprocess.run(("xcrun", "swift", "-swift-version", "6", "test_phase05_metal.swift", str(library)), capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("PASS: force/dye independent; retention endpoints on both fields; swirl on stored vorticity", result.stdout)
 

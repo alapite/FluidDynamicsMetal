@@ -24,7 +24,7 @@ class Phase02MetalTests(unittest.TestCase):
                    "Contents/Resources/default.metallib")
         self.assertTrue(library.is_file(), "Build the Mac Debug scheme first")
         result = subprocess.run(
-            ("xcrun", "swift", "test_phase02_metal.swift", str(library)),
+            ("xcrun", "swift", "-swift-version", "6", "test_phase02_metal.swift", str(library)),
             capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

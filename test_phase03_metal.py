@@ -11,7 +11,7 @@ class Phase03MetalTests(unittest.TestCase):
         target = next(x["buildSettings"] for x in json.loads(settings.stdout) if x["target"] == "FluidDynamicsMetalOSX")
         library = Path(target["TARGET_BUILD_DIR"]) / target["WRAPPER_NAME"] / "Contents/Resources/default.metallib"
         self.assertTrue(library.is_file(), "Build the Mac Debug scheme first")
-        result = subprocess.run(("xcrun", "swift", "test_phase03_metal.swift", str(library)), capture_output=True, text=True)
+        result = subprocess.run(("xcrun", "swift", "-swift-version", "6", "test_phase03_metal.swift", str(library)), capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("PASS: RG16F full-canvas resample both aspect directions, five fields", result.stdout)
 

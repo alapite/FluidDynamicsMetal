@@ -8,44 +8,45 @@
 
 import MetalKit
 
-typealias FloatTuple = (float2, float2, float2, float2, float2)
-typealias ContactTuple = (float2, float2, float2, float2, float2, float2, float2, float2, float2, float2)
+typealias FloatTuple = (SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>)
+typealias ContactTuple = (SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>)
 
 struct FluidContact {
-    let position: float2
-    let impulse: float2
+    let position: SIMD2<Float>
+    let impulse: SIMD2<Float>
 }
 
 struct StaticData {
     var positions: ContactTuple
     var impulses: ContactTuple
 
-    var impulseScalar: float2
-    var offsets: float2
+    var impulseScalar: SIMD2<Float>
+    var offsets: SIMD2<Float>
     
-    var screenSize: float2
+    var screenSize: SIMD2<Float>
     var inkRadius: simd_float1
     var tuning: simd_float4
 }
 
-struct VertexData {
-    let position: float2
-    let texCoord: float2
+struct VertexData: BitwiseCopyable {
+    let position: SIMD2<Float>
+    let texCoord: SIMD2<Float>
 }
 
+@MainActor
 class Renderer: NSObject {
     static let MaxBuffers = 3
-    static let ContactCapacity = 10
+    nonisolated static let ContactCapacity = 10
 
     //Adjust this to reduce or increase the size of the slab textures. Reasonable values are in the range [0.5, 3.0]
-    static let ScreenScaleAdjustment: Float = 1.0
+    nonisolated static let ScreenScaleAdjustment: Float = 1.0
 
     //Vertex and index data
     static let vertexData: [VertexData] = [
-        VertexData(position: float2(x: -1.0, y: -1.0), texCoord: float2(x: 0.0, y: 1.0)),
-        VertexData(position: float2(x: 1.0, y: -1.0), texCoord: float2(x: 1.0, y: 1.0)),
-        VertexData(position: float2(x: -1.0, y: 1.0), texCoord: float2(x: 0.0, y: 0.0)),
-        VertexData(position: float2(x: 1.0, y: 1.0), texCoord: float2(x: 1.0, y: 0.0)),
+        VertexData(position: SIMD2<Float>(x: -1.0, y: -1.0), texCoord: SIMD2<Float>(x: 0.0, y: 1.0)),
+        VertexData(position: SIMD2<Float>(x: 1.0, y: -1.0), texCoord: SIMD2<Float>(x: 1.0, y: 1.0)),
+        VertexData(position: SIMD2<Float>(x: -1.0, y: 1.0), texCoord: SIMD2<Float>(x: 0.0, y: 0.0)),
+        VertexData(position: SIMD2<Float>(x: 1.0, y: 1.0), texCoord: SIMD2<Float>(x: 1.0, y: 0.0)),
         ]
 
     static let indices: [UInt16] = [2, 1, 0, 1, 2, 3]
@@ -162,10 +163,10 @@ class Renderer: NSObject {
         touchRadius = 150 * scale * scale
     }
 
-    func enqueueTap(at position: float2, in view: MTKView) {
+    func enqueueTap(at position: SIMD2<Float>, in view: MTKView) {
         guard state.shouldAdvance else { return }
         // Keep the splat until draw consumes it; recognizer callbacks can precede the next frame.
-        pendingTapContacts.append(FluidContact(position: position, impulse: float2()))
+        pendingTapContacts.append(FluidContact(position: position, impulse: SIMD2<Float>()))
         let shortSide = max(1, min(view.bounds.width, view.bounds.height))
         let scale = Float(shortSide / 375)
         touchRadius = 150 * scale * scale
@@ -182,11 +183,11 @@ class Renderer: NSObject {
     private final func initBuffers(width: Int, height: Int) {
         let bufferSize = MemoryLayout<StaticData>.stride
 
-        var staticData = StaticData(positions: (float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2()),
-                                    impulses: (float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2()),
-                                    impulseScalar: float2(),
-                                    offsets: float2(1.0/Float(width), 1.0/Float(height)),
-                                    screenSize: float2(Float(width), Float(height)),
+        var staticData = StaticData(positions: (SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>()),
+                                    impulses: (SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>()),
+                                    impulseScalar: SIMD2<Float>(),
+                                    offsets: SIMD2<Float>(1.0/Float(width), 1.0/Float(height)),
+                                    screenSize: SIMD2<Float>(Float(width), Float(height)),
                                      inkRadius: 150 / Renderer.ScreenScaleAdjustment,
                                      tuning: simd_float4(state.tuning.retention, state.tuning.swirl, 0, 0))
 
@@ -198,26 +199,26 @@ class Renderer: NSObject {
         }
     }
 
-    static func contactBatches(_ contacts: [FluidContact]) -> [[FluidContact]] {
+    nonisolated static func contactBatches(_ contacts: [FluidContact]) -> [[FluidContact]] {
         return stride(from: 0, to: contacts.count, by: ContactCapacity).map {
             Array(contacts[$0..<min($0 + ContactCapacity, contacts.count)])
         }
     }
 
-    static func writeContacts(_ contacts: [FluidContact], tuning: SimulationTuning, radius: Float, to data: inout StaticData) {
-        data.positions = (float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2())
-        data.impulses = (float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2())
-        data.impulseScalar = contacts.isEmpty ? float2() : float2(tuning.dye, 0.0)
+    nonisolated static func writeContacts(_ contacts: [FluidContact], tuning: SimulationTuning, radius: Float, to data: inout StaticData) {
+        data.positions = (SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>())
+        data.impulses = (SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>())
+        data.impulseScalar = contacts.isEmpty ? SIMD2<Float>() : SIMD2<Float>(tuning.dye, 0.0)
         withUnsafeMutableBytes(of: &data.positions) { bytes in
-            let slots = bytes.bindMemory(to: float2.self)
+            let slots = bytes.bindMemory(to: SIMD2<Float>.self)
             for (index, contact) in contacts.prefix(Renderer.ContactCapacity).enumerated() {
                 // Zero is the shader's unused-slot sentinel; preserve a contact at the origin.
-                let position = contact.position.x == 0 && contact.position.y == 0 ? float2(0.01, 0.01) : contact.position
+                let position = contact.position.x == 0 && contact.position.y == 0 ? SIMD2<Float>(0.01, 0.01) : contact.position
                 slots[index] = position / Renderer.ScreenScaleAdjustment
             }
         }
         withUnsafeMutableBytes(of: &data.impulses) { bytes in
-            let slots = bytes.bindMemory(to: float2.self)
+            let slots = bytes.bindMemory(to: SIMD2<Float>.self)
             for (index, contact) in contacts.prefix(Renderer.ContactCapacity).enumerated() {
                 slots[index] = contact.impulse * tuning.force / Renderer.ScreenScaleAdjustment
             }
@@ -360,12 +361,15 @@ extension Renderer {
     }
 }
 
-extension Renderer: MTKViewDelegate {
+// Rendering and input share the main actor; GPU completion only signals the semaphore.
+extension Renderer: @MainActor MTKViewDelegate {
     func draw(in view: MTKView) {
         semaphore.wait()
         let commandBuffer = MetalDevice.sharedInstance.newCommandBuffer()
 
-        commandBuffer.addCompletedHandler({ _ in self.semaphore.signal() })
+        // Metal invokes completion handlers off the main actor. Capture only the
+        // thread-safe semaphore so GPU completion never accesses renderer state.
+        commandBuffer.addCompletedHandler { [semaphore] _ in semaphore.signal() }
 
         guard state.shouldAdvance else {
             clearInput()
@@ -457,19 +461,19 @@ extension Renderer: MTKViewDelegate {
 
         if gridWidth > 0, let oldVelocity = velocity {
             let command = MetalDevice.sharedInstance.newCommandBuffer()
-            let pairs: [(Slab, Slab, float2)] = [
-                (oldVelocity, newVelocity, float2(Float(width) / Float(gridWidth), Float(height) / Float(gridHeight))),
-                (density, newDensity, float2(1, 1)),
-                (velocityDivergence, newDivergence, float2(1, 1)),
-                (velocityVorticity, newVorticity, float2(1, 1)),
-                (pressure, newPressure, float2(1, 1))
+            let pairs: [(Slab, Slab, SIMD2<Float>)] = [
+                (oldVelocity, newVelocity, SIMD2<Float>(Float(width) / Float(gridWidth), Float(height) / Float(gridHeight))),
+                (density, newDensity, SIMD2<Float>(1, 1)),
+                (velocityDivergence, newDivergence, SIMD2<Float>(1, 1)),
+                (velocityVorticity, newVorticity, SIMD2<Float>(1, 1)),
+                (pressure, newPressure, SIMD2<Float>(1, 1))
             ]
             for (source, destination, scale) in pairs {
                 var factors = scale
                 resampleShader.calculateWithCommandBuffer(buffer: command, indices: indexData, count: Renderer.indices.count, texture: destination.ping) { encoder in
                     encoder.setVertexBuffer(self.vertData, offset: 0, index: 0)
                     encoder.setFragmentTexture(source.ping, index: 0)
-                    encoder.setFragmentBytes(&factors, length: MemoryLayout<float2>.stride, index: 0)
+                    encoder.setFragmentBytes(&factors, length: MemoryLayout<SIMD2<Float>>.stride, index: 0)
                 }
             }
             command.commit()

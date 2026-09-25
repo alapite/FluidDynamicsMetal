@@ -422,8 +422,8 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
             guard activeTouches.contains(touch) else { return nil }
             guard let location = positions[touch] else { return nil }
             let previous = previousPositions[touch] ?? location
-            return FluidContact(position: float2(Float(location.x), Float(location.y)),
-                                impulse: float2(Float(location.x - previous.x), Float(location.y - previous.y)))
+            return FluidContact(position: SIMD2<Float>(Float(location.x), Float(location.y)),
+                                impulse: SIMD2<Float>(Float(location.x - previous.x), Float(location.y - previous.y)))
         }
         renderer.updateTouchInteraction(contacts: contacts, in: metalView)
     }
@@ -447,7 +447,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         guard renderer.state.shouldAdvance else { return }
         let point = recognizer.location(in: metalView)
         guard !hud.bounds.contains(recognizer.location(in: hud)) else { return }
-        renderer.enqueueTap(at: float2(Float(point.x), Float(point.y)), in: metalView)
+        renderer.enqueueTap(at: SIMD2<Float>(Float(point.x), Float(point.y)), in: metalView)
     }
 
     private func cancelPendingHolds() {

@@ -43,6 +43,7 @@ func pixel(_ tex: MTLTexture, x: Int = 8, y: Int = 8) -> SIMD2<Float> {
     return SIMD2(Float(Float16(bitPattern: bits[0])), Float(Float16(bitPattern: bits[1])))
 }
 
+@MainActor
 func render(_ shader: String, _ first: MTLTexture, _ second: MTLTexture? = nil, _ uniforms: Uniforms) throws -> MTLTexture {
     let descriptor = MTLRenderPipelineDescriptor()
     descriptor.vertexFunction = library.makeFunction(name: "vertexShader")

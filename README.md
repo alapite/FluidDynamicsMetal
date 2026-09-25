@@ -1,17 +1,19 @@
 # FluidDynamicsMetal
 
-Interactive Metal fluid simulation for **macOS 26 on Apple Silicon** and **iOS/iPadOS 26**. The Xcode project uses Swift 5 and has separate Mac and iOS app schemes.
+Interactive Metal fluid simulation for **macOS 26 on Apple Silicon** and **iOS/iPadOS 26**. The Xcode project requires Swift 6.2 or later, uses Swift 6 language mode with complete concurrency checking, and has separate Mac and iOS app schemes.
 
 ![fluiddynamics](https://github.com/andreipitis/FluidDynamicsMetal/blob/master/FluidDynamicsMetal.gif?raw=true)
 
 ## Build and run
 
-Open `FluidDynamicsMetal.xcodeproj` with current Xcode. Install Xcode's Metal Toolchain if the build reports it missing: `xcodebuild -downloadComponent MetalToolchain`. From the project root, build both existing schemes without Swift-version or deployment-target overrides:
+Open `FluidDynamicsMetal.xcodeproj` with Xcode 26 or later (Swift 6.2+). Install Xcode's Metal Toolchain if the build reports it missing: `xcodebuild -downloadComponent MetalToolchain`. From the project root, build both existing schemes without Swift-version or deployment-target overrides:
 
 ```bash
 xcodebuild -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build
 xcodebuild -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetaliOS -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
+
+All app and test targets use `SWIFT_VERSION = 6.0`, the Xcode setting for Swift 6 language mode; the compiler version comes from the selected Xcode toolchain. Rendering resources are explicitly isolated to `MainActor`, including the MetalKit delegate conformance. The Mac event monitor uses Swift 6.2 isolated teardown, and GPU completion captures only its thread-safe semaphore.
 
 For a reusable Mac app at the project root, run `./build-macos.sh`, then `open -a "$(pwd)/FluidDynamicsMetalOSX.app"`. The script builds into ignored `.build/` and copies the app to `FluidDynamicsMetalOSX.app`.
 

@@ -13,6 +13,7 @@ enum MetalDeviceError: Error {
     case failedToCreateFunction(name: String)
 }
 
+@MainActor
 class MetalDevice {
     static let sharedInstance = MetalDevice()
     
@@ -58,9 +59,11 @@ class MetalDevice {
         outputTexture = texture
     }
     
-    final func buffer<T>(array: Array<T>, storageMode: MTLResourceOptions = []) -> MTLBuffer {
-        let size = array.count * MemoryLayout.size(ofValue: array[0])
-        return device.makeBuffer(bytes: array, length: size, options: storageMode)!
+    final func buffer<T: BitwiseCopyable>(array: [T], storageMode: MTLResourceOptions = []) -> MTLBuffer {
+        precondition(!array.isEmpty, "A Metal buffer requires nonempty data")
+        return array.withUnsafeBytes { bytes in
+            device.makeBuffer(bytes: bytes.baseAddress!, length: bytes.count, options: storageMode)!
+        }
     }
     
     final func newCommandBuffer() -> MTLCommandBuffer {

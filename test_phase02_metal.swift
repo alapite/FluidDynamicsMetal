@@ -48,6 +48,7 @@ func uniforms(position: SIMD2<Float>? = nil, impulse: SIMD2<Float> = .zero) -> M
     return buffer
 }
 
+@MainActor
 func apply(_ fragment: String, source: MTLTexture, data: MTLBuffer) throws -> MTLTexture {
     let pipeline = MTLRenderPipelineDescriptor()
     pipeline.vertexFunction = library.makeFunction(name: "vertexShader")

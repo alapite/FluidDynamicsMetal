@@ -44,7 +44,8 @@ class RenderViewController: NSViewController {
 
         installControls()
 
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) {
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] in
+            guard let self else { return $0 }
             guard $0.window == self.view.window else { return $0 }
             // AppKit may forward a focused button's Space through keyDown to the
             // controller. Activate it here so that forwarding cannot also pause.
@@ -278,8 +279,8 @@ class RenderViewController: NSViewController {
         updateControlLayout()
     }
 
-    deinit {
-        NSEvent.removeMonitor(eventMonitor as Any)
+    isolated deinit {
+        if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -300,8 +301,8 @@ class RenderViewController: NSViewController {
         guard renderer.state.shouldAdvance else { return }
         let point = metalView.convert(event.locationInWindow, from: nil)
 
-        let position = float2(Float(point.x), Float(metalView.bounds.height - point.y))
-        let tuple = FloatTuple(position, float2(), float2(), float2(), float2())
+        let position = SIMD2<Float>(Float(point.x), Float(metalView.bounds.height - point.y))
+        let tuple = FloatTuple(position, SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>())
         renderer.updateInteraction(points: tuple, in: metalView)
     }
 
@@ -309,8 +310,8 @@ class RenderViewController: NSViewController {
         guard mouseHeld, renderer.state.shouldAdvance else { return }
         let point = metalView.convert(event.locationInWindow, from: nil)
 
-        let position = float2(Float(point.x), Float(metalView.bounds.height - point.y))
-        let tuple = FloatTuple(position, float2(), float2(), float2(), float2())
+        let position = SIMD2<Float>(Float(point.x), Float(metalView.bounds.height - point.y))
+        let tuple = FloatTuple(position, SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>())
         if rebaseDrag {
             renderer.clearInput()
             rebaseDrag = false

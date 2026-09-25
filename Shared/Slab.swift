@@ -9,6 +9,7 @@
 import Foundation
 import Metal
 
+@MainActor
 class Slab {
     var ping: MTLTexture!
     var pong: MTLTexture!
