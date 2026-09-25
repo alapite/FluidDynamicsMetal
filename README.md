@@ -17,6 +17,8 @@ All app and test targets use `SWIFT_VERSION = 6.0`, the Xcode setting for Swift 
 
 For a reusable Mac app at the project root, run `./build-macos.sh`, then `open -a "$(pwd)/FluidDynamicsMetalOSX.app"`. The script builds into ignored `.build/` and copies the app to `FluidDynamicsMetalOSX.app`.
 
+Run `./build-macos.sh clean` to remove `.build/` and the copied app, or `./build-macos.sh rebuild` to clean and then build again. Cleanup is limited to those two paths in this checkout; Xcode's global DerivedData is preserved. Use `./build-macos.sh --help` for usage.
+
 For iPhone or iPad, select the **`FluidDynamicsMetaliOS`** scheme in Xcode and choose an available **iOS 26** iPhone or iPad simulator as the run destination. Discover current destinations with `xcrun simctl list devices available`; avoid copying a device ID from a prior machine. For command-line UI tests, substitute that device's ID:
 
 ```bash
