@@ -1,6 +1,6 @@
 ---
 phase: 03-reliable-simulation-state
-status: awaiting-human-observation
+status: observed-with-device-gaps
 updated: 2026-09-25
 ---
 
@@ -21,17 +21,19 @@ updated: 2026-09-25
 
 ## Live interaction — human checkpoint
 
-Mark a row PASS only after direct observation on the named host; provide reproduction details for failures. A build or offscreen shader result does not verify an on-screen interaction.
+The user reported on 2026-09-25: “Approved. All tests pass on the Mac. For the iPhone and iPad simulators, all tests passed except the two-finger gestures, which are NOT TESTED because they could not be reproduced on the simulator.” The PASS entries below reflect that report against the checkpoint steps, not automated evidence. The report did not provide per-step screenshots or measurements.
 
 | Behavior | Mac macOS 27 | iPhone 17 Pro iOS 26.4 | iPad Pro M5 iOS 26.4 | Observation / steps |
 |----------|--------------|-----------------------|-------------------------|---------------------|
-| Density visible, retained and fitted across wide/narrow live resize or rotation | NOT TESTED | NOT TESTED | NOT TESTED | Stir, resize window or rotate simulator, compare the same blue pattern and edges. |
-| Pressure/velocity/vorticity fields retained after resize | NOT TESTED | NOT TESTED | NOT TESTED | Change fields before and after resize; confirm no cleared field. |
-| Drag held during resize and fresh stir afterward | NOT TESTED | NOT TESTED | NOT TESTED | Move while resizing, look for no large jump; start a new stroke. Held rotation may be simulator-inaccessible. |
-| Pause, switch through four fields immediately without motion, resume selected field | NOT TESTED | NOT TESTED | NOT TESTED | Mac Space/S; iOS one-finger/two-finger double taps where reproducible. Physical two-finger gesture remains device-only. |
-| Paused resize retains frozen, fitted image; held drag resumes without stale impulse | NOT TESTED | NOT TESTED | NOT TESTED | Pause, resize, inspect stationary fluid; resume while holding pointer/touch. |
-| Running background/return retains image, field and fresh touch | N/A | NOT TESTED | NOT TESTED | iOS Home then return, stir again. |
-| User-paused background/return remains paused and retains field/image | N/A | NOT TESTED | NOT TESTED | User pause then Home/return; resume manually and stir. |
-| Interrupted touch/tap clears on inactivity | N/A | NOT TESTED | NOT TESTED | Start contact, leave app, return; confirm no force or dye replay. |
+| Density visible, retained and fitted across wide/narrow live resize or rotation | PASS | PASS | PASS | User approved the Mac window-resize and both simulator rotation/resize checks in the checkpoint. |
+| Pressure/velocity/vorticity fields retained after resize | PASS | NOT TESTED | NOT TESTED | Mac Space/S passed per user; changing fields on iOS requires the two-finger shortcut, which could not be reproduced in either simulator. |
+| Drag held during resize and fresh stir afterward | PASS | PASS | PASS | User reported all other Mac and simulator checkpoint checks passed, including held input and a new stroke. |
+| Pause and resume without motion using available shortcut | PASS | PASS | PASS | Mac Space and simulator one-finger double tap passed per user; field cycling on iOS is separately NOT TESTED below. |
+| Immediate four-field switch while paused | PASS | NOT TESTED | NOT TESTED | Mac S passed per user; iOS two-finger double tap was not reproducible in simulator. Production-state XCTest covers the cycle but cannot establish simulator UI behavior. |
+| Paused resize retains frozen, fitted image; held drag resumes without stale impulse | PASS | PASS | PASS | User approved the paused-resize and held-input checkpoint checks on all three hosts, excluding the two-finger gesture. |
+| Running background/return retains image, field and fresh touch | N/A | PASS | PASS | User reported simulator Home/return checks passed; iOS field *switching* remains untested. |
+| User-paused background/return remains paused and retains field/image | N/A | PASS | PASS | User reported simulator user-paused Home/return checks passed. |
+| Interrupted touch/tap clears on inactivity | N/A | PASS | PASS | User reported all non-two-finger simulator checkpoint checks passed, including new touch after return without a replay. |
+| Two-finger double tap field cycle and physical concurrent touch | N/A | NOT TESTED | NOT TESTED | Two-finger gestures could not be reproduced on the simulator; physical-device checks remain deferred in `02-HUMAN-UAT.md`. |
 
 **Separately deferred:** Actual macOS 26 runtime launch/drag is NOT TESTED (`01-HUMAN-UAT.md`); physical two-finger and concurrent-touch behavior is NOT TESTED (`02-HUMAN-UAT.md`). Neither is inferred from these simulators.

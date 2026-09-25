@@ -1,7 +1,7 @@
 ---
 phase: 3
 slug: reliable-simulation-state
-status: awaiting-human-observation
+status: observed-with-device-gaps
 nyquist_compliant: true
 wave_0_complete: true
 created: 2026-09-24
@@ -32,10 +32,10 @@ created: 2026-09-24
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
 | 03-01-01 | 01 | 1 | SIM-03, VER-01 | — | Bounded finite tuning, no delayed input after pause | XCTest | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO` | ✅ | ✅ 4 passed |
-| 03-01-02 | 01 | 1 | SIM-03, VER-01 | — | Paused field switch renders without advancing, iOS lifecycle restores user intent | XCTest + both app builds | Same test; both Debug scheme builds | ✅ | ✅ automated; UI pending |
-| 03-02-01 | 02 | 2 | SIM-02 | — | Existing GPU fields survive aspect changes | GPU + Mac build | `python3 -m unittest -v test_phase03_metal` after Mac Debug build | ✅ | ✅ offscreen; UI pending |
-| 03-02-02 | 02 | 2 | SIM-02, SIM-03 | — | Held input rebases; no stale forces across resize | both scheme builds + GPU + UI observation | Mac/iOS Debug builds; `python3 -m unittest -v test_phase03_metal` | ✅ | ✅ automated; UI pending |
-| 03-03-01 | 03 | 3 | SIM-02, SIM-03, VER-01 | — | No untested behavior reported as passed | full suite + observation record | XCTest; both builds; `python3 -m unittest -v test_phase02_metal test_phase03_metal` | ✅ | ✅ automated; UI pending |
+| 03-01-02 | 01 | 1 | SIM-03, VER-01 | — | Paused field switch renders without advancing, iOS lifecycle restores user intent | XCTest + both app builds | Same test; both Debug scheme builds | ✅ | ✅ Mac UI and iOS lifecycle; iOS field gesture NOT TESTED |
+| 03-02-01 | 02 | 2 | SIM-02 | — | Existing GPU fields survive aspect changes | GPU + Mac build | `python3 -m unittest -v test_phase03_metal` after Mac Debug build | ✅ | ✅ GPU and user-observed resize |
+| 03-02-02 | 02 | 2 | SIM-02, SIM-03 | — | Held input rebases; no stale forces across resize | both scheme builds + GPU + UI observation | Mac/iOS Debug builds; `python3 -m unittest -v test_phase03_metal` | ✅ | ✅ user-observed input |
+| 03-03-01 | 03 | 3 | SIM-02, SIM-03, VER-01 | — | No untested behavior reported as passed | full suite + observation record | XCTest; both builds; `python3 -m unittest -v test_phase02_metal test_phase03_metal` | ✅ | ✅ automated and observed; two-finger NOT TESTED |
 
 ## Wave 0 Requirements
 
@@ -54,10 +54,10 @@ created: 2026-09-24
 
 ## Validation Sign-Off
 
-- [ ] Each task has `<verify><automated>` or depends on Wave 0 tests created by a preceding task.
-- [ ] No three consecutive tasks without an automated test/build command.
+- [x] Each task has `<verify><automated>` or depends on Wave 0 tests created by a preceding task; 03-03-02 has an additional human gate.
+- [x] No three consecutive tasks without an automated test/build command.
 - [x] Wave 0 test target and GPU harness run against production code rather than duplicate state/shader logic.
 - [x] Both schemes compile and all automated checks pass; device-only/manual observations explicitly distinguished in `03-STATE-VERIFICATION.md`.
 - [x] No watch-mode flags; `nyquist_compliant` records automated coverage, not live UI approval.
 
-**Approval:** automated checks passed 2026-09-25; live interaction observation pending blocking human checkpoint. See `03-STATE-VERIFICATION.md`.
+**Approval:** user approved Mac and iPhone/iPad simulator interactions on 2026-09-25; two-finger gestures remain NOT TESTED because the simulator could not reproduce them. `nyquist_compliant` describes automated coverage, not physical-device sign-off. See `03-STATE-VERIFICATION.md`.
