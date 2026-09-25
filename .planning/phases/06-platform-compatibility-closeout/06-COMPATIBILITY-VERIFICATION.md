@@ -35,22 +35,22 @@
 
 ## Phase 06 live observations — human checkpoint
 
-Follow the numbered [README checklist](../../../README.md) on each available platform. Record observed results and the observer, date and actual OS; a previous phase's approval is historical evidence, not a Phase 06 PASS.
+Follow the numbered [README checklist](../../../README.md) on each available platform. The user replied on 2026-09-25, “All tests pass on all targeted devices,” in response to the Phase 06 request to check the full manual walkthrough on the three prepared targets. The platform/OS labels below come from the environment inventory, not a separate OS report from the user. This broad checklist approval is user-reported, not a measurement of the visual output by automation. The separate iOS UI-test invocations above timed out and remain NOT TESTED; this reply does not change their status.
 
 | Platform | Check / human procedure | Host/OS or simulator | Result | Evidence |
 |----------|-------------------------|----------------------|--------|----------|
-| Mac | Fresh blue-on-black Density, closed Tuning, Force 50% / Dye 40% / Swirl 20% / Fade 17% | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
-| Mac | Drag outside HUD deposits/swirl/fade | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
-| Mac | Pause/Resume; select Density, Pressure, Velocity, Vorticity including while paused; Space/S | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
-| Mac | Change a tuning slider, observe effect, relaunch for closed Tuning and defaults | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
-| iPhone | Fresh blue-on-black Density, closed Tuning, four default percentages | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
-| iPhone | Drag outside HUD deposits/swirl/fade | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
-| iPhone | Pause/Resume; select four named fields including while paused; one-finger double tap | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
-| iPhone | Change a tuning slider, observe effect, relaunch for defaults | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
-| iPad | Fresh blue-on-black Density, closed Tuning, four default percentages | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
-| iPad | Drag outside HUD deposits/swirl/fade | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
-| iPad | Pause/Resume; select four named fields including while paused; one-finger double tap | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
-| iPad | Change a tuning slider, observe effect, relaunch for defaults | Pending | NOT TESTED | Awaiting Phase 06 user observation. |
+| Mac | Fresh blue-on-black Density, closed Tuning, Force 50% / Dye 40% / Swirl 20% / Fade 17% | Prepared Apple Silicon Mac, macOS 27.0 | PASS — user-reported | User approved all requested manual checklist steps on 2026-09-25; individual outcomes were not separately itemized. |
+| Mac | Drag outside HUD deposits/swirl/fade | Prepared Apple Silicon Mac, macOS 27.0 | PASS — user-reported | Same Phase 06 broad checklist approval. |
+| Mac | Pause/Resume; select Density, Pressure, Velocity, Vorticity including while paused; Space/S | Prepared Apple Silicon Mac, macOS 27.0 | PASS — user-reported | Same Phase 06 broad checklist approval; Space/S was part of the request. |
+| Mac | Change a tuning slider, observe effect, relaunch for closed Tuning and defaults | Prepared Apple Silicon Mac, macOS 27.0 | PASS — user-reported | Same Phase 06 broad checklist approval. |
+| iPhone | Fresh blue-on-black Density, closed Tuning, Force 50% / Dye 40% / Swirl 20% / Fade 17% | Prepared iPhone 17 Pro, iOS 26.4 Simulator | PASS — user-reported | User approved all requested manual checklist steps on 2026-09-25; individual outcomes were not separately itemized. |
+| iPhone | Drag outside HUD deposits/swirl/fade | Prepared iPhone 17 Pro, iOS 26.4 Simulator | PASS — user-reported | Same Phase 06 broad checklist approval. |
+| iPhone | Pause/Resume; select Density, Pressure, Velocity, Vorticity including while paused; one-finger double tap | Prepared iPhone 17 Pro, iOS 26.4 Simulator | PASS — user-reported | Same Phase 06 broad checklist approval; one-finger shortcut was part of the request. |
+| iPhone | Change a tuning slider, observe effect, relaunch for defaults | Prepared iPhone 17 Pro, iOS 26.4 Simulator | PASS — user-reported | Same Phase 06 broad checklist approval. |
+| iPad | Fresh blue-on-black Density, closed Tuning, Force 50% / Dye 40% / Swirl 20% / Fade 17% | Prepared iPad Pro 13-inch (M5), iOS 26.4 Simulator | PASS — user-reported | User approved all requested manual checklist steps on 2026-09-25; individual outcomes were not separately itemized. |
+| iPad | Drag outside HUD deposits/swirl/fade | Prepared iPad Pro 13-inch (M5), iOS 26.4 Simulator | PASS — user-reported | Same Phase 06 broad checklist approval. |
+| iPad | Pause/Resume; select Density, Pressure, Velocity, Vorticity including while paused; one-finger double tap | Prepared iPad Pro 13-inch (M5), iOS 26.4 Simulator | PASS — user-reported | Same Phase 06 broad checklist approval; one-finger shortcut was part of the request. |
+| iPad | Change a tuning slider, observe effect, relaunch for defaults | Prepared iPad Pro 13-inch (M5), iOS 26.4 Simulator | PASS — user-reported | Same Phase 06 broad checklist approval. |
 
 ## Outstanding OS and device-only coverage
 
