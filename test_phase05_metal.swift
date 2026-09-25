@@ -112,11 +112,17 @@ let stored = texture(SIMD2(1, 0.5))
 var fade = Uniforms()
 for name in ["velocity", "density"] {
     let baseline = try pixel(render("advect", empty, stored, fade))
-    check(baseline.x, 0.998, "\(name) original retention", tolerance: 0.002)
+    check(baseline.x, 0.998, "\(name) original retention", tolerance: 0.0007)
+    fade.tuning.x = 0.9995
+    let slower = try pixel(render("advect", empty, stored, fade))
+    check(slower.x, 0.9995, "\(name) slowest fade", tolerance: 0.0007)
     fade.tuning.x = 0.9905
     let faster = try pixel(render("advect", empty, stored, fade))
-    check(faster.x, 0.9905, "\(name) faster fade", tolerance: 0.002)
-    guard faster.x < baseline.x, faster.y < baseline.y else { fatalError("\(name) did not fade both channels") }
+    check(faster.x, 0.9905, "\(name) fastest fade", tolerance: 0.0007)
+    guard slower.x > baseline.x, baseline.x > faster.x,
+          slower.y > baseline.y, baseline.y > faster.y else {
+        fatalError("\(name) fade did not increase to the right on both channels")
+    }
     fade.tuning.x = 0.998
 }
 
@@ -129,12 +135,18 @@ check(still.x, 0, "zero swirl x")
 check(still.y, 0, "zero swirl y")
 let turning = try pixel(render("vorticityConfinement", empty, curl, Uniforms()))
 guard abs(turning.x) > 0.01 || abs(turning.y) > 0.01 else { fatalError("default swirl failed to affect existing fluid") }
+var strongSwirl = Uniforms()
+strongSwirl.tuning.y = 2
+let stronger = try pixel(render("vorticityConfinement", empty, curl, strongSwirl))
+guard abs(stronger.x) + abs(stronger.y) > 4 * (abs(turning.x) + abs(turning.y)) else {
+    fatalError("higher swirl did not increase curl on existing fluid")
+}
 print("GPU RG16F: default force=\(try pixel(render("applyForceVector", empty, nil, normal)).x), default dye=\(try pixel(render("applyForceScalar", empty, nil, normal)).x); zero-force velocity=\(try pixel(render("applyForceVector", empty, nil, dyeOnly)).x), zero-dye density=\(try pixel(render("applyForceScalar", empty, nil, forceOnly)).x)")
-print("GPU RG16F: retention 0.998 -> \(try pixel(render("advect", empty, stored, Uniforms())).x), retention 0.9905 -> \(try pixel(render("advect", empty, stored, fadeWithFasterRetention())).x); swirl 0 -> \(still), swirl 0.4 -> \(turning)")
-print("PASS: force/dye independent; retention on both fields; swirl on stored vorticity")
+print("GPU RG16F: retention 0.9995 -> \(try pixel(render("advect", empty, stored, fadeWithRetention(0.9995))).x), retention 0.998 -> \(try pixel(render("advect", empty, stored, Uniforms())).x), retention 0.9905 -> \(try pixel(render("advect", empty, stored, fadeWithRetention(0.9905))).x); swirl 0 -> \(still), swirl 0.4 -> \(turning), swirl 2 -> \(stronger)")
+print("PASS: force/dye independent; retention endpoints on both fields; swirl on stored vorticity")
 
-func fadeWithFasterRetention() -> Uniforms {
+func fadeWithRetention(_ retention: Float) -> Uniforms {
     var data = Uniforms()
-    data.tuning.x = 0.9905
+    data.tuning.x = retention
     return data
 }

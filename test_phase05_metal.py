@@ -13,7 +13,7 @@ class Phase05MetalTests(unittest.TestCase):
         self.assertTrue(library.is_file(), "Build the Mac Debug scheme before the GPU test")
         result = subprocess.run(("xcrun", "swift", "test_phase05_metal.swift", str(library)), capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("PASS: force/dye independent; retention on both fields; swirl on stored vorticity", result.stdout)
+        self.assertIn("PASS: force/dye independent; retention endpoints on both fields; swirl on stored vorticity", result.stdout)
 
 
 if __name__ == "__main__":
