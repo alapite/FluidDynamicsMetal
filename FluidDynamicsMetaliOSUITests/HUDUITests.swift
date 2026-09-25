@@ -47,6 +47,17 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Pause simulation"].exists)
     }
 
+    func testTuningStartsClosedWithSharedDefaultValues() {
+        XCTAssertTrue(app.buttons["Show Tuning"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.sliders["Force"].exists)
+        app.buttons["Show Tuning"].tap()
+        for (name, value) in [("Force", "50%"), ("Dye", "40%"), ("Swirl", "20%"), ("Fade", "17%")] {
+            let slider = app.sliders[name]
+            XCTAssertTrue(slider.exists)
+            XCTAssertEqual(slider.value as? String, value)
+        }
+    }
+
     private func assertSelected(_ expected: String, among fields: [String], file: StaticString = #file, line: UInt = #line) {
         for name in fields {
             XCTAssertEqual(app.buttons[name].value as? String, name == expected ? "Selected" : "Not selected", file: file, line: line)

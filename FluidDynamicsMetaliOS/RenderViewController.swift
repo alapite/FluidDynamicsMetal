@@ -25,8 +25,14 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     private let caption = UILabel()
     private let activeSummary = UILabel()
     private let fieldStack = UIStackView()
-    private let fieldScroll = UIScrollView()
+    private let controlsScroll = UIScrollView()
     private let pauseButton = UIButton(type: .system)
+    private let tuningButton = UIButton(type: .system)
+    private let tuningStack = UIStackView()
+    private var tuningSliders: [TuningControl: UISlider] = [:]
+    private var tuningValues: [TuningControl: UILabel] = [:]
+    private var isTuningExpanded = false
+    private var scrollTop: NSLayoutConstraint?
     private var fieldButtons: [DisplayField: UIButton] = [:]
     private var hudWidth: NSLayoutConstraint?
     private var hudHeight: NSLayoutConstraint?
@@ -103,27 +109,71 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
             button.addTarget(self, action: #selector(selectField(_:)), for: .touchUpInside)
             fieldButtons[field] = button
         }
-        fieldScroll.translatesAutoresizingMaskIntoConstraints = false
-        fieldScroll.addSubview(fieldStack)
-        fieldStack.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            fieldStack.leadingAnchor.constraint(equalTo: fieldScroll.contentLayoutGuide.leadingAnchor),
-            fieldStack.trailingAnchor.constraint(equalTo: fieldScroll.contentLayoutGuide.trailingAnchor),
-            fieldStack.topAnchor.constraint(equalTo: fieldScroll.contentLayoutGuide.topAnchor),
-            fieldStack.bottomAnchor.constraint(equalTo: fieldScroll.contentLayoutGuide.bottomAnchor),
-            fieldStack.widthAnchor.constraint(equalTo: fieldScroll.frameLayoutGuide.widthAnchor)
-        ])
-
         pauseButton.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
         pauseButton.titleLabel?.adjustsFontForContentSizeCategory = true
         pauseButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         pauseButton.addTarget(self, action: #selector(pauseFromHUD(_:)), for: .touchUpInside)
 
-        let content = UIStackView(arrangedSubviews: [caption, activeSummary, fieldScroll, pauseButton])
+        tuningButton.setTitle("Show Tuning", for: .normal)
+        tuningButton.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
+        tuningButton.titleLabel?.adjustsFontForContentSizeCategory = true
+        tuningButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        tuningButton.addTarget(self, action: #selector(toggleTuning(_:)), for: .touchUpInside)
+        tuningStack.axis = .vertical
+        tuningStack.spacing = 8
+        tuningStack.isAccessibilityElement = false
+        tuningStack.accessibilityLabel = "Fluid tuning"
+        for control in TuningControl.allCases {
+            let name = UILabel()
+            name.text = control.title
+            name.font = .preferredFont(forTextStyle: .subheadline)
+            name.adjustsFontForContentSizeCategory = true
+            name.numberOfLines = 0
+            let value = UILabel()
+            value.font = .preferredFont(forTextStyle: .subheadline)
+            value.adjustsFontForContentSizeCategory = true
+            value.textAlignment = .right
+            value.setContentCompressionResistancePriority(.required, for: .horizontal)
+            tuningValues[control] = value
+            let heading = UIStackView(arrangedSubviews: [name, value])
+            heading.axis = .horizontal
+            heading.spacing = 4
+            let slider = UISlider()
+            slider.minimumValue = 0
+            slider.maximumValue = 1
+            slider.isContinuous = true
+            slider.tag = control.rawValue
+            slider.accessibilityLabel = control.title
+            if control == .fade {
+                slider.accessibilityHint = "Higher values fade dye and motion faster. Zero percent is the slowest available fade."
+            }
+            slider.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+            slider.addTarget(self, action: #selector(changeTuning(_:)), for: .valueChanged)
+            tuningSliders[control] = slider
+            let row = UIStackView(arrangedSubviews: [heading, slider])
+            row.axis = .vertical
+            row.spacing = 8
+            tuningStack.addArrangedSubview(row)
+        }
+        let fadeHint = UILabel()
+        fadeHint.text = "Higher Fade = faster fade"
+        fadeHint.font = .preferredFont(forTextStyle: .caption1)
+        fadeHint.adjustsFontForContentSizeCategory = true
+        fadeHint.textColor = .secondaryLabel
+        fadeHint.numberOfLines = 0
+        tuningStack.addArrangedSubview(fadeHint)
+        tuningStack.isHidden = true
+
+        let content = UIStackView(arrangedSubviews: [caption, fieldStack, pauseButton, tuningButton, tuningStack])
         content.axis = .vertical
         content.spacing = 8
         content.translatesAutoresizingMaskIntoConstraints = false
-        hud.contentView.addSubview(content)
+        controlsScroll.translatesAutoresizingMaskIntoConstraints = false
+        controlsScroll.addSubview(content)
+        activeSummary.translatesAutoresizingMaskIntoConstraints = false
+        hud.contentView.addSubview(activeSummary)
+        hud.contentView.addSubview(controlsScroll)
+        scrollTop = controlsScroll.topAnchor.constraint(equalTo: hud.contentView.topAnchor, constant: 16)
         hudWidth = hud.widthAnchor.constraint(equalToConstant: 300)
         hudHeight = hud.heightAnchor.constraint(equalToConstant: 208)
         let safe = metalView.safeAreaLayoutGuide
@@ -133,10 +183,17 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
             hud.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 16),
             hud.topAnchor.constraint(greaterThanOrEqualTo: safe.topAnchor, constant: 16),
             hudWidth!, hudHeight!,
-            content.leadingAnchor.constraint(equalTo: hud.contentView.leadingAnchor, constant: 16),
-            content.trailingAnchor.constraint(equalTo: hud.contentView.trailingAnchor, constant: -16),
-            content.topAnchor.constraint(equalTo: hud.contentView.topAnchor, constant: 16),
-            content.bottomAnchor.constraint(equalTo: hud.contentView.bottomAnchor, constant: -16)
+            activeSummary.leadingAnchor.constraint(equalTo: hud.contentView.leadingAnchor, constant: 16),
+            activeSummary.topAnchor.constraint(equalTo: hud.contentView.topAnchor, constant: 8),
+            controlsScroll.leadingAnchor.constraint(equalTo: hud.contentView.leadingAnchor, constant: 16),
+            controlsScroll.trailingAnchor.constraint(equalTo: hud.contentView.trailingAnchor, constant: -16),
+            scrollTop!,
+            controlsScroll.bottomAnchor.constraint(equalTo: hud.contentView.bottomAnchor, constant: -16),
+            content.leadingAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.trailingAnchor),
+            content.topAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.topAnchor),
+            content.bottomAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.bottomAnchor),
+            content.widthAnchor.constraint(equalTo: controlsScroll.frameLayoutGuide.widthAnchor)
         ])
         updateAppearance()
         refreshControls()
@@ -185,15 +242,19 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
             }
         }
         let fieldHeight = CGFloat((4 + columns - 1) / columns) * max(44, font.lineHeight + 16) + CGFloat((4 + columns - 1) / columns - 1) * 8
-        let compactHeight = height < fieldHeight + 44 + 32 + 16 + caption.intrinsicContentSize.height
-        let needsScroll = height < fieldHeight + 44 + 32 + (compactHeight ? 8 : 16) + (compactHeight ? 0 : caption.intrinsicContentSize.height)
+        let tuningHeight: CGFloat = isTuningExpanded ? 4 * (max(24, font.lineHeight) + 44 + 16) + 32 : 0
+        let contentHeight = fieldHeight + 88 + tuningHeight + 32 + 24 + caption.intrinsicContentSize.height
+        let compactHeight = height < contentHeight
+        let needsScroll = compactHeight
         caption.isHidden = compactHeight
         activeSummary.isHidden = !needsScroll
         activeSummary.text = "View: \(fieldTitle(renderer.state.field))"
-        fieldScroll.isScrollEnabled = needsScroll
+        let topInset: CGFloat = needsScroll ? 36 : 16
+        if scrollTop?.constant != topInset { scrollTop?.constant = topInset }
+        controlsScroll.isScrollEnabled = needsScroll
         let desiredWidth = CGFloat(columns) * buttonWidth + CGFloat(columns - 1) * 8 + 32
-        let newWidth = min(width, max(desiredWidth, 192))
-        let newHeight = min(height, fieldHeight + 44 + 32 + (compactHeight ? 8 : 16) + (compactHeight ? 0 : caption.intrinsicContentSize.height) + (needsScroll ? activeSummary.intrinsicContentSize.height + 8 : 0))
+        let newWidth = min(width, 320, max(desiredWidth, 192))
+        let newHeight = min(height, max(192, contentHeight + (needsScroll ? 20 : 0)))
         if hudWidth?.constant != newWidth { hudWidth?.constant = newWidth }
         if hudHeight?.constant != newHeight { hudHeight?.constant = newHeight }
     }
@@ -211,7 +272,31 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         }
         pauseButton.setTitle(renderer.state.userPaused ? "Resume" : "Pause", for: .normal)
         pauseButton.accessibilityLabel = renderer.state.userPaused ? "Resume simulation" : "Pause simulation"
+        refreshTuningValues()
         updateControlLayout()
+    }
+
+    @objc private func toggleTuning(_ sender: UIButton) {
+        isTuningExpanded.toggle()
+        tuningStack.isHidden = !isTuningExpanded
+        tuningButton.setTitle(isTuningExpanded ? "Hide Tuning" : "Show Tuning", for: .normal)
+        refreshControls()
+    }
+
+    @objc private func changeTuning(_ sender: UISlider) {
+        guard let control = TuningControl(rawValue: sender.tag) else { return }
+        renderer.setTuningPosition(sender.value, for: control)
+        refreshTuningValues()
+    }
+
+    private func refreshTuningValues() {
+        for control in TuningControl.allCases {
+            let position = renderer.state.tuning.position(for: control)
+            tuningSliders[control]?.value = position
+            let value = "\(Int((position * 100).rounded()))%"
+            tuningValues[control]?.text = value
+            tuningSliders[control]?.accessibilityValue = value
+        }
     }
 
     @objc private func selectField(_ sender: UIButton) {
