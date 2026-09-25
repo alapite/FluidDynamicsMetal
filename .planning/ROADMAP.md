@@ -2,7 +2,7 @@
 
 ## Overview
 
-Bring the existing two-platform simulation onto current Apple platforms without rewriting its visual behavior. Start with a usable Mac build, restore iOS parity, make shared state robust and verifiable, then progressively deliver discoverable controls and live tuning on both apps.
+Bring the existing two-platform simulation onto current Apple platforms without rewriting its visual behavior. Start with a usable Mac build, restore iOS parity, make shared state robust and verifiable, deliver discoverable controls and live tuning on both apps, then close out compatibility verification. Resolution, in-app reset and further accessibility work are deferred to a later milestone.
 
 ## Phases
 
@@ -11,7 +11,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 - [x] **Phase 3: Reliable simulation state** - Pausing, resizing, and shared state changes work and have automated coverage. (completed 2026-09-25)
 - [x] **Phase 4: Discoverable visualization** - Both apps expose native pause and named field-selection controls. (completed 2026-09-25)
 - [x] **Phase 5: Live fluid tuning** - Both apps expose input, dye, swirl, and fade controls without source edits. (completed 2026-09-25)
-- [ ] **Phase 6: Quality, reset, and accessibility** - Resolution and reset controls, accessible interactions, and complete verification finish the experience.
+- [x] **Phase 6: Platform compatibility closeout** - Verify and document the existing Mac and iOS/iPadOS apps on current-platform baselines without adding features. (completed 2026-09-25)
 
 ## Phase Details
 
@@ -94,18 +94,18 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 - [x] 05-03-PLAN.md — Verify both app paths and observe live/default fluid behavior (Wave 3; depends on Waves 1–2).
 **UI hint:** yes
 
-### Phase 6: Quality, reset, and accessibility
-**Goal:** Users can tune quality safely, restore a known starting state, and operate the finished controls natively.
+### Phase 6: Platform compatibility closeout
+**Goal:** Developers can build and verify the existing fluid apps for macOS 26 on Apple Silicon and iOS/iPadOS 26, with repeatable platform-specific instructions and no new controls or solver behavior.
 **Mode:** mvp
 **Depends on:** Phase 5
-**Requirements:** CTRL-05, CTRL-06, CTRL-07, VER-02
+**Requirements:** VER-02
 **Success Criteria** (what must be TRUE):
-  1. A bounded resolution control changes simulation quality without breaking drawing, resizing, or interaction.
-  2. A user can restore default tuning, and relaunching either app starts with those defaults.
-  3. Mac users can operate controls by keyboard and pointer; iOS users can use touch; controls have meaningful accessibility labels.
-  4. Developers can follow documented build and manual verification steps on both platforms, including dragging, pause/resume, field selection, and tuning.
-**Plans:** TBD
-**UI hint:** yes
+  1. Both existing app schemes build with current Xcode for their macOS 26 / Apple Silicon and iOS/iPadOS 26 targets without deployment-target or Swift-version overrides.
+  2. Developers can follow documented build and manual verification steps for Mac, iPhone and iPad, covering default rendering, dragging, pause/resume, field selection and existing tuning controls.
+  3. Verification records identify the host and OS actually exercised; the deferred macOS 26 runtime launch/drag check remains an explicit milestone-closeout item until completed, and physical-device multitouch checks remain non-blocking.
+**Plans:** 1/1 plans complete
+- [x] 06-01-PLAN.md — Publish Mac/iPhone/iPad build and interaction instructions and record host-attributed compatibility checks.
+**UI hint:** no
 
 ## Progress
 
@@ -118,7 +118,7 @@ Bring the existing two-platform simulation onto current Apple platforms without 
 | 3. Reliable simulation state | 3/3 | Complete   | 2026-09-25 |
 | 4. Discoverable visualization | 3/3 | Complete   | 2026-09-25 |
 | 5. Live fluid tuning | 3/3 | Complete   | 2026-09-25 |
-| 6. Quality, reset, and accessibility | 0/TBD | Not started | - |
+| 6. Platform compatibility closeout | 1/1 | Complete   | 2026-09-25 |
 
 ## Milestone Closeout Checks
 

@@ -1,7 +1,7 @@
 # Requirements: FluidDynamicsMetal Modernization
 
 **Defined:** 2026-09-24
-**Core Value:** People can interact with a responsive, visually familiar fluid simulation on both supported platforms and adjust it without editing source code.
+**Core Value:** People can interact with a responsive, visually familiar fluid simulation on both supported platforms and adjust its existing controls without editing source code.
 
 ## v1 Requirements
 
@@ -23,17 +23,17 @@
 - [x] **CTRL-02**: Users on both platforms can adjust input force and added dye/density intensity without editing code.
 - [x] **CTRL-03**: Users on both platforms can adjust swirl (vorticity confinement) strength without editing code.
 - [x] **CTRL-04**: Users on both platforms can adjust fluid fade/dissipation without editing code.
-- [ ] **CTRL-05**: Users on both platforms can adjust simulation resolution using a bounded quality/performance control without breaking rendering or interaction.
-- [ ] **CTRL-06**: Users on both platforms can restore tuning defaults from within the app; a fresh launch starts with those defaults.
-- [ ] **CTRL-07**: Users can discover and operate pause, view selection, and tuning controls with native platform input (keyboard/pointer on macOS, touch on iOS) and accessible labels.
 
 ### Verification
 
 - [x] **VER-01**: Developers can run automated checks for tuning value bounds, default/reset behavior, and field/pause state changes.
-- [ ] **VER-02**: Developers have documented steps to build both schemes and manually confirm default rendering, dragging, pause/resume, field switching, and tuning on macOS and iOS.
+- [x] **VER-02**: Developers have documented steps to build both schemes for macOS 26 / Apple Silicon and iOS/iPadOS 26, and to manually confirm default rendering, dragging, pause/resume, field switching, and existing tuning on Mac, iPhone and iPad.
 
 ## v2 Requirements
 
+- **CTRL-05**: Users on both platforms can adjust simulation resolution using a bounded quality/performance control without breaking rendering or interaction.
+- **CTRL-06**: Users on both platforms can restore tuning defaults from within the app; a fresh launch starts with those defaults.
+- **CTRL-07**: Users can discover and operate pause, view selection, and tuning controls with native platform input (keyboard/pointer on macOS, touch on iOS) and accessible labels. Existing controls and labels remain in place; further accessibility work is deferred.
 - **PRESET-01**: Users can save and recall named tuning presets, if later needed.
 - **EXPORT-01**: Users can export a still image or recording, if later needed.
 
@@ -45,6 +45,7 @@
 | iOS before 26 | Latest iOS baseline selected. |
 | Intentional solver redesign or new effects | Preserve the existing simulation's character. |
 | Persist tuning between launches | Each launch starts from reproducible defaults. |
+| New quality, reset or accessibility controls in v1 | Deferred to a later milestone; preserve the controls already delivered. |
 
 ## Traceability
 
@@ -61,13 +62,10 @@
 | CTRL-02 | Phase 5 | Complete |
 | CTRL-03 | Phase 5 | Complete |
 | CTRL-04 | Phase 5 | Complete |
-| CTRL-05 | Phase 6 | Pending |
-| CTRL-06 | Phase 6 | Pending |
-| CTRL-07 | Phase 6 | Pending |
-| VER-02 | Phase 6 | Pending |
+| VER-02 | Phase 6 | Complete |
 
-**Coverage:** 15 v1 requirements; 15 mapped to exactly one phase; 0 unmapped.
+**Coverage:** 12 v1 requirements; 12 mapped to exactly one phase; 0 unmapped. CTRL-05/06/07 are deferred to v2 and have no v1 phase assignment.
 
 ---
 *Requirements defined: 2026-09-24*
-*Last updated: 2026-09-24 after initial roadmap creation*
+*Last updated: 2026-09-25 after Phase 6 verification*
