@@ -25,6 +25,14 @@
 | iPhone HUD UI automated tests | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetaliOS -configuration Debug -destination 'platform=iOS Simulator,id=8393A81F-69D4-439E-AF8E-ED7665022800' CODE_SIGNING_ALLOWED=NO` | iPhone 17 Pro, iOS 26.4 simulator; macOS 27.0 / Xcode 27.0 | NOT TESTED | Invocation timed out after 600 s; no completed test summary or usable `.xcresult` (missing `Info.plist`). Test counts cannot be claimed. Earlier Phase 05 iPhone 6/6 PASS is historical, not this run. |
 | iPad HUD UI automated tests | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetaliOS -configuration Debug -destination 'platform=iOS Simulator,id=98C63B09-8AB0-4B26-B9C4-5277D60FCBD5' CODE_SIGNING_ALLOWED=NO` | iPad Pro 13-inch (M5), iOS 26.4 simulator; macOS 27.0 / Xcode 27.0 | NOT TESTED | Invocation timed out after 260 s; no completed test summary or usable `.xcresult` (missing `Info.plist`). Earlier Phase 05 iPad UI timeout remains historical. |
 
+## Process-launch checks (not visual verification)
+
+| Check | Command | Host / device | Result | Evidence |
+|-------|---------|---------------|--------|----------|
+| Mac app process | `open -a "$(pwd)/FluidDynamicsMetalOSX.app"`; `pgrep -fl FluidDynamicsMetalOSX` | arm64 Mac, macOS 27.0 | PASS | `open` exited 0; `pgrep` returned PID 47425 for the root `.app` executable. No Phase 06 visual observation inferred. |
+| iPhone simulator install / process | `xcrun simctl install 8393A81F-69D4-439E-AF8E-ED7665022800 '<built iOS app>'`; `xcrun simctl launch 8393A81F-69D4-439E-AF8E-ED7665022800 ro.andreisergiupitis.FluidDynamicsMetaliOS` | iPhone 17 Pro, iOS 26.4 | PASS | Install exited 0; launch returned PID 35848. Not a visual or UI-test result. |
+| iPad simulator install / process | `xcrun simctl install 98C63B09-8AB0-4B26-B9C4-5277D60FCBD5 '<built iOS app>'`; `xcrun simctl launch 98C63B09-8AB0-4B26-B9C4-5277D60FCBD5 ro.andreisergiupitis.FluidDynamicsMetaliOS` | iPad Pro 13-inch (M5), iOS 26.4 | PASS | Install exited 0; launch returned PID 36063. Not a visual or UI-test result. |
+
 ## Phase 06 live observations — human checkpoint
 
 Follow the numbered [README checklist](../../../README.md) on each available platform. Record observed results and the observer, date and actual OS; a previous phase's approval is historical evidence, not a Phase 06 PASS.
