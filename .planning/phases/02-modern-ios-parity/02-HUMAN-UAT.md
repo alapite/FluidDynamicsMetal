@@ -4,12 +4,12 @@ blocking: false
 phase: 02-modern-ios-parity
 source: [02-VERIFICATION.md, 02-PARITY.md]
 started: 2026-09-24
-updated: 2026-09-24
+updated: 2026-09-25
 ---
 
 # Phase 2 — Follow-up interaction checks
 
-The user approved Phase 2 sign-off with the following explicitly unobserved cases deferred. **These do not block implementation of the rest of the milestone.** Two-finger gestures cannot be tested with the available simulator; do not treat them as passed or require repeated simulator attempts. See `02-PARITY.md` for simulator checks that passed. A simulator check is not a physical-device pass.
+The user approved Phase 2 sign-off with the following explicitly unobserved cases deferred. **These do not block later phases or completion of the milestone.** Xcode 27 Device Hub does not currently offer two-finger tap/pan simulation via the old Option-key mechanism, as reported in the [Apple Developer Forums Device Hub discussion](https://developer.apple.com/forums/thread/846533). Do not treat simulator input as a physical-device pass or require repeated Device Hub attempts. Revisit if a physical device or capable tooling becomes available; see `02-PARITY.md` for simulator checks that passed.
 
 ## Current Test
 
@@ -19,11 +19,11 @@ Deferred manual checks; continue with Phase 3 and later phases. Revisit two-fing
 
 ### 1. Two-finger double tap and dye-free field cycling
 expected: On an iOS 26 iPhone and iPad, a two-finger double tap cycles density → pressure → velocity → vorticity → density exactly once per shortcut without adding dye or pausing.
-result: deferred — NOT TESTED, device-only; the simulator cannot exercise this two-finger gesture. Non-blocking for milestone implementation.
+result: deferred — NOT TESTED, device-only with current Device Hub; non-blocking for later phases **and milestone completion**.
 
 ### 2. Independent simultaneous contacts and one-touch lift/cancel
 expected: Every concurrent touch adds independent force/density; lifting or cancelling one leaves other fingers active without stale or oversized splats, including more than five touches if supported by the device.
-result: deferred — NOT TESTED, device-only; physical-device check pending, non-blocking for milestone implementation.
+result: deferred — NOT TESTED, device-only; physical-device check pending, non-blocking for later phases **and milestone completion**.
 
 ### 3. Phone/tablet stroke proportions
 expected: A stroke affects a comparable fraction of the shorter canvas side on iPhone and iPad at default settings.
