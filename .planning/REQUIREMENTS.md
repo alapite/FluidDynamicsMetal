@@ -20,9 +20,9 @@
 ### Native controls
 
 - [x] **CTRL-01**: Users on both platforms can select density, pressure, velocity, or vorticity by named on-screen controls and identify the active view.
-- [ ] **CTRL-02**: Users on both platforms can adjust input force and added dye/density intensity without editing code.
-- [ ] **CTRL-03**: Users on both platforms can adjust swirl (vorticity confinement) strength without editing code.
-- [ ] **CTRL-04**: Users on both platforms can adjust fluid fade/dissipation without editing code.
+- [x] **CTRL-02**: Users on both platforms can adjust input force and added dye/density intensity without editing code.
+- [x] **CTRL-03**: Users on both platforms can adjust swirl (vorticity confinement) strength without editing code.
+- [x] **CTRL-04**: Users on both platforms can adjust fluid fade/dissipation without editing code.
 - [ ] **CTRL-05**: Users on both platforms can adjust simulation resolution using a bounded quality/performance control without breaking rendering or interaction.
 - [ ] **CTRL-06**: Users on both platforms can restore tuning defaults from within the app; a fresh launch starts with those defaults.
 - [ ] **CTRL-07**: Users can discover and operate pause, view selection, and tuning controls with native platform input (keyboard/pointer on macOS, touch on iOS) and accessible labels.
@@ -58,9 +58,9 @@
 | SIM-03 | Phase 3 | Complete |
 | VER-01 | Phase 3 | Complete |
 | CTRL-01 | Phase 4 | Complete |
-| CTRL-02 | Phase 5 | Pending |
-| CTRL-03 | Phase 5 | Pending |
-| CTRL-04 | Phase 5 | Pending |
+| CTRL-02 | Phase 5 | Complete |
+| CTRL-03 | Phase 5 | Complete |
+| CTRL-04 | Phase 5 | Complete |
 | CTRL-05 | Phase 6 | Pending |
 | CTRL-06 | Phase 6 | Pending |
 | CTRL-07 | Phase 6 | Pending |
