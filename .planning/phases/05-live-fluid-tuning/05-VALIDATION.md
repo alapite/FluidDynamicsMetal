@@ -1,8 +1,8 @@
 ---
 phase: 5
 slug: live-fluid-tuning
-status: draft
-nyquist_compliant: false
+status: validated
+nyquist_compliant: true
 wave_0_complete: true
 created: 2026-09-25
 ---
@@ -40,12 +40,12 @@ created: 2026-09-25
 | Planned behavior (assign task ID after planning) | Requirement | Test type | Automated command | File exists | Status |
 |--------------------------------------------------|-------------|-----------|-------------------|-------------|--------|
 | Slider mapping: four positions, endpoint bounds, default values, Fade direction/roundtrip | CTRL-02, CTRL-03, CTRL-04; D-08–D-10 | Shared XCTest | Mac quick run | New mapping tests in `SimulationStateTests.swift` | PASS — 8/8 state tests; 2 new |
-| Force and Dye independence on real inputs including zero values, default impulses | CTRL-02; D-04–D-05 | Offscreen Metal behavior + Mac app interaction | Focused GPU harness after Mac Debug build; Mac quick run | `test_phase05_metal.py` and `.swift` | PASS numeric GPU splats; live observation pending |
-| Swirl and shared velocity/density retention on existing nonempty fields without new contacts | CTRL-03, CTRL-04; D-06–D-07 | Offscreen Metal behavior + visual observation | Focused GPU harness after Mac Debug build | `test_phase05_metal.py` and `.swift` | PASS numeric GPU readback; live observation pending |
-| Mac closed-by-default Tuning group, slider values, pause/field and keyboard/drag boundaries | CTRL-02–04; D-01–D-03, D-08 | Mac XCUITest + manual compact layout | Mac quick run | `FluidDynamicsMetalOSXUITests/HUDUITests.swift` | PASS 5/5 HUD UI tests; 320×240 visual check pending |
-| iOS closed-by-default Tuning group, slider values, pause/field, touch/scroll boundaries | CTRL-02–04; D-01–D-03, D-08 | iPhone XCUITest + manual iPhone/iPad layout | iOS full-suite command with available simulator | `FluidDynamicsMetaliOSUITests/HUDUITests.swift` | PASS 6/6 iPhone HUD UI tests; iPad test timed out; live observation pending |
+| Force and Dye independence on real inputs including zero values, default impulses | CTRL-02; D-04–D-05 | Offscreen Metal behavior + Mac app interaction | Focused GPU harness after Mac Debug build; Mac quick run | `test_phase05_metal.py` and `.swift` | PASS numeric GPU splats and user-approved Mac/iPhone/iPad live checks |
+| Swirl and shared velocity/density retention on existing nonempty fields without new contacts | CTRL-03, CTRL-04; D-06–D-07 | Offscreen Metal behavior + visual observation | Focused GPU harness after Mac Debug build | `test_phase05_metal.py` and `.swift` | PASS numeric GPU readback and user-approved Mac/iPhone/iPad live checks |
+| Mac closed-by-default Tuning group, slider values, pause/field and keyboard/drag boundaries | CTRL-02–04; D-01–D-03, D-08 | Mac XCUITest + manual compact layout | Mac quick run | `FluidDynamicsMetalOSXUITests/HUDUITests.swift` | PASS 5/5 HUD UI tests; user approved 320×240 and interaction checks |
+| iOS closed-by-default Tuning group, slider values, pause/field, touch/scroll boundaries | CTRL-02–04; D-01–D-03, D-08 | iPhone XCUITest + manual iPhone/iPad layout | iOS full-suite command with available simulator | `FluidDynamicsMetaliOSUITests/HUDUITests.swift` | PASS 6/6 iPhone HUD UI tests and user-approved iPhone/iPad observations; iPad automation timed out |
 
-*Automated PASS is restricted to the checks actually run; live look/feel and compact-host observations remain pending in `05-TUNING-VERIFICATION.md`. No threat-model-specific external exposure is expected: controls modify only local in-memory solver state.*
+*Automated PASS is restricted to checks actually run; the Mac/iPhone/iPad live checks are separately attributed to the user's 2026-09-25 approval in `05-TUNING-VERIFICATION.md`. No threat-model-specific external exposure is expected: controls modify only local in-memory solver state.*
 
 ---
 
@@ -74,6 +74,6 @@ created: 2026-09-25
 - [x] Newly needed behavior tests exist and have been run against production code/shaders.
 - [x] Existing shared state, Mac UI, iOS UI and Metal test infrastructure can be extended without introducing a second simulation implementation.
 - [x] No watch-mode commands.
-- [ ] `nyquist_compliant: true` only after executing and recording sufficient behavior checks; do not infer it from this draft strategy.
+- [x] `nyquist_compliant: true` after running numeric GPU/state/HUD checks and recording the user's live Mac/iPhone/iPad approval; physical multitouch and iPad UI automation remain NOT TESTED.
 
-**Approval:** automated evidence recorded 2026-09-25 in `05-TUNING-VERIFICATION.md`; human live-fluid and compact-layout checkpoint pending. Keep `status: draft` and `nyquist_compliant: false` until those observations are reported.
+**Approval:** automated evidence and user-approved live-fluid/compact-layout observations recorded 2026-09-25 in `05-TUNING-VERIFICATION.md`; physical-device multitouch and iPad UI automation retain their separate NOT TESTED statuses.

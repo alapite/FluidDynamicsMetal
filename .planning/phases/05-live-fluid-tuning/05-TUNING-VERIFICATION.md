@@ -22,23 +22,23 @@
 
 **Numeric Metal readback:** force-default 0.99658203, dye-default 0.796875 at the sample pixel (Gaussian splat and Float16 rounding); zero-force velocity 0.0 with dye present; zero-dye density 0.0 with force present. On a nonempty field the retained channel changed from 0.9980469 (original 0.998) to 0.99072266 (0.9905 setting) through the same `advect` pass used for velocity and density. A nonuniform stored vorticity field produced velocity `(0, 0)` at swirl 0 and `(0, -0.19995117)` at swirl 0.4 without a new contact. These values are GPU pass readback, not a claim about a visibly observed animation or a whole-frame solver outcome.
 
-## Live observation matrix — awaiting human checkpoint
+## Live observation matrix — user approved 2026-09-25
 
-No visual outcome has been inferred from a build or simulator launch. Record a concrete observation and host in each row before changing NOT TESTED to PASS/FAIL.
+The user reported: “Approved. All of checklist items pass on all of the target devices.” The PASS entries below are **user-reported observations of the requested checks** on the available Mac, iPhone simulator and iPad simulator—not conclusions inferred from automated tests, and not independently measured frame data. The approval did not establish physical-device multitouch coverage.
 
 | Behavior | Mac macOS 27 | iPhone 17 Pro iOS 26.4 | iPad Pro M5 iOS 26.4 |
 |----------|--------------|------------------------|----------------------|
-| Fresh launch: closed Tuning, 50/40/20/17% defaults, familiar blue-on-black fluid | NOT TESTED — native/UI tests cover labels only | NOT TESTED — UI tests cover labels only | NOT TESTED |
-| Held stroke: changing Force affects next movement; 0% Force adds dye without new motion | NOT TESTED | NOT TESTED | NOT TESTED |
-| 0% Dye stirs without depositing; iOS single tap with nonzero Dye deposits | NOT TESTED | NOT TESTED | NOT TESTED |
-| Existing moving fluid: Swirl 0% vs higher, without new input | NOT TESTED | NOT TESTED | NOT TESTED |
-| Existing density AND velocity: Fade 0% vs 100%, faster to right | NOT TESTED | NOT TESTED | NOT TESTED |
-| Pause: adjusting four labels does not advance visible slab until resume; field switch remains available | NOT TESTED | NOT TESTED | NOT TESTED |
-| Disclosure retains values across Hide/Reopen, canvas contact and field selection | NOT TESTED — automated Mac HUD check passed | NOT TESTED — automated iPhone HUD check passed | NOT TESTED |
-| Compact HUD: Mac 320×240 or iOS landscape/large text; scroll to Fade and operate controls | NOT TESTED | NOT TESTED — automated landscape scroll check passed | NOT TESTED |
-| Outside-HUD input and existing shortcuts; HUD events do not stir or trigger shortcuts | NOT TESTED — keyboard UI regression passed | NOT TESTED — single-finger HUD/outside shortcut UI regression passed | NOT TESTED |
+| Fresh launch: closed Tuning, 50/40/20/17% defaults, familiar blue-on-black fluid | PASS — user approved fresh defaults and familiar appearance on Mac | PASS — user approved fresh defaults and familiar appearance on iPhone | PASS — user approved fresh defaults and familiar appearance on iPad |
+| Held stroke: changing Force affects next movement; 0% Force adds dye without new motion | PASS — user approved mid-stroke change and dye-only case | PASS — user approved mid-stroke change and dye-only case | PASS — user approved mid-stroke change and dye-only case |
+| 0% Dye stirs without depositing; iOS single tap with nonzero Dye deposits | PASS — user approved no-dye stirring | PASS — user approved no-dye stirring and outside-HUD single-tap dye | PASS — user approved no-dye stirring and outside-HUD single-tap dye |
+| Existing moving fluid: Swirl 0% vs higher, without new input | PASS — user approved comparison on already-moving fluid | PASS — user approved comparison on already-moving fluid | PASS — user approved comparison on already-moving fluid |
+| Existing density AND velocity: Fade 0% vs 100%, faster to right | PASS — user approved faster rightward fade of both fields | PASS — user approved faster rightward fade of both fields | PASS — user approved faster rightward fade of both fields |
+| Pause: adjusting four labels does not advance visible slab until resume; field switch remains available | PASS — user approved frozen display and resume | PASS — user approved frozen display and resume | PASS — user approved frozen display and resume |
+| Disclosure retains values across Hide/Reopen, canvas contact and field selection | PASS — user approved sticky values and open state | PASS — user approved sticky values and open state | PASS — user approved sticky values and open state |
+| Compact HUD: Mac 320×240 or iOS landscape/large text; scroll to Fade and operate controls | PASS — user approved 320×240 scroll reachability | PASS — user approved landscape/large-text scroll reachability | PASS — user approved landscape/large-text scroll reachability |
+| Outside-HUD input and existing shortcuts; HUD events do not stir or trigger shortcuts | PASS — user approved outside input and keyboard/HUD isolation | PASS — user approved outside input and single-finger/HUD isolation | PASS — user approved outside input and single-finger/HUD isolation |
 | Device-only two-finger field cycle / concurrent iOS touch | Not applicable | NOT TESTED — physical device required | NOT TESTED — physical device required |
 
-## Human checkpoint
+## Human checkpoint outcome
 
-Use the already-built root-level Mac app and booted iPhone/iPad simulators. On each available host, compare the default fluid to `FluidDynamicsMetal.gif` and the Phase 1 baseline, then perform the independent Force/Dye and ongoing Swirl/Fade checks described in `05-03-PLAN.md` Task 2. Resize Mac to 320×240, rotate iPhone/iPad, operate Fade and Pause after scrolling, then stir immediately outside the HUD. Record observed PASS/FAIL/NOT TESTED with a concrete note in the matrix. If the iPad simulator UI remains unresponsive, keep iPad observations NOT TESTED and report the host limitation rather than approving unobserved behavior.
+Approved by user on 2026-09-25 for all checklist items on all three available target hosts. The iPad's automated UI-test timeout remains recorded independently above; physical iOS two-finger/concurrent touch and macOS 26 runtime remain NOT TESTED under the existing non-blocking follow-up decision.
