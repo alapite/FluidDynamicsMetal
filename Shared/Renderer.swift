@@ -25,6 +25,7 @@ struct StaticData {
     
     var screenSize: float2
     var inkRadius: simd_float1
+    var tuning: simd_float4
 }
 
 struct VertexData {
@@ -119,6 +120,10 @@ class Renderer: NSObject {
         metalView?.isPaused = !state.shouldAdvance
     }
 
+    func setTuningPosition(_ position: Float, for control: TuningControl) {
+        state.tuning.setPosition(position, for: control)
+    }
+
     func resignActive() {
         state.resignActive()
         clearInput()
@@ -182,7 +187,8 @@ class Renderer: NSObject {
                                     impulseScalar: float2(),
                                     offsets: float2(1.0/Float(width), 1.0/Float(height)),
                                     screenSize: float2(Float(width), Float(height)),
-                                    inkRadius: 150 / Renderer.ScreenScaleAdjustment)
+                                     inkRadius: 150 / Renderer.ScreenScaleAdjustment,
+                                     tuning: simd_float4(state.tuning.retention, state.tuning.swirl, 0, 0))
 
         uniformsBuffers.removeAll()
         for _ in 0..<Renderer.MaxBuffers {
@@ -192,10 +198,10 @@ class Renderer: NSObject {
         }
     }
 
-    private final func writeContacts(_ contacts: [FluidContact], to data: inout StaticData) {
+    private final func writeContacts(_ contacts: [FluidContact], tuning: SimulationTuning, to data: inout StaticData) {
         data.positions = (float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2())
         data.impulses = (float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2(), float2())
-        data.impulseScalar = contacts.isEmpty ? float2() : float2(0.8, 0.0)
+        data.impulseScalar = contacts.isEmpty ? float2() : float2(tuning.dye, 0.0)
         withUnsafeMutableBytes(of: &data.positions) { bytes in
             let slots = bytes.bindMemory(to: float2.self)
             for (index, contact) in contacts.prefix(Renderer.ContactCapacity).enumerated() {
@@ -207,16 +213,17 @@ class Renderer: NSObject {
         withUnsafeMutableBytes(of: &data.impulses) { bytes in
             let slots = bytes.bindMemory(to: float2.self)
             for (index, contact) in contacts.prefix(Renderer.ContactCapacity).enumerated() {
-                slots[index] = contact.impulse / Renderer.ScreenScaleAdjustment
+                slots[index] = contact.impulse * tuning.force / Renderer.ScreenScaleAdjustment
             }
         }
         data.inkRadius = touchRadius ?? 150 / Renderer.ScreenScaleAdjustment
     }
 
-    private final func nextBuffer(contacts: [FluidContact]) -> MTLBuffer {
+    private final func nextBuffer(contacts: [FluidContact], tuning: SimulationTuning) -> MTLBuffer {
         let buffer = uniformsBuffers[avaliableBufferIndex]
         let bufferData = buffer.contents().bindMemory(to: StaticData.self, capacity: 1)
-        writeContacts(contacts, to: &bufferData.pointee)
+        bufferData.pointee.tuning = simd_float4(tuning.retention, tuning.swirl, 0, 0)
+        writeContacts(contacts, tuning: tuning, to: &bufferData.pointee)
 
         avaliableBufferIndex = (avaliableBufferIndex + 1) % Renderer.MaxBuffers
         return buffer
@@ -362,6 +369,7 @@ extension Renderer: MTKViewDelegate {
             return
         }
 
+        let tuning = state.tuning
         var contacts = touchContacts
         contacts.append(contentsOf: pendingTapContacts)
         pendingTapContacts.removeAll()
@@ -373,7 +381,7 @@ extension Renderer: MTKViewDelegate {
                 FluidContact(position: $0.element, impulse: $0.element - prior[$0.offset])
             }
         }
-        let dataBuffer = nextBuffer(contacts: Array(contacts.prefix(Renderer.ContactCapacity)))
+        let dataBuffer = nextBuffer(contacts: Array(contacts.prefix(Renderer.ContactCapacity)), tuning: tuning)
 
         advect(commandBuffer: commandBuffer, dataBuffer: dataBuffer, velocity: velocity, source: velocity, destination: velocity)
         advect(commandBuffer: commandBuffer, dataBuffer: dataBuffer, velocity: velocity, source: density, destination: density)
@@ -385,7 +393,7 @@ extension Renderer: MTKViewDelegate {
                     forceBuffer = dataBuffer
                 } else {
                     var data = dataBuffer.contents().bindMemory(to: StaticData.self, capacity: 1).pointee
-                    writeContacts(Array(contacts[start..<min(start + Renderer.ContactCapacity, contacts.count)]), to: &data)
+                    writeContacts(Array(contacts[start..<min(start + Renderer.ContactCapacity, contacts.count)]), tuning: tuning, to: &data)
                     forceBuffer = MetalDevice.sharedInstance.device.makeBuffer(bytes: &data, length: MemoryLayout<StaticData>.stride, options: .storageModeShared)!
                 }
                 applyForceVector(commandBuffer: commandBuffer, dataBuffer: forceBuffer, destination: velocity)

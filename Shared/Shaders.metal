@@ -65,6 +65,7 @@ struct BufferData {
     float2 screenSize;
 
     float inkRadius;
+    float4 tuning;
 };
 
 inline float2 bilerpFrag(sampler textureSampler, texture2d<float> texture, float2 p, float2 screenSize) {
@@ -146,7 +147,7 @@ fragment half2 advect(VertexOut fragmentIn [[stage_in]], texture2d<float, access
 
     float2 uv = (fragmentIn.textureCoorinates * screenSize) - velocity.sample(fluid_sampler, fragmentIn.textureCoorinates).xy;
 
-    half2 color = 0.998h * half2(bilerpFrag(fluid_sampler, advected, uv, screenSize));
+    half2 color = half(bufferData.tuning.x) * half2(bilerpFrag(fluid_sampler, advected, uv, screenSize));
 
     return color.xy;
 }
@@ -243,7 +244,7 @@ fragment half2 vorticityConfinement(VertexOut fragmentIn [[stage_in]], texture2d
 
     float timestep = 1.0;
     float epsilon = 2.4414e-4;
-    float2 curl = float2(0.4, 0.4);
+    float2 curl = float2(bufferData.tuning.y);
 
 
     float2 force = scale * float2(abs(vt) - abs(vb), abs(vr) - abs(vl));

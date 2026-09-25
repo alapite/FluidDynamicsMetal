@@ -1,6 +1,39 @@
 import XCTest
 
 final class SimulationStateTests: XCTestCase {
+    func testSliderPositionsPreserveOriginalDefaultsAndBounds() {
+        let tuning = SimulationTuning()
+        XCTAssertEqual(tuning.position(for: .force), 0.5, accuracy: 0.00001)
+        XCTAssertEqual(tuning.position(for: .dye), 0.4, accuracy: 0.00001)
+        XCTAssertEqual(tuning.position(for: .swirl), 0.2, accuracy: 0.00001)
+        XCTAssertEqual(tuning.position(for: .fade), 0.17, accuracy: 0.00001)
+        var changed = tuning
+        for control in TuningControl.allCases {
+            changed.setPosition(-1, for: control)
+            XCTAssertEqual(changed.position(for: control), 0, accuracy: 0.00001)
+            changed.setPosition(2, for: control)
+            XCTAssertEqual(changed.position(for: control), 1, accuracy: 0.00001)
+            changed.setPosition(0.63, for: control)
+            XCTAssertEqual(changed.position(for: control), 0.63, accuracy: 0.0001)
+        }
+        XCTAssertEqual(changed.force, 1.26, accuracy: 0.0001)
+        XCTAssertEqual(changed.dye, 1.26, accuracy: 0.0001)
+        XCTAssertEqual(changed.swirl, 1.26, accuracy: 0.0001)
+        changed.setPosition(.nan, for: .force)
+        XCTAssertEqual(changed.force, 1)
+    }
+
+    func testFadeMapsContinuousPositionsAcrossOriginalDetent() {
+        var tuning = SimulationTuning()
+        for (position, retention) in [(Float(0), Float(0.9995)), (0.17, 0.998), (1, 0.9905), (0.085, 0.99875), (0.585, 0.99425)] {
+            tuning.setPosition(position, for: .fade)
+            XCTAssertEqual(tuning.retention, retention, accuracy: 0.00001)
+            XCTAssertEqual(tuning.position(for: .fade), position, accuracy: 0.0001)
+        }
+        tuning.setPosition(.infinity, for: .fade)
+        XCTAssertEqual(tuning.retention, 0.998)
+    }
+
     func testFieldCycleAndPause() {
         var state = SimulationState()
         XCTAssertEqual(state.field, .density)
