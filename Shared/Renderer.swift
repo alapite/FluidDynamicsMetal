@@ -62,6 +62,7 @@ class Renderer: NSObject {
     private let vorticityShader: RenderShader = RenderShader(fragmentShader: "vorticity", vertexShader: "vertexShader", pixelFormat: .rg16Float)
     private let vorticityConfinementShader: RenderShader = RenderShader(fragmentShader: "vorticityConfinement", vertexShader: "vertexShader", pixelFormat: .rg16Float)
     private let gradientShader: RenderShader = RenderShader(fragmentShader: "gradient", vertexShader: "vertexShader", pixelFormat: .rg16Float)
+    private let resampleShader: RenderShader = RenderShader(fragmentShader: "resampleField", vertexShader: "vertexShader", pixelFormat: .rg16Float)
 
     private let renderVector: RenderShader = RenderShader(fragmentShader: "visualizeVector", vertexShader: "vertexShader")
     private let renderScalar: RenderShader = RenderShader(fragmentShader: "visualizeScalar", vertexShader: "vertexShader")
@@ -79,6 +80,8 @@ class Renderer: NSObject {
     private var velocityDivergence: Slab!
     private var velocityVorticity: Slab!
     private var pressure: Slab!
+    private var gridWidth = 0
+    private var gridHeight = 0
 
     //Inflight buffers
     private var uniformsBuffers: [MTLBuffer] = []
@@ -410,10 +413,58 @@ extension Renderer: MTKViewDelegate {
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        guard view.bounds.width.isFinite, view.bounds.height.isFinite,
+              view.bounds.width > 0, view.bounds.height > 0 else { return }
         let width = Int(Float(view.bounds.width) / Renderer.ScreenScaleAdjustment)
         let height = Int(Float(view.bounds.height) / Renderer.ScreenScaleAdjustment)
+        guard width > 0, height > 0, width != gridWidth || height != gridHeight else { return }
 
-        initSurfaces(width: width, height: height)
+        // Draw completion returns each permit; taking all three keeps both texture and
+        // uniform-buffer replacement off any frame still in flight on the serial queue.
+        for _ in 0..<Renderer.MaxBuffers { semaphore.wait() }
+        do {
+        defer { for _ in 0..<Renderer.MaxBuffers { semaphore.signal() } }
+
+        let newVelocity = Slab(width: width, height: height, format: .rg16Float, name: "Velocity")
+        let newDensity = Slab(width: width, height: height, format: .rg16Float, name: "Density")
+        let newDivergence = Slab(width: width, height: height, format: .rg16Float, name: "Divergence")
+        let newVorticity = Slab(width: width, height: height, format: .rg16Float, name: "Vorticity")
+        let newPressure = Slab(width: width, height: height, format: .rg16Float, name: "Pressure")
+
+        if gridWidth > 0, let oldVelocity = velocity {
+            let command = MetalDevice.sharedInstance.newCommandBuffer()
+            let pairs: [(Slab, Slab, float2)] = [
+                (oldVelocity, newVelocity, float2(Float(width) / Float(gridWidth), Float(height) / Float(gridHeight))),
+                (density, newDensity, float2(1, 1)),
+                (velocityDivergence, newDivergence, float2(1, 1)),
+                (velocityVorticity, newVorticity, float2(1, 1)),
+                (pressure, newPressure, float2(1, 1))
+            ]
+            for (source, destination, scale) in pairs {
+                var factors = scale
+                resampleShader.calculateWithCommandBuffer(buffer: command, indices: indexData, count: Renderer.indices.count, texture: destination.ping) { encoder in
+                    encoder.setVertexBuffer(self.vertData, offset: 0, index: 0)
+                    encoder.setFragmentTexture(source.ping, index: 0)
+                    encoder.setFragmentBytes(&factors, length: MemoryLayout<float2>.stride, index: 0)
+                }
+            }
+            command.commit()
+            command.waitUntilCompleted()
+            guard command.status == .completed else {
+                print("Fluid resize failed: \(command.error?.localizedDescription ?? "unknown GPU error")")
+                return
+            }
+        }
+        velocity = newVelocity
+        density = newDensity
+        velocityDivergence = newDivergence
+        velocityVorticity = newVorticity
+        pressure = newPressure
+        gridWidth = width
+        gridHeight = height
+        clearInput()
         initBuffers(width: width, height: height)
+        }
+        if !state.shouldAdvance && !state.inactive { view.draw() }
     }
 }

@@ -45,6 +45,14 @@ fragment half4 visualizeVector(VertexOut fragmentIn [[stage_in]], texture2d<floa
     return half4(half4(0.5) + 0.5 * color);
 }
 
+// Preserve both RG16F channels over the entire normalized field on resize.
+fragment half2 resampleField(VertexOut fragmentIn [[stage_in]],
+                             texture2d<float, access::sample> oldField [[texture(0)]],
+                             constant float2 &velocityScale [[buffer(0)]]) {
+    constexpr sampler clampedSampler(coord::normalized, address::clamp_to_edge, filter::nearest);
+    return half2(oldField.sample(clampedSampler, fragmentIn.textureCoorinates).xy * velocityScale);
+}
+
 //Fluid Dynamics Render Encoder
 
 struct BufferData {
