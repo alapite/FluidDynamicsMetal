@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A30000000000000000000001 /* SimulationState.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SimulationState.swift */; };
+		A30000000000000000000002 /* SimulationState.swift in Mac Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SimulationState.swift */; };
+		A30000000000000000000003 /* SimulationState.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SimulationState.swift */; };
+		A30000000000000000000005 /* SimulationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000006 /* SimulationStateTests.swift */; };
 		753C095A1F43995300D67F17 /* ComputeShader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 753C09591F4398C500D67F17 /* ComputeShader.swift */; };
 		753C095B1F43995300D67F17 /* MetalDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 753C09581F43988D00D67F17 /* MetalDevice.swift */; };
 		756896A51FEB08A800727447 /* Renderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 756896A41FEB08A800727447 /* Renderer.swift */; };
@@ -31,6 +35,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A30000000000000000000004 /* SimulationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationState.swift; sourceTree = "<group>"; };
+		A30000000000000000000006 /* SimulationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationStateTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000007 /* FluidDynamicsMetalStateTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluidDynamicsMetalStateTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		753C09581F43988D00D67F17 /* MetalDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalDevice.swift; sourceTree = "<group>"; };
 		753C09591F4398C500D67F17 /* ComputeShader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputeShader.swift; sourceTree = "<group>"; };
 		756896A41FEB08A800727447 /* Renderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Renderer.swift; sourceTree = "<group>"; };
@@ -55,6 +62,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		A30000000000000000000008 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		75D5208F1FE5539E003525F9 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -72,6 +80,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A30000000000000000000009 /* FluidDynamicsMetalStateTests */ = {isa = PBXGroup; children = (A30000000000000000000006 /* SimulationStateTests.swift */,); path = FluidDynamicsMetalStateTests; sourceTree = "<group>"; };
 		75D520931FE5539E003525F9 /* FluidDynamicsMetalOSX */ = {
 			isa = PBXGroup;
 			children = (
@@ -93,6 +102,7 @@
 				753C09581F43988D00D67F17 /* MetalDevice.swift */,
 				7594D4391F4361F300E4AE27 /* Slab.swift */,
 				756896A41FEB08A800727447 /* Renderer.swift */,
+				A30000000000000000000004 /* SimulationState.swift */,
 				75F3F0811F31AE8D00A3EC4A /* Shaders.metal */,
 			);
 			path = Shared;
@@ -104,6 +114,7 @@
 				75D520A71FE553B4003525F9 /* Shared */,
 				75F3F06A1F311D4A00A3EC4A /* FluidDynamicsMetaliOS */,
 				75D520931FE5539E003525F9 /* FluidDynamicsMetalOSX */,
+				A30000000000000000000009 /* FluidDynamicsMetalStateTests */,
 				75F3F0691F311D4A00A3EC4A /* Products */,
 				75F3F07D1F311D7800A3EC4A /* Frameworks */,
 			);
@@ -114,6 +125,7 @@
 			children = (
 				75F3F0681F311D4A00A3EC4A /* FluidDynamicsMetaliOS.app */,
 				75D520921FE5539E003525F9 /* FluidDynamicsMetalOSX.app */,
+				A30000000000000000000007 /* FluidDynamicsMetalStateTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -142,6 +154,17 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A3000000000000000000000A /* FluidDynamicsMetalStateTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A3000000000000000000000C /* Build configuration list for PBXNativeTarget "FluidDynamicsMetalStateTests" */;
+			buildPhases = (A3000000000000000000000B /* Sources */, A30000000000000000000008 /* Frameworks */);
+			buildRules = ();
+			dependencies = ();
+			name = FluidDynamicsMetalStateTests;
+			productName = FluidDynamicsMetalStateTests;
+			productReference = A30000000000000000000007 /* FluidDynamicsMetalStateTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		75D520911FE5539E003525F9 /* FluidDynamicsMetalOSX */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 75D520A41FE5539E003525F9 /* Build configuration list for PBXNativeTarget "FluidDynamicsMetalOSX" */;
@@ -186,6 +209,7 @@
 				LastUpgradeCheck = 0920;
 				ORGANIZATIONNAME = "Andrei-Sergiu Pițiș";
 				TargetAttributes = {
+					A3000000000000000000000A = {CreatedOnToolsVersion = 27.0; ProvisioningStyle = Automatic; };
 					75D520911FE5539E003525F9 = {
 						CreatedOnToolsVersion = 9.2;
 						ProvisioningStyle = Automatic;
@@ -209,6 +233,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				A3000000000000000000000A /* FluidDynamicsMetalStateTests */,
 				75F3F0671F311D4A00A3EC4A /* FluidDynamicsMetaliOS */,
 				75D520911FE5539E003525F9 /* FluidDynamicsMetalOSX */,
 			);
@@ -238,11 +263,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		A3000000000000000000000B /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A30000000000000000000003 /* SimulationState.swift in Test Sources */, A30000000000000000000005 /* SimulationStateTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 		75D5208E1FE5539E003525F9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				756896A61FEB08A800727447 /* Renderer.swift in Sources */,
+				A30000000000000000000002 /* SimulationState.swift in Mac Sources */,
 				75D520AA1FE553EA003525F9 /* MetalDevice.swift in Sources */,
 				75D520AD1FE553EA003525F9 /* Shaders.metal in Sources */,
 				75D520A91FE553EA003525F9 /* RenderShader.swift in Sources */,
@@ -258,6 +285,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				756896A51FEB08A800727447 /* Renderer.swift in Sources */,
+				A30000000000000000000001 /* SimulationState.swift in iOS Sources */,
 				753C095A1F43995300D67F17 /* ComputeShader.swift in Sources */,
 				753C095B1F43995300D67F17 /* MetalDevice.swift in Sources */,
 				75F3F0821F31AE8D00A3EC4A /* Shaders.metal in Sources */,
@@ -298,6 +326,8 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		A3000000000000000000000D /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = com.andreisergiupitis.FluidDynamicsMetalStateTests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = macosx; SWIFT_VERSION = 5.0; }; name = Debug; };
+		A3000000000000000000000E /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = com.andreisergiupitis.FluidDynamicsMetalStateTests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = macosx; SWIFT_VERSION = 5.0; }; name = Release; };
 		75D520A51FE5539E003525F9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -485,6 +515,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A3000000000000000000000C /* Build configuration list for PBXNativeTarget "FluidDynamicsMetalStateTests" */ = {isa = XCConfigurationList; buildConfigurations = (A3000000000000000000000D /* Debug */, A3000000000000000000000E /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		75D520A41FE5539E003525F9 /* Build configuration list for PBXNativeTarget "FluidDynamicsMetalOSX" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
