@@ -13,6 +13,11 @@
 		A30000000000000000000002 /* SimulationState.swift in Mac Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SimulationState.swift */; };
 		A30000000000000000000003 /* SimulationState.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SimulationState.swift */; };
 		A30000000000000000000005 /* SimulationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000006 /* SimulationStateTests.swift */; };
+		A30000000000000000000010 /* RendererContactTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000011 /* RendererContactTests.swift */; };
+		A30000000000000000000012 /* Renderer.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = 756896A41FEB08A800727447 /* Renderer.swift */; };
+		A30000000000000000000013 /* MetalDevice.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = 753C09581F43988D00D67F17 /* MetalDevice.swift */; };
+		A30000000000000000000014 /* RenderShader.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = 7594D4371F434ECE00E4AE27 /* RenderShader.swift */; };
+		A30000000000000000000015 /* Slab.swift in Test Sources */ = {isa = PBXBuildFile; fileRef = 7594D4391F4361F300E4AE27 /* Slab.swift */; };
 		753C095A1F43995300D67F17 /* ComputeShader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 753C09591F4398C500D67F17 /* ComputeShader.swift */; };
 		753C095B1F43995300D67F17 /* MetalDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 753C09581F43988D00D67F17 /* MetalDevice.swift */; };
 		756896A51FEB08A800727447 /* Renderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 756896A41FEB08A800727447 /* Renderer.swift */; };
@@ -43,6 +48,7 @@
 		B40000000000000000000006 /* FluidDynamicsMetaliOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluidDynamicsMetaliOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000000000000000000004 /* SimulationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationState.swift; sourceTree = "<group>"; };
 		A30000000000000000000006 /* SimulationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationStateTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000011 /* RendererContactTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RendererContactTests.swift; sourceTree = "<group>"; };
 		A30000000000000000000007 /* FluidDynamicsMetalStateTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluidDynamicsMetalStateTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		753C09581F43988D00D67F17 /* MetalDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalDevice.swift; sourceTree = "<group>"; };
 		753C09591F4398C500D67F17 /* ComputeShader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputeShader.swift; sourceTree = "<group>"; };
@@ -90,7 +96,7 @@
 /* Begin PBXGroup section */
 		B40000000000000000000009 /* FluidDynamicsMetalOSXUITests */ = {isa = PBXGroup; children = (B40000000000000000000003 /* Mac HUDUITests.swift */,); path = FluidDynamicsMetalOSXUITests; sourceTree = "<group>"; };
 		B4000000000000000000000A /* FluidDynamicsMetaliOSUITests */ = {isa = PBXGroup; children = (B40000000000000000000004 /* iOS HUDUITests.swift */,); path = FluidDynamicsMetaliOSUITests; sourceTree = "<group>"; };
-		A30000000000000000000009 /* FluidDynamicsMetalStateTests */ = {isa = PBXGroup; children = (A30000000000000000000006 /* SimulationStateTests.swift */,); path = FluidDynamicsMetalStateTests; sourceTree = "<group>"; };
+		A30000000000000000000009 /* FluidDynamicsMetalStateTests */ = {isa = PBXGroup; children = (A30000000000000000000006 /* SimulationStateTests.swift */, A30000000000000000000011 /* RendererContactTests.swift */,); path = FluidDynamicsMetalStateTests; sourceTree = "<group>"; };
 		75D520931FE5539E003525F9 /* FluidDynamicsMetalOSX */ = {
 			isa = PBXGroup;
 			children = (
@@ -305,7 +311,7 @@
 /* Begin PBXSourcesBuildPhase section */
 		B4000000000000000000000D /* Mac UI Test Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B40000000000000000000001 /* Mac HUDUITests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 		B4000000000000000000000E /* iOS UI Test Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B40000000000000000000002 /* iOS HUDUITests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
-		A3000000000000000000000B /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A30000000000000000000003 /* SimulationState.swift in Test Sources */, A30000000000000000000005 /* SimulationStateTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A3000000000000000000000B /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A30000000000000000000003 /* SimulationState.swift in Test Sources */, A30000000000000000000012 /* Renderer.swift in Test Sources */, A30000000000000000000013 /* MetalDevice.swift in Test Sources */, A30000000000000000000014 /* RenderShader.swift in Test Sources */, A30000000000000000000015 /* Slab.swift in Test Sources */, A30000000000000000000005 /* SimulationStateTests.swift in Sources */, A30000000000000000000010 /* RendererContactTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 		75D5208E1FE5539E003525F9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;

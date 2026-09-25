@@ -1,0 +1,68 @@
+import MetalKit
+import XCTest
+
+final class RendererContactTests: XCTestCase {
+    private func emptyData() -> StaticData {
+        let zero = SIMD2<Float>.zero
+        return StaticData(positions: (zero, zero, zero, zero, zero, zero, zero, zero, zero, zero),
+                          impulses: (zero, zero, zero, zero, zero, zero, zero, zero, zero, zero),
+                          impulseScalar: zero, offsets: zero, screenSize: SIMD2<Float>(16, 16),
+                          inkRadius: 150, tuning: simd_float4(0.998, 0.4, 0, 0))
+    }
+
+    func testNextMovementUsesCurrentIndependentForceAndDye() {
+        let contact = FluidContact(position: SIMD2<Float>(8, 8), impulse: SIMD2<Float>(2, -3))
+        var tuning = SimulationTuning()
+        var data = emptyData()
+
+        tuning.setPosition(0, for: .force)
+        Renderer.writeContacts([contact], tuning: tuning, radius: 75, to: &data)
+        XCTAssertEqual(data.positions.0.x, 8)
+        XCTAssertEqual(data.impulses.0.x, 0)
+        XCTAssertEqual(data.impulseScalar.x, 0.8, accuracy: 0.00001)
+        XCTAssertEqual(data.inkRadius, 75)
+
+        tuning.setPosition(0.75, for: .force)
+        tuning.setPosition(0, for: .dye)
+        Renderer.writeContacts([contact], tuning: tuning, radius: 75, to: &data)
+        XCTAssertEqual(data.impulses.0.x, 3, accuracy: 0.00001)
+        XCTAssertEqual(data.impulses.0.y, -4.5, accuracy: 0.00001)
+        XCTAssertEqual(data.impulseScalar.x, 0)
+    }
+
+    func testEleventhContactGetsSameTuningInSecondBatch() {
+        let contacts = (1...11).map { index in
+            FluidContact(position: SIMD2<Float>(Float(index), 8), impulse: SIMD2<Float>(Float(index), 0))
+        }
+        var tuning = SimulationTuning()
+        tuning.setPosition(0.75, for: .force)
+        tuning.setPosition(0.25, for: .dye)
+        let batches = Renderer.contactBatches(contacts)
+        XCTAssertEqual(batches.map { $0.count }, [10, 1])
+
+        var data = emptyData()
+        Renderer.writeContacts(batches[0], tuning: tuning, radius: 150, to: &data)
+        XCTAssertEqual(data.positions.9.x, 10)
+        XCTAssertEqual(data.impulses.9.x, 15)
+        XCTAssertEqual(data.impulseScalar.x, 0.5)
+
+        Renderer.writeContacts(batches[1], tuning: tuning, radius: 150, to: &data)
+        XCTAssertEqual(data.positions.0.x, 11)
+        XCTAssertEqual(data.impulses.0.x, 16.5)
+        XCTAssertEqual(data.impulseScalar.x, 0.5)
+        XCTAssertEqual(data.positions.1.x, 0, "The next batch must clear old contacts")
+        XCTAssertEqual(data.impulses.9.x, 0, "The next batch must clear old impulses")
+    }
+
+    func testOriginContactAndEmptyFrameKeepTheirDistinctSentinels() {
+        var data = emptyData()
+        Renderer.writeContacts([FluidContact(position: .zero, impulse: .zero)],
+                               tuning: SimulationTuning(), radius: 150, to: &data)
+        XCTAssertEqual(data.positions.0.x, 0.01, accuracy: 0.00001)
+        XCTAssertEqual(data.impulseScalar.x, 0.8, accuracy: 0.00001)
+
+        Renderer.writeContacts([], tuning: SimulationTuning(), radius: 150, to: &data)
+        XCTAssertEqual(data.positions.0.x, 0)
+        XCTAssertEqual(data.impulseScalar.x, 0)
+    }
+}
