@@ -482,6 +482,16 @@ extension Renderer: @MainActor MTKViewDelegate {
                 print("Fluid resize failed: \(command.error?.localizedDescription ?? "unknown GPU error")")
                 return
             }
+        } else {
+            let command = MetalDevice.sharedInstance.newCommandBuffer()
+            command.label = "Initialize fluid fields"
+            Slab.clearInitialFields([newVelocity.ping, newDensity.ping, newDivergence.ping,
+                                     newVorticity.ping, newPressure.ping], commandBuffer: command)
+            command.commit()
+            command.waitUntilCompleted()
+            guard command.status == .completed else {
+                fatalError("Fluid initialization failed: \(command.error?.localizedDescription ?? "unknown GPU error")")
+            }
         }
         velocity = newVelocity
         density = newDensity

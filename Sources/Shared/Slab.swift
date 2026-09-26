@@ -33,4 +33,20 @@ class Slab {
         ping = pong
         pong = temp
     }
+
+    // Only initial read surfaces need clearing: every pong is fully overwritten
+    // before it becomes a source. Resized ping surfaces are populated by resampling.
+    static func clearInitialFields(_ textures: [MTLTexture], commandBuffer: MTLCommandBuffer) {
+        for texture in textures {
+            let pass = MTLRenderPassDescriptor()
+            pass.colorAttachments[0].texture = texture
+            pass.colorAttachments[0].loadAction = .clear
+            pass.colorAttachments[0].storeAction = .store
+            pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
+            guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
+                fatalError("Unable to create initialization encoder for \(texture.label ?? "fluid field")")
+            }
+            encoder.endEncoding()
+        }
+    }
 }
