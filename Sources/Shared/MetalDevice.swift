@@ -30,15 +30,19 @@ class MetalDevice {
     internal var inputTexture: MTLTexture?
     internal var outputTexture: MTLTexture?
     
-    private init() {
-        device = MTLCreateSystemDefaultDevice()!
-        commandQueue = device.makeCommandQueue()!
-        
-        activeCommandBuffer = commandQueue.makeCommandBuffer()!
-        
-        defaultLibrary = device.makeDefaultLibrary()!
+    private convenience init() {
+        let device = MTLCreateSystemDefaultDevice()!
+        self.init(device: device, library: device.makeDefaultLibrary()!)
     }
-    
+
+    // Explicit dependencies let offscreen checks use the same pipeline factory.
+    init(device: MTLDevice, library: MTLLibrary) {
+        self.device = device
+        commandQueue = device.makeCommandQueue()!
+        activeCommandBuffer = commandQueue.makeCommandBuffer()!
+        defaultLibrary = library
+    }
+
     //Convenience methods
     
     final class func createRenderPipeline(vertexFunctionName: String = "basicVertexFunction", fragmentFunctionName: String, pixelFormat: MTLPixelFormat) throws -> MTLRenderPipelineState {

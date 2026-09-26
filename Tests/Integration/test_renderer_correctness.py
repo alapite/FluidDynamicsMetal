@@ -42,6 +42,23 @@ class RendererCorrectnessTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("PASS: initialization", result.stdout)
 
+    def test_pipeline_factory_preserves_missing_function_errors(self):
+        result = self.run_check("factory-errors")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS: factory-errors", result.stdout)
+
+    def test_shader_wrapper_fails_immediately_with_context(self):
+        for mode, vertex, fragment in [("missing-vertex", "missingVertex", "advect"),
+                                       ("missing-fragment", "vertexShader", "missingFragment")]:
+            with self.subTest(mode=mode):
+                result = self.run_check(mode)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Metal render pipeline initialization failed", result.stderr)
+                self.assertIn(f"vertex: {vertex}", result.stderr)
+                self.assertIn(f"fragment: {fragment}", result.stderr)
+                self.assertIn("pixel format: 65", result.stderr)  # MTLPixelFormat.rg16Float
+                self.assertIn("failedToCreateFunction", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

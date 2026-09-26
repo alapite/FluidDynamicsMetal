@@ -19,88 +19,51 @@ struct PipelineStateConfiguration {
 
 @MainActor
 class RenderShader {
-    private var pipelineState: PipelineStateConfiguration
-    private var renderPipelineState: MTLRenderPipelineState?
-    
-    init(fragmentShader: String, vertexShader: String, pixelFormat: MTLPixelFormat = .bgra8Unorm) {
-        pipelineState = PipelineStateConfiguration(pixelFormat: pixelFormat, vertexShader: vertexShader, fragmentShader: fragmentShader, computeShader: "")
-        
-        commonInit()
+    private let pipelineState: PipelineStateConfiguration
+    private let renderPipelineState: MTLRenderPipelineState
+
+    init(fragmentShader: String, vertexShader: String, pixelFormat: MTLPixelFormat = .bgra8Unorm,
+         metalDevice: MetalDevice = .sharedInstance) {
+        pipelineState = PipelineStateConfiguration(pixelFormat: pixelFormat, vertexShader: vertexShader,
+                                                   fragmentShader: fragmentShader, computeShader: "")
+        do {
+            renderPipelineState = try metalDevice.createRenderPipeline(vertexFunctionName: vertexShader,
+                                                                        fragmentFunctionName: fragmentShader,
+                                                                        pixelFormat: pixelFormat)
+        } catch {
+            fatalError("Metal render pipeline initialization failed (vertex: \(vertexShader), fragment: \(fragmentShader), pixel format: \(pixelFormat.rawValue)): \(error)")
+        }
     }
-    
-    deinit {
-        print("Deinit Filter")
-    }
-    
+
     final func calculateWithCommandBuffer(buffer: MTLCommandBuffer, texture: MTLTexture, configureEncoder: ((_ commandEncoder: MTLRenderCommandEncoder) -> Void)?) {
-        if let renderPipelineState = renderPipelineState {
-            let renderPassDescriptor = configureRenderPassDescriptor(texture: texture)
-            if let renderCommandEncoder = buffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
-                
-                renderCommandEncoder.pushDebugGroup("Render Encoder \(pipelineState.fragmentShader)")
-                
-                configureEncoder?(renderCommandEncoder)
-                
-                renderCommandEncoder.setRenderPipelineState(renderPipelineState)
-                
-                renderCommandEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
-                
-                renderCommandEncoder.endEncoding()
-                
-                renderCommandEncoder.popDebugGroup()
-            }
-        }
+        let encoder = makeEncoder(buffer: buffer, texture: texture)
+        configureEncoder?(encoder)
+        encoder.setRenderPipelineState(renderPipelineState)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+        encoder.popDebugGroup()
+        encoder.endEncoding()
     }
-    
+
     final func calculateWithCommandBuffer(buffer: MTLCommandBuffer, indices: MTLBuffer, count: Int, texture: MTLTexture, configureEncoder: ((_ commandEncoder: MTLRenderCommandEncoder) -> Void)) {
-        if let renderPipelineState = renderPipelineState {
-            let renderPassDescriptor = configureRenderPassDescriptor(texture: texture)
-            if let renderCommandEncoder = buffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor) {
-                
-                renderCommandEncoder.pushDebugGroup("Render Encoder \(pipelineState.fragmentShader)")
-                
-                configureEncoder(renderCommandEncoder)
-                
-                renderCommandEncoder.setCullMode(.back)
-                renderCommandEncoder.setRenderPipelineState(renderPipelineState)
-                
-                renderCommandEncoder.drawIndexedPrimitives(type: .triangle, indexCount: count, indexType: .uint16, indexBuffer: indices, indexBufferOffset: 0)
-                
-                renderCommandEncoder.endEncoding()
-                
-                renderCommandEncoder.popDebugGroup()
-            }
+        let encoder = makeEncoder(buffer: buffer, texture: texture)
+        configureEncoder(encoder)
+        encoder.setCullMode(.back)
+        encoder.setRenderPipelineState(renderPipelineState)
+        encoder.drawIndexedPrimitives(type: .triangle, indexCount: count, indexType: .uint16,
+                                      indexBuffer: indices, indexBufferOffset: 0)
+        encoder.popDebugGroup()
+        encoder.endEncoding()
+    }
+
+    private func makeEncoder(buffer: MTLCommandBuffer, texture: MTLTexture) -> MTLRenderCommandEncoder {
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = texture
+        pass.colorAttachments[0].loadAction = .dontCare
+        pass.colorAttachments[0].storeAction = .store
+        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else {
+            fatalError("Metal render encoder creation failed (vertex: \(pipelineState.vertexShader), fragment: \(pipelineState.fragmentShader), pixel format: \(texture.pixelFormat.rawValue), destination: \(texture.label ?? "unnamed"))")
         }
-    }
-    
-    private func configureRenderPassDescriptor(texture: MTLTexture?) -> MTLRenderPassDescriptor {
-        let renderPassDescriptor = MTLRenderPassDescriptor()
-        renderPassDescriptor.colorAttachments[0].texture = texture
-        renderPassDescriptor.colorAttachments[0].loadAction = .dontCare
-        renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0)
-        renderPassDescriptor.colorAttachments[0].storeAction = .store
-        
-        return renderPassDescriptor
-    }
-    
-    private func configurePipeline() {
-        if pipelineState.vertexShader.count > 0 && pipelineState.fragmentShader.count > 0 {
-            if renderPipelineState != nil {
-                return
-            }
-            
-            do {
-                renderPipelineState = try MetalDevice.createRenderPipeline(vertexFunctionName: pipelineState.vertexShader, fragmentFunctionName: pipelineState.fragmentShader, pixelFormat: pipelineState.pixelFormat)
-            } catch {
-                print("Could not create render pipeline state.")
-            }
-        }
-    }
-    
-    private func commonInit() {
-        configurePipeline()
+        encoder.pushDebugGroup("Render Encoder \(pipelineState.fragmentShader)")
+        return encoder
     }
 }
-
-
-

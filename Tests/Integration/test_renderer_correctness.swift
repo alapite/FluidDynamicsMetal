@@ -10,6 +10,14 @@ struct RendererCorrectnessCheck {
         let check = GPUCheck(device: device, library: library)
         switch CommandLine.arguments[2] {
         case "initialization": try check.initialization()
+        case "factory-errors": try check.factoryErrors()
+        case "missing-vertex", "missing-fragment":
+            let missingVertex = CommandLine.arguments[2] == "missing-vertex"
+            _ = RenderShader(fragmentShader: missingVertex ? "advect" : "missingFragment",
+                             vertexShader: missingVertex ? "missingVertex" : "vertexShader",
+                             pixelFormat: .rg16Float,
+                             metalDevice: MetalDevice(device: device, library: library))
+            fatalError("An invalid shader unexpectedly initialized")
         default: fatalError("Unknown check")
         }
     }
@@ -121,5 +129,21 @@ final class GPUCheck {
             fields.forEach(assertZero)
         }
         print("PASS: initialization")
+    }
+
+    func factoryErrors() throws {
+        let metal = MetalDevice(device: device, library: library)
+        for missingVertex in [true, false] {
+            let missing = missingVertex ? "missingVertex" : "missingFragment"
+            do {
+                _ = try metal.createRenderPipeline(vertexFunctionName: missingVertex ? missing : "vertexShader",
+                                                    fragmentFunctionName: missingVertex ? "advect" : missing,
+                                                    pixelFormat: .rg16Float)
+                fatalError("The factory must reject missing functions")
+            } catch MetalDeviceError.failedToCreateFunction(let name) {
+                precondition(name == missing, "The error must identify the missing function")
+            }
+        }
+        print("PASS: factory-errors")
     }
 }
