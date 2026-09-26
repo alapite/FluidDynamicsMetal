@@ -13,11 +13,18 @@ enum MetalDeviceError: Error {
     case failedToCreateFunction(name: String)
 }
 
+struct RenderPipelineKey: Hashable {
+    let vertexFunctionName: String
+    let fragmentFunctionName: String
+    let pixelFormat: MTLPixelFormat
+}
+
 @MainActor
 class MetalDevice {
     static let sharedInstance = MetalDevice()
     
-    private let pipelineCache = NSCache<AnyObject, AnyObject>()
+    private var renderPipelineCache: [RenderPipelineKey: MTLRenderPipelineState] = [:]
+    private let computePipelineCache = NSCache<NSString, AnyObject>()
     
     let queue = DispatchQueue.global(qos: .background)
     
@@ -25,7 +32,7 @@ class MetalDevice {
     private let commandQueue: MTLCommandQueue
     
     var activeCommandBuffer: MTLCommandBuffer
-    var defaultLibrary: MTLLibrary
+    let defaultLibrary: MTLLibrary
     
     internal var inputTexture: MTLTexture?
     internal var outputTexture: MTLTexture?
@@ -75,9 +82,11 @@ class MetalDevice {
     }
     
     final func createRenderPipeline(vertexFunctionName: String = "basicVertexFunction", fragmentFunctionName: String, pixelFormat: MTLPixelFormat) throws -> MTLRenderPipelineState {
-        let cacheKey = NSString(string: vertexFunctionName + fragmentFunctionName)
+        let cacheKey = RenderPipelineKey(vertexFunctionName: vertexFunctionName,
+                                         fragmentFunctionName: fragmentFunctionName,
+                                         pixelFormat: pixelFormat)
         
-        if let pipelineState = pipelineCache.object(forKey: cacheKey) as? MTLRenderPipelineState {
+        if let pipelineState = renderPipelineCache[cacheKey] {
             return pipelineState
         }
         
@@ -97,7 +106,7 @@ class MetalDevice {
         
         let pipelineState = try device.makeRenderPipelineState(descriptor: pipelineStateDescriptor)
         
-        pipelineCache.setObject(pipelineState, forKey: cacheKey)
+        renderPipelineCache[cacheKey] = pipelineState
         
         return pipelineState
     }
@@ -105,7 +114,7 @@ class MetalDevice {
     final func createComputePipeline(computeFunctionName: String) throws -> MTLComputePipelineState {
         let cacheKey = NSString(string: computeFunctionName)
         
-        if let pipelineState = pipelineCache.object(forKey: cacheKey) as? MTLComputePipelineState {
+        if let pipelineState = computePipelineCache.object(forKey: cacheKey) as? MTLComputePipelineState {
             return pipelineState
         }
         
@@ -115,7 +124,7 @@ class MetalDevice {
         
         let pipelineState =  try device.makeComputePipelineState(function: computeFunction)
         
-        pipelineCache.setObject(pipelineState, forKey: cacheKey)
+        computePipelineCache.setObject(pipelineState, forKey: cacheKey)
         
         return pipelineState
     }

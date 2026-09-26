@@ -47,6 +47,11 @@ class RendererCorrectnessTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("PASS: factory-errors", result.stdout)
 
+    def test_pipeline_cache_separates_names_and_formats(self):
+        result = self.run_check("cache")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS: cache", result.stdout)
+
     def test_shader_wrapper_fails_immediately_with_context(self):
         for mode, vertex, fragment in [("missing-vertex", "missingVertex", "advect"),
                                        ("missing-fragment", "vertexShader", "missingFragment")]:

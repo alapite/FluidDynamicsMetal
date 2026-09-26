@@ -11,6 +11,7 @@ struct RendererCorrectnessCheck {
         switch CommandLine.arguments[2] {
         case "initialization": try check.initialization()
         case "factory-errors": try check.factoryErrors()
+        case "cache": try check.cache()
         case "missing-vertex", "missing-fragment":
             let missingVertex = CommandLine.arguments[2] == "missing-vertex"
             _ = RenderShader(fragmentShader: missingVertex ? "advect" : "missingFragment",
@@ -145,5 +146,53 @@ final class GPUCheck {
             }
         }
         print("PASS: factory-errors")
+    }
+
+    func cache() throws {
+        let firstKey = RenderPipelineKey(vertexFunctionName: "ab", fragmentFunctionName: "c", pixelFormat: .rg16Float)
+        let secondKey = RenderPipelineKey(vertexFunctionName: "a", fragmentFunctionName: "bc", pixelFormat: .rg16Float)
+        precondition(Set([firstKey, secondKey]).count == 2, "Function names must have distinct key components")
+        // Exercise both insertion orders so neither format can accidentally mask the other.
+        for formats: [MTLPixelFormat] in [[.rg16Float, .rgba16Float], [.rgba16Float, .rg16Float]] {
+            let metal = MetalDevice(device: device, library: library)
+            var pipelines: [MTLRenderPipelineState] = []
+            for format in formats {
+                let pipeline = try metal.createRenderPipeline(vertexFunctionName: "vertexShader",
+                                                               fragmentFunctionName: "visualizeVector", pixelFormat: format)
+                let cached = try metal.createRenderPipeline(vertexFunctionName: "vertexShader",
+                                                            fragmentFunctionName: "visualizeVector", pixelFormat: format)
+                precondition(pipeline === cached, "Identical requests must reuse their pipeline")
+                pipelines.append(pipeline)
+                let input = texture()
+                let command = queue.makeCommandBuffer()!
+                Slab.clearInitialFields([input], commandBuffer: command)
+                let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format,
+                                                                         width: width, height: height, mipmapped: false)
+                descriptor.storageMode = .shared
+                descriptor.usage = .renderTarget
+                let output = device.makeTexture(descriptor: descriptor)!
+                let shader = RenderShader(fragmentShader: "visualizeVector", vertexShader: "vertexShader",
+                                          pixelFormat: format, metalDevice: metal)
+                shader.calculateWithCommandBuffer(buffer: command, indices: indices, count: Renderer.indices.count,
+                                                  texture: output) { encoder in
+                    encoder.setVertexBuffer(self.vertices, offset: 0, index: 0)
+                    encoder.setFragmentTexture(input, index: 0)
+                }
+                finish(command)
+                let channels = format == .rg16Float ? 2 : 4
+                var pixels = [UInt16](repeating: 0, count: width * height * channels)
+                pixels.withUnsafeMutableBytes {
+                    output.getBytes($0.baseAddress!, bytesPerRow: width * channels * 2,
+                                    from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+                }
+                for index in stride(from: 0, to: pixels.count, by: channels) {
+                    precondition(Float16(bitPattern: pixels[index]) == 0.5 &&
+                                 Float16(bitPattern: pixels[index + 1]) == 0.5,
+                                 "Both pipeline formats must render the zero vector as 0.5")
+                }
+            }
+            precondition(pipelines[0] !== pipelines[1], "Different formats must have different pipelines")
+        }
+        print("PASS: cache")
     }
 }
