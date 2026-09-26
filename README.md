@@ -59,7 +59,7 @@ Record the actual host, OS version, simulator/device, and results separately for
 ### Mac (Apple Silicon)
 
 1. Launch `FluidDynamicsMetalOSX.app` on the Mac being checked. Confirm a **blue-on-black Density** canvas and a closed **Show Tuning** disclosure. Open Tuning and check **Force 50%, Dye 40%, Swirl 20%, Fade 17%**; close it again.
-2. Drag with the mouse **outside the HUD**. Confirm blue density is deposited, swirls, and fades.
+2. Drag the **Simulation Controls** floating panel by its title bar to place it anywhere on screen, including outside the simulation window. Close it or use **View → Hide/Show Simulation Controls** (**⌥⌘K**) to reclaim the canvas; reopening keeps the current controls. Its position is remembered across launches. Drag on the canvas and confirm blue density is deposited, swirls, and fades.
 3. Click **Pause** and confirm motion stops; choose **Pressure**, **Velocity**, **Vorticity**, then **Density** using the named buttons, including a change while paused. Click **Resume**, confirm motion continues, and drag again. **Space** toggles pause/resume and **S** cycles the four fields when canvas/window focus is appropriate; focused HUD controls may consume Space.
 4. Open **Tuning**, change one slider (for example, set Dye to 0% and drag to stir without depositing, or increase Fade for faster fading), and observe the existing effect. Quit and relaunch; confirm the four starting percentages return and Tuning starts closed. There is no in-app reset action.
 

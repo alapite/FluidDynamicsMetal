@@ -9,7 +9,7 @@
 import AppKit
 import MetalKit
 
-class RenderViewController: NSViewController {
+class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValidation {
     var renderer: Renderer!
     private var mouseHeld = false
     private var rebaseDrag = false
@@ -27,6 +27,9 @@ class RenderViewController: NSViewController {
     private var tuningValues: [TuningControl: NSTextField] = [:]
     private var isTuningExpanded = false
     private var fieldButtons: [DisplayField: NSButton] = [:]
+    private var controlsPanel: NSPanel?
+    private var panelConfigured = false
+    private var restorePanelAfterMinimize = false
     private var hudWidth: NSLayoutConstraint?
     private var hudHeight: NSLayoutConstraint?
     private var usingOneColumn = false
@@ -46,7 +49,8 @@ class RenderViewController: NSViewController {
 
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] in
             guard let self else { return $0 }
-            guard $0.window == self.view.window else { return $0 }
+            guard $0.window == self.view.window || $0.window == self.controlsPanel else { return $0 }
+            guard $0.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return $0 }
             // AppKit may forward a focused button's Space through keyDown to the
             // controller. Activate it here so that forwarding cannot also pause.
             if $0.keyCode == 0x31,
@@ -67,18 +71,115 @@ class RenderViewController: NSViewController {
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.contentMinSize = NSSize(width: 320, height: 240)
-        updateControlLayout()
+        if let window = view.window {
+            NotificationCenter.default.addObserver(self, selector: #selector(canvasBecameMain),
+                                                   name: NSWindow.didBecomeMainNotification, object: window)
+            if window.isMainWindow { showControlsPanel() }
+        }
+    }
+
+    @objc private func canvasBecameMain() {
+        if !panelConfigured { showControlsPanel() }
+    }
+
+    private func showControlsPanel() {
+        guard let panel = controlsPanel, let window = view.window else { return }
+        if !panelConfigured {
+            panelConfigured = true
+            updateControlLayout()
+            let restored = panel.setFrameUsingName("SimulationControls")
+            if !restored {
+                panel.setFrameTopLeftPoint(NSPoint(x: window.frame.maxX - panel.frame.width - 16,
+                                                  y: window.frame.maxY - 48))
+            }
+            panel.setFrameAutosaveName("SimulationControls")
+            NotificationCenter.default.addObserver(self, selector: #selector(canvasWillClose), name: NSWindow.willCloseNotification, object: window)
+            NotificationCenter.default.addObserver(self, selector: #selector(canvasWillMinimize), name: NSWindow.willMiniaturizeNotification, object: window)
+            NotificationCenter.default.addObserver(self, selector: #selector(canvasDidRestore), name: NSWindow.didDeminiaturizeNotification, object: window)
+            installControlsMenu()
+        }
+        if let screen = window.screen ?? NSScreen.main {
+            let visible = screen.visibleFrame
+            let frame = panel.frame
+            panel.setFrameOrigin(NSPoint(x: min(max(frame.minX, visible.minX), visible.maxX - frame.width),
+                                         y: min(max(frame.minY, visible.minY), visible.maxY - frame.height)))
+        }
+        panel.orderFront(nil)
+    }
+
+    @objc private func canvasWillClose() {
+        controlsPanel?.delegate = nil
+        controlsPanel?.close()
+    }
+
+    @objc private func canvasWillMinimize() {
+        restorePanelAfterMinimize = controlsPanel?.isVisible == true
+        controlsPanel?.orderOut(nil)
+    }
+
+    @objc private func canvasDidRestore() {
+        if restorePanelAfterMinimize { showControlsPanel() }
+    }
+
+    private func installControlsMenu() {
+        guard let mainMenu = NSApp.mainMenu else { return }
+        let viewItem: NSMenuItem
+        if let existing = mainMenu.items.first(where: { $0.title == "View" }) {
+            viewItem = existing
+        } else {
+            viewItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
+            viewItem.submenu = NSMenu(title: "View")
+            let index = mainMenu.items.firstIndex(where: { $0.title == "Window" }) ?? mainMenu.items.count
+            mainMenu.insertItem(viewItem, at: index)
+        }
+        let item = NSMenuItem(title: "Hide Simulation Controls", action: #selector(toggleControlsPanel(_:)), keyEquivalent: "k")
+        item.keyEquivalentModifierMask = [.command, .option]
+        item.target = self
+        viewItem.submenu?.addItem(item)
+    }
+
+    @objc private func toggleControlsPanel(_ sender: Any?) {
+        if controlsPanel?.isVisible == true {
+            controlsPanel?.orderOut(nil)
+        } else {
+            showControlsPanel()
+        }
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleControlsPanel(_:)) {
+            menuItem.title = controlsPanel?.isVisible == true ? "Hide Simulation Controls" : "Show Simulation Controls"
+        }
+        return view.window?.isVisible == true
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        return false
     }
 
     private func installControls() {
-        hud.translatesAutoresizingMaskIntoConstraints = false
         hud.material = .hudWindow
-        hud.blendingMode = .withinWindow
+        hud.blendingMode = .behindWindow
         hud.state = .active
         hud.wantsLayer = true
-        hud.layer?.cornerRadius = 12
-        hud.layer?.masksToBounds = true
-        metalView.addSubview(hud)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 248, height: 196),
+                            styleMask: [.titled, .closable, .utilityWindow],
+                            backing: .buffered, defer: false)
+        panel.title = "Simulation Controls"
+        panel.identifier = NSUserInterfaceItemIdentifier("simulationControls")
+        panel.isFloatingPanel = true
+        panel.isMovable = true
+        panel.hidesOnDeactivate = true
+        panel.isReleasedWhenClosed = false
+        panel.collectionBehavior = [.fullScreenAuxiliary]
+        panel.delegate = self
+        hud.translatesAutoresizingMaskIntoConstraints = false
+        hudWidth = hud.widthAnchor.constraint(equalToConstant: 248)
+        hudHeight = hud.heightAnchor.constraint(equalToConstant: 196)
+        NSLayoutConstraint.activate([hudWidth!, hudHeight!])
+        panel.contentView = hud
+        controlsPanel = panel
 
         opaqueSurface.translatesAutoresizingMaskIntoConstraints = false
         opaqueSurface.wantsLayer = true
@@ -161,14 +262,7 @@ class RenderViewController: NSViewController {
         hud.addSubview(activeSummary)
         hud.addSubview(controlsScroll)
         activeSummary.translatesAutoresizingMaskIntoConstraints = false
-        hudWidth = hud.widthAnchor.constraint(equalToConstant: 248)
-        hudHeight = hud.heightAnchor.constraint(equalToConstant: 168)
         NSLayoutConstraint.activate([
-            hud.trailingAnchor.constraint(equalTo: metalView.trailingAnchor, constant: -16),
-            hud.topAnchor.constraint(equalTo: metalView.topAnchor, constant: 16),
-            hud.leadingAnchor.constraint(greaterThanOrEqualTo: metalView.leadingAnchor, constant: 16),
-            hud.bottomAnchor.constraint(lessThanOrEqualTo: metalView.bottomAnchor, constant: -16),
-            hudWidth!, hudHeight!,
             activeSummary.leadingAnchor.constraint(equalTo: hud.leadingAnchor, constant: 16),
             activeSummary.topAnchor.constraint(equalTo: hud.topAnchor, constant: 8),
             controlsScroll.leadingAnchor.constraint(equalTo: hud.leadingAnchor, constant: 16),
@@ -202,8 +296,8 @@ class RenderViewController: NSViewController {
 
     private func updateControlLayout() {
         guard view.bounds.width > 0, view.bounds.height > 0 else { return }
-        let availableWidth = max(1, view.bounds.width - 32)
-        let availableHeight = max(1, view.bounds.height - 32)
+        let availableWidth: CGFloat = 280
+        let availableHeight = max(196, (controlsPanel?.screen?.visibleFrame.height ?? 800) - 80)
         let buttonWidth = fieldButtons.values.map { $0.intrinsicContentSize.width + 8 }.max() ?? 96
         let twoColumnWidth = buttonWidth * 2 + 8 + 32
         let oneColumn = twoColumnWidth > availableWidth
@@ -223,10 +317,16 @@ class RenderViewController: NSViewController {
         let scrolling = availableHeight < (isTuningExpanded ? 440 : oneColumn ? 284 : 176)
         activeSummary.isHidden = !scrolling
         caption.isHidden = scrolling
-        hudWidth?.constant = min(320, availableWidth, max(oneColumn ? buttonWidth + 32 : twoColumnWidth, 192))
+        let width = min(320, availableWidth, max(oneColumn ? buttonWidth + 32 : twoColumnWidth, 248))
         let wantedHeight: CGFloat = (oneColumn ? 252 : 160) + 36 + (isTuningExpanded ? 260 : 0)
+        hudWidth?.constant = width
         hudHeight?.constant = min(availableHeight, wantedHeight)
-        fieldGroup.frame.size.width = max(1, (hudWidth?.constant ?? 248) - 32)
+        if let panel = controlsPanel {
+            let top = panel.frame.maxY
+            panel.setContentSize(NSSize(width: width, height: min(availableHeight, wantedHeight)))
+            panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: top - panel.frame.height))
+        }
+        fieldGroup.frame.size.width = width - 32
         fieldGroup.layoutSubtreeIfNeeded()
         controlsScroll.contentView.scroll(to: .zero)
     }
@@ -294,8 +394,6 @@ class RenderViewController: NSViewController {
     }
 
     override func mouseDown(with event: NSEvent) {
-        let hudPoint = hud.convert(event.locationInWindow, from: nil)
-        guard !hud.bounds.contains(hudPoint) else { return }
         mouseHeld = true
         rebaseDrag = false
         guard renderer.state.shouldAdvance else { return }

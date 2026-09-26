@@ -34,10 +34,10 @@ final class HUDUITests: XCTestCase {
         let fields = ["Density", "Pressure", "Velocity", "Vorticity"]
         XCTAssertTrue(app.checkBoxes["Density"].waitForExistence(timeout: 10))
         // Make the Metal canvas the target before sending window shortcuts.
-        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
-        app.typeKey("s", modifierFlags: [])
+        app.windows["FluidDynamicsMetalOSX"].coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
+        app.windows["FluidDynamicsMetalOSX"].typeKey("s", modifierFlags: [])
         assertSelected("Pressure", among: fields)
-        app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+        app.windows["FluidDynamicsMetalOSX"].typeKey(XCUIKeyboardKey.space, modifierFlags: [])
         XCTAssertTrue(app.buttons["Resume simulation"].exists)
     }
 
@@ -45,11 +45,11 @@ final class HUDUITests: XCTestCase {
         let vorticity = app.checkBoxes["Vorticity"]
         XCTAssertTrue(vorticity.waitForExistence(timeout: 10))
         vorticity.click()
-        // A click does not focus a button on macOS; Tab moves keyboard focus to Density.
+        // The utility panel starts keyboard focus on Density; Tab moves to Pressure.
         app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
         app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
         XCTAssertTrue(app.buttons["Pause simulation"].exists, "Space on a field control must not pause")
-        assertSelected("Density", among: ["Density", "Pressure", "Velocity", "Vorticity"])
+        assertSelected("Pressure", among: ["Density", "Pressure", "Velocity", "Vorticity"])
     }
 
     func testTuningDisclosureAndDefaultValuesSurvivePauseAndReopen() {
@@ -79,10 +79,28 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Show Tuning"].waitForExistence(timeout: 10))
         app.buttons["Show Tuning"].click()
         app.checkBoxes["Velocity"].click()
-        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
+        app.windows["FluidDynamicsMetalOSX"].coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
         XCTAssertTrue(app.buttons["Hide Tuning"].exists)
         XCTAssertTrue(app.sliders["Fade"].exists)
         XCTAssertEqual(app.checkBoxes["Velocity"].value as? String, "Selected")
+    }
+
+    func testFloatingPanelReopensWithoutChangingState() {
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        let canvasFrame = canvas.frame
+        app.checkBoxes["Pressure"].click()
+        app.buttons["Pause simulation"].click()
+        XCTAssertEqual(canvas.frame, canvasFrame)
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertFalse(panel.exists)
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Resume simulation"].exists)
+        XCTAssertEqual(app.checkBoxes["Pressure"].value as? String, "Selected")
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertFalse(panel.exists)
     }
 
     private func assertSelected(_ expected: String, among fields: [String], file: StaticString = #filePath, line: UInt = #line) {
