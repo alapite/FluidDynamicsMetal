@@ -83,4 +83,12 @@ The four sliders adjust live Force, Dye, Swirl, and Fade without editing shaders
 
 ## Understanding the simulation
 
-Background reading: [GPU Gems, Chapter 38](https://developer.download.nvidia.com/books/HTML/gpugems/gpugems_ch38.html) and [Philip Rideout's fluid simulation article](http://prideout.net/blog/?p=58).
+Read [Equations and real-time approximations](docs/fluid-dynamics.pdf) for a self-contained explanation based on the actual Swift renderer and Metal shaders. It covers the fluid equations, grid and frame sequence, advection, input forces, fading, vorticity confinement, pressure projection, boundary handling, GPU representation, and numerical limitations. It also explains how the controls and displayed fields relate to the equations.
+
+The editable [LaTeX source](docs/fluid-dynamics.tex) is included. Rebuild the PDF from the repository root with a LaTeX distribution and `latexmk`:
+
+```bash
+latexmk -pdf -interaction=nonstopmode -halt-on-error -outdir=docs docs/fluid-dynamics.tex
+```
+
+Optional background reading: [GPU Gems, Chapter 38, on NVIDIA's current site](https://developer.nvidia.com/gpugems/gpugems/part-vi-beyond-triangles/chapter-38-fast-fluid-dynamics-simulation-gpu). The local document describes this project's implementation where it differs from the general treatment.
