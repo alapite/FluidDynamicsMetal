@@ -28,15 +28,21 @@ func texture() -> MTLTexture {
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rg16Float, width: width, height: height, mipmapped: false)
     descriptor.usage = [.shaderRead, .renderTarget]
     descriptor.storageMode = .shared
-    return device.makeTexture(descriptor: descriptor)!
+    let texture = device.makeTexture(descriptor: descriptor)!
+    let pixels = [UInt16](repeating: 0, count: width * height * 2)
+    pixels.withUnsafeBytes {
+        texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
+                        withBytes: $0.baseAddress!, bytesPerRow: width * 4)
+    }
+    return texture
 }
 
 func uniforms(position: SIMD2<Float>? = nil, impulse: SIMD2<Float> = .zero) -> MTLBuffer {
     // The fields and offsets here are the Swift StaticData / Metal BufferData wire contract.
     // Place the contact in the last slot so a five-slot shader or layout regression fails.
-    let buffer = device.makeBuffer(length: 192, options: .storageModeShared)!
+    let buffer = device.makeBuffer(length: 208, options: .storageModeShared)!
     let bytes = buffer.contents()
-    bytes.initializeMemory(as: UInt8.self, repeating: 0, count: 192)
+    bytes.initializeMemory(as: UInt8.self, repeating: 0, count: 208)
     if let position = position {
         bytes.advanced(by: 9 * 8).storeBytes(of: position, as: SIMD2<Float>.self)
         bytes.advanced(by: 80 + 9 * 8).storeBytes(of: impulse, as: SIMD2<Float>.self)
@@ -45,6 +51,7 @@ func uniforms(position: SIMD2<Float>? = nil, impulse: SIMD2<Float> = .zero) -> M
     bytes.advanced(by: 168).storeBytes(of: SIMD2<Float>(1.0 / Float(width), 1.0 / Float(height)), as: SIMD2<Float>.self)
     bytes.advanced(by: 176).storeBytes(of: SIMD2<Float>(Float(width), Float(height)), as: SIMD2<Float>.self)
     bytes.advanced(by: 184).storeBytes(of: Float(150), as: Float.self)
+    bytes.advanced(by: 192).storeBytes(of: SIMD4<Float>(0.998, 0.4, 0, 0), as: SIMD4<Float>.self)
     return buffer
 }
 

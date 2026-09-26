@@ -55,6 +55,8 @@ fragment half2 resampleField(VertexOut fragmentIn [[stage_in]],
 
 //Fluid Dynamics Render Encoder
 
+// GPU ABI: matches StaticData in Renderer.swift. Offsets: 0, 80, 160, 168,
+// 176, 184, 192; total size 208, alignment 16. See RendererContactTests.
 struct BufferData {
     float2 positions[10];
     float2 impulses[10];

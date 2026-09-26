@@ -2,6 +2,34 @@ import MetalKit
 import XCTest
 
 final class RendererContactTests: XCTestCase {
+    func testUniformLayoutMatchesMetalBufferData() {
+        XCTAssertEqual(MemoryLayout<StaticData>.alignment, 16)
+        XCTAssertEqual(MemoryLayout<StaticData>.stride, 208)
+        XCTAssertEqual(MemoryLayout<StaticData>.size, 208)
+        XCTAssertEqual(MemoryLayout<StaticData>.offset(of: \.positions), 0)
+        XCTAssertEqual(MemoryLayout<StaticData>.offset(of: \.impulses), 80)
+        XCTAssertEqual(MemoryLayout<StaticData>.offset(of: \.impulseScalar), 160)
+        XCTAssertEqual(MemoryLayout<StaticData>.offset(of: \.offsets), 168)
+        XCTAssertEqual(MemoryLayout<StaticData>.offset(of: \.screenSize), 176)
+        XCTAssertEqual(MemoryLayout<StaticData>.offset(of: \.inkRadius), 184)
+        XCTAssertEqual(MemoryLayout<StaticData>.offset(of: \.tuning), 192)
+    }
+
+    func testContactTupleContainsTenTightlyPackedVectors() {
+        XCTAssertEqual(MemoryLayout<SIMD2<Float>>.stride, 8)
+        XCTAssertEqual(MemoryLayout<ContactTuple>.alignment, 8)
+        XCTAssertEqual(MemoryLayout<ContactTuple>.size, 80)
+        XCTAssertEqual(MemoryLayout<ContactTuple>.stride, 80)
+        let tuple: ContactTuple = (SIMD2(1, -1), SIMD2(2, -2), SIMD2(3, -3), SIMD2(4, -4), SIMD2(5, -5),
+                                   SIMD2(6, -6), SIMD2(7, -7), SIMD2(8, -8), SIMD2(9, -9), SIMD2(10, -10))
+        withUnsafeBytes(of: tuple) { bytes in
+            for index in 0..<10 {
+                XCTAssertEqual(bytes.load(fromByteOffset: index * 8, as: SIMD2<Float>.self),
+                               SIMD2(Float(index + 1), -Float(index + 1)))
+            }
+        }
+    }
+
     func testMouseOriginIsOneContactAndMovementIsMeasuredPerFrame() throws {
         var mouse = MouseInputState()
         XCTAssertNil(mouse.contactForFrame())

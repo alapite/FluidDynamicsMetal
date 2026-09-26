@@ -37,6 +37,8 @@ struct MouseInputState {
     }
 }
 
+// GPU ABI: matches BufferData in Shaders.metal (208-byte stride, 16-byte alignment).
+// RendererContactTests locks member offsets and the packed ten-contact tuples.
 struct StaticData {
     var positions: ContactTuple
     var impulses: ContactTuple

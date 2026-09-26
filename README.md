@@ -46,6 +46,7 @@ Mac state and HUD tests run with:
 ```bash
 xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO
 python3 -m unittest discover -s Tests/Integration -p 'test_*metal.py'
+python3 -m unittest -v Tests.Integration.test_renderer_correctness
 ```
 
 Run the Metal regression check after a fresh Mac Debug build. An arm64 build on a newer Mac does **not** establish that the app launches on macOS 26; see the pending [macOS 26 runtime check](.planning/phases/01-modern-mac-baseline/01-HUMAN-UAT.md).

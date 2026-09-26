@@ -1,5 +1,6 @@
 """Exercise production renderer helpers against the freshly built Mac shaders."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -25,17 +26,23 @@ class RendererCorrectnessTests(unittest.TestCase):
         cls.directory = tempfile.TemporaryDirectory(prefix="fluid-correctness-")
         cls.addClassCleanup(cls.directory.cleanup)
         cls.executable = Path(cls.directory.name) / "renderer-check"
+        cls.optimized_executable = Path(cls.directory.name) / "renderer-check-optimized"
         sources = [ROOT / "Sources/Shared" / name for name in
                    ["MetalDevice.swift", "RenderShader.swift", "Slab.swift",
                     "SimulationState.swift", "Renderer.swift"]]
-        subprocess.run(
-            ["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library",
-             *map(str, sources), str(Path(__file__).with_suffix(".swift")),
-             "-o", str(cls.executable)], check=True, capture_output=True, text=True)
+        for executable, optimization in [(cls.executable, "-Onone"), (cls.optimized_executable, "-O")]:
+            result = subprocess.run(
+                ["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", optimization,
+                 *map(str, sources), str(Path(__file__).with_suffix(".swift")),
+                 "-o", str(executable)], capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                raise AssertionError(result.stdout + result.stderr)
 
-    def run_check(self, mode):
-        return subprocess.run([str(self.executable), str(self.library), mode],
-                              capture_output=True, text=True, timeout=60)
+    def run_check(self, mode, optimized=False):
+        executable = self.optimized_executable if optimized else self.executable
+        environment = dict(os.environ, MTL_DEBUG_LAYER="1")
+        return subprocess.run([str(executable), str(self.library), mode],
+                              capture_output=True, text=True, timeout=60, env=environment)
 
     def test_initial_fields_are_cleared_and_remain_zero_without_input(self):
         result = self.run_check("initialization")
@@ -60,14 +67,15 @@ class RendererCorrectnessTests(unittest.TestCase):
     def test_shader_wrapper_fails_immediately_with_context(self):
         for mode, vertex, fragment in [("missing-vertex", "missingVertex", "advect"),
                                        ("missing-fragment", "vertexShader", "missingFragment")]:
-            with self.subTest(mode=mode):
-                result = self.run_check(mode)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn("Metal render pipeline initialization failed", result.stderr)
-                self.assertIn(f"vertex: {vertex}", result.stderr)
-                self.assertIn(f"fragment: {fragment}", result.stderr)
-                self.assertIn("pixel format: 65", result.stderr)  # MTLPixelFormat.rg16Float
-                self.assertIn("failedToCreateFunction", result.stderr)
+            for optimized in [False, True]:
+                with self.subTest(mode=mode, optimized=optimized):
+                    result = self.run_check(mode, optimized=optimized)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("Metal render pipeline initialization failed", result.stderr)
+                    self.assertIn(f"vertex: {vertex}", result.stderr)
+                    self.assertIn(f"fragment: {fragment}", result.stderr)
+                    self.assertIn("pixel format: 65", result.stderr)  # MTLPixelFormat.rg16Float
+                    self.assertIn("failedToCreateFunction", result.stderr)
 
 
 if __name__ == "__main__":

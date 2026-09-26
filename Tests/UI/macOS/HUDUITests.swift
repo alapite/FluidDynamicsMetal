@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 @MainActor
@@ -101,6 +102,49 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(app.checkBoxes["Pressure"].value as? String, "Selected")
         app.typeKey("k", modifierFlags: [.command, .option])
         XCTAssertFalse(panel.exists)
+    }
+
+    func testMouseDragProducesVisibleDyeAndPausedResizePreservesIt() throws {
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+
+        func dyePixels() throws -> Int {
+            let screenshot = canvas.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(data: screenshot.pngRepresentation))
+            var count = 0
+            // Exclude window chrome and scan only the canvas interior.
+            for y in stride(from: bitmap.pixelsHigh / 5, to: bitmap.pixelsHigh * 4 / 5, by: 4) {
+                for x in stride(from: bitmap.pixelsWide / 10, to: bitmap.pixelsWide * 9 / 10, by: 4) {
+                    let color = try XCTUnwrap(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
+                    if color.blueComponent > color.redComponent + 0.03 &&
+                       color.blueComponent > color.greenComponent + 0.015 { count += 1 }
+                }
+            }
+            return count
+        }
+
+        XCTAssertEqual(try dyePixels(), 0, "A fresh density field must start empty")
+        let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.4))
+        let end = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.6))
+        start.click(forDuration: 0.5, thenDragTo: end)
+        canvas.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+        XCTAssertGreaterThan(try dyePixels(), 10, "Real mouse input must deposit visible dye")
+
+        let oldFrame = canvas.frame
+        let corner = canvas.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
+            .withOffset(CGVector(dx: -2, dy: -2))
+        corner.click(forDuration: 0.2, thenDragTo: corner.withOffset(CGVector(dx: -100, dy: -60)))
+        XCTAssertNotEqual(canvas.frame.size, oldFrame.size)
+        XCTAssertGreaterThan(try dyePixels(), 10, "Paused resize must preserve existing dye")
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(app.buttons["Resume simulation"].waitForExistence(timeout: 5))
+        app.buttons["Resume simulation"].click()
+        XCTAssertTrue(app.buttons["Pause simulation"].exists)
     }
 
     private func assertSelected(_ expected: String, among fields: [String], file: StaticString = #filePath, line: UInt = #line) {
