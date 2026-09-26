@@ -12,6 +12,7 @@ struct RendererCorrectnessCheck {
         case "initialization": try check.initialization()
         case "factory-errors": try check.factoryErrors()
         case "cache": try check.cache()
+        case "mouse-origin": try check.mouseOrigin()
         case "missing-vertex", "missing-fragment":
             let missingVertex = CommandLine.arguments[2] == "missing-vertex"
             _ = RenderShader(fragmentShader: missingVertex ? "advect" : "missingFragment",
@@ -146,6 +147,44 @@ final class GPUCheck {
             }
         }
         print("PASS: factory-errors")
+    }
+
+    func mouseOrigin() throws {
+        var mouse = MouseInputState()
+        mouse.update(position: .zero)
+        let contact = mouse.contactForFrame()!
+        let zero = SIMD2<Float>.zero
+        let slots: ContactTuple = (zero, zero, zero, zero, zero, zero, zero, zero, zero, zero)
+        var data = StaticData(positions: slots, impulses: slots, impulseScalar: zero,
+                              offsets: SIMD2(1 / Float(width), 1 / Float(height)),
+                              screenSize: SIMD2(Float(width), Float(height)), inkRadius: 150,
+                              tuning: SIMD4(0.998, 0.4, 0, 0))
+        Renderer.writeContacts([contact], tuning: SimulationTuning(), radius: 150, to: &data)
+        let uniforms = device.makeBuffer(bytes: &data, length: MemoryLayout<StaticData>.stride,
+                                         options: .storageModeShared)!
+        let input = texture()
+        let command = queue.makeCommandBuffer()!
+        Slab.clearInitialFields([input], commandBuffer: command)
+        finish(command)
+        let density = try apply("applyForceScalar", inputs: [input], uniforms: uniforms)
+        func corner(_ texture: MTLTexture) -> Float {
+            var values = [UInt16](repeating: 0, count: 2)
+            values.withUnsafeMutableBytes {
+                texture.getBytes($0.baseAddress!, bytesPerRow: 4,
+                                 from: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0)
+            }
+            return Float(Float16(bitPattern: values[0]))
+        }
+        let expected = 0.8 * exp(-2 * Float(0.49 * 0.49) / 150)
+        precondition(abs(corner(density) - expected) < 0.01, "Origin must inject exactly one dye splat")
+        mouse.update(position: nil)
+        precondition(mouse.contactForFrame() == nil)
+        Renderer.writeContacts([], tuning: SimulationTuning(), radius: 150, to: &data)
+        let releasedUniforms = device.makeBuffer(bytes: &data, length: MemoryLayout<StaticData>.stride,
+                                                 options: .storageModeShared)!
+        let released = try apply("applyForceScalar", inputs: [density], uniforms: releasedUniforms)
+        precondition(corner(released) == corner(density), "Release must stop injecting dye")
+        print("PASS: mouse-origin")
     }
 
     func cache() throws {

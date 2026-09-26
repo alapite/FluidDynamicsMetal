@@ -2,6 +2,45 @@ import MetalKit
 import XCTest
 
 final class RendererContactTests: XCTestCase {
+    func testMouseOriginIsOneContactAndMovementIsMeasuredPerFrame() throws {
+        var mouse = MouseInputState()
+        XCTAssertNil(mouse.contactForFrame())
+        mouse.update(position: .zero)
+        let origin = try XCTUnwrap(mouse.contactForFrame())
+        XCTAssertEqual(origin.position, .zero)
+        XCTAssertEqual(origin.impulse, .zero)
+
+        var data = emptyData()
+        Renderer.writeContacts([origin], tuning: SimulationTuning(), radius: 150, to: &data)
+        withUnsafeBytes(of: data.positions) { bytes in
+            let slots = bytes.bindMemory(to: SIMD2<Float>.self)
+            XCTAssertEqual(slots.filter { $0 != .zero }.count, 1)
+        }
+
+        mouse.update(position: SIMD2(2, 3))
+        mouse.update(position: SIMD2(5, 7))
+        XCTAssertEqual(mouse.contactForFrame()?.impulse, SIMD2(5, 7))
+        XCTAssertEqual(mouse.contactForFrame()?.impulse, .zero, "Holding still must not repeat the impulse")
+        mouse.update(position: .zero)
+        XCTAssertEqual(mouse.contactForFrame()?.impulse, SIMD2(-5, -7))
+    }
+
+    func testMouseReleaseAndRebaseDiscardPreviousFramePosition() {
+        var mouse = MouseInputState()
+        mouse.update(position: SIMD2(2, 3))
+        XCTAssertEqual(mouse.contactForFrame()?.impulse, .zero)
+        mouse.update(position: nil)
+        XCTAssertNil(mouse.contactForFrame())
+        mouse.update(position: SIMD2(50, 60))
+        XCTAssertEqual(mouse.contactForFrame()?.impulse, .zero)
+
+        // Resize, pause and inactivity all use this same clear operation.
+        mouse.clear()
+        XCTAssertNil(mouse.contactForFrame())
+        mouse.update(position: SIMD2(100, 120))
+        XCTAssertEqual(mouse.contactForFrame()?.impulse, .zero)
+    }
+
     private func emptyData() -> StaticData {
         let zero = SIMD2<Float>.zero
         return StaticData(positions: (zero, zero, zero, zero, zero, zero, zero, zero, zero, zero),

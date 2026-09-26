@@ -8,12 +8,33 @@
 
 import MetalKit
 
-typealias FloatTuple = (SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>)
 typealias ContactTuple = (SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>)
 
 struct FluidContact {
     let position: SIMD2<Float>
     let impulse: SIMD2<Float>
+}
+
+struct MouseInputState {
+    private var position: SIMD2<Float>?
+    private var previousFramePosition: SIMD2<Float>?
+
+    mutating func update(position: SIMD2<Float>?) {
+        self.position = position
+        if position == nil { previousFramePosition = nil }
+    }
+
+    mutating func clear() {
+        position = nil
+        previousFramePosition = nil
+    }
+
+    mutating func contactForFrame() -> FluidContact? {
+        guard let position else { return nil }
+        let impulse = position - (previousFramePosition ?? position)
+        previousFramePosition = position
+        return FluidContact(position: position, impulse: impulse)
+    }
 }
 
 struct StaticData {
@@ -70,8 +91,7 @@ class Renderer: NSObject {
     private let renderScalar: RenderShader = RenderShader(fragmentShader: "visualizeScalar", vertexShader: "vertexShader")
 
     //Touch or Mouse positions
-    private var positions: FloatTuple?
-    private var directions: FloatTuple?
+    private var mouseInput = MouseInputState()
     private var touchContacts: [FluidContact] = []
     private var pendingTapContacts: [FluidContact] = []
     private var touchRadius: Float?
@@ -138,25 +158,22 @@ class Renderer: NSObject {
     }
 
     func clearInput() {
-        positions = nil
-        directions = nil
+        mouseInput.clear()
         touchContacts.removeAll()
         pendingTapContacts.removeAll()
         touchRadius = nil
     }
 
-    func updateInteraction(points: FloatTuple?, in view: MTKView) {
+    func updateMouseInteraction(position: SIMD2<Float>?, in view: MTKView) {
         guard state.shouldAdvance else { clearInput(); return }
         touchContacts = []
         touchRadius = nil
-        positions = points
-        if points == nil { directions = nil }
+        mouseInput.update(position: position)
     }
 
     func updateTouchInteraction(contacts: [FluidContact], in view: MTKView) {
         guard state.shouldAdvance else { clearInput(); return }
-        positions = nil
-        directions = nil
+        mouseInput.clear()
         touchContacts = contacts
         let shortSide = max(1, min(view.bounds.width, view.bounds.height))
         let scale = Float(shortSide / 375)
@@ -385,13 +402,8 @@ extension Renderer: @MainActor MTKViewDelegate {
         var contacts = touchContacts
         contacts.append(contentsOf: pendingTapContacts)
         pendingTapContacts.removeAll()
-        if let points = positions {
-            let previous = directions ?? points
-            let current = [points.0, points.1, points.2, points.3, points.4]
-            let prior = [previous.0, previous.1, previous.2, previous.3, previous.4]
-            contacts = current.enumerated().filter { $0.element.x != 0 || $0.element.y != 0 }.map {
-                FluidContact(position: $0.element, impulse: $0.element - prior[$0.offset])
-            }
+        if let contact = mouseInput.contactForFrame() {
+            contacts = [contact]
         }
         let batches = Renderer.contactBatches(contacts)
         let dataBuffer = nextBuffer(contacts: batches.first ?? [], tuning: tuning)
@@ -437,7 +449,6 @@ extension Renderer: @MainActor MTKViewDelegate {
 
         commandBuffer.commit()
 
-        directions = positions
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {

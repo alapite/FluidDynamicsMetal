@@ -400,8 +400,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         let point = metalView.convert(event.locationInWindow, from: nil)
 
         let position = SIMD2<Float>(Float(point.x), Float(metalView.bounds.height - point.y))
-        let tuple = FloatTuple(position, SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>())
-        renderer.updateInteraction(points: tuple, in: metalView)
+        renderer.updateMouseInteraction(position: position, in: metalView)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -409,18 +408,17 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         let point = metalView.convert(event.locationInWindow, from: nil)
 
         let position = SIMD2<Float>(Float(point.x), Float(metalView.bounds.height - point.y))
-        let tuple = FloatTuple(position, SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>(), SIMD2<Float>())
         if rebaseDrag {
             renderer.clearInput()
             rebaseDrag = false
         }
-        renderer.updateInteraction(points: tuple, in: metalView)
+        renderer.updateMouseInteraction(position: position, in: metalView)
     }
 
     override func mouseUp(with event: NSEvent) {
         mouseHeld = false
         rebaseDrag = false
-        renderer.updateInteraction(points: nil, in: metalView)
+        renderer.updateMouseInteraction(position: nil, in: metalView)
     }
 
     override func keyDown(with event: NSEvent) {
