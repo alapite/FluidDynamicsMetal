@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and state tests
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify runner toolchain
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          xcodebuild -version | grep -Eq '^Xcode 26\.'
+          if ! xcrun -sdk macosx metal -v >/dev/null 2>&1; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+
+      - name: Check project build settings
+        run: python3 -m unittest -v Tests.Integration.test_phase02_settings
+
+      - name: Test Mac simulation state
+        run: |
+          xcodebuild test \
+            -project FluidDynamicsMetal.xcodeproj \
+            -scheme FluidDynamicsMetalOSX \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -only-testing:FluidDynamicsMetalStateTests \
+            -resultBundlePath "$RUNNER_TEMP/MacStateTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build iOS Simulator app
+        run: |
+          xcodebuild build \
+            -project FluidDynamicsMetal.xcodeproj \
+            -scheme FluidDynamicsMetaliOS \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload Mac test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: mac-state-tests
+          path: ${{ runner.temp }}/MacStateTests.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
