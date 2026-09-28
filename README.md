@@ -1,5 +1,7 @@
 # FluidDynamicsMetal
 
+[![CI](https://github.com/alapite/FluidDynamicsMetal/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/alapite/FluidDynamicsMetal/actions/workflows/ci.yml)
+
 Interactive Metal fluid simulation for **macOS 26 on Apple Silicon** and **iOS/iPadOS 26**. The Xcode project requires Swift 6.2 or later, uses Swift 6 language mode with complete concurrency checking, and has separate Mac and iOS app schemes.
 
 ![fluiddynamics](https://github.com/andreipitis/FluidDynamicsMetal/blob/master/FluidDynamicsMetal.gif?raw=true)
