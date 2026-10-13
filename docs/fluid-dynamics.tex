@@ -14,7 +14,7 @@
 \pagestyle{fancy}\fancyhf{}
 \fancyhead[L]{\small\sffamily\color{ink}FluidDynamicsMetal}
 \fancyhead[R]{\small\sffamily Equations and approximations}
-\fancyfoot[L]{\footnotesize Source-based technical note\quad\textbar\quad 26 September 2026}
+\fancyfoot[L]{\footnotesize Source-based technical note\quad\textbar\quad 13 October 2026}
 \fancyfoot[R]{\small\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \setlength{\parindent}{0pt}
@@ -38,7 +38,7 @@
 \vspace{5mm}
 {\large How the Swift renderer and Metal shaders create moving dye}\par
 \vspace{5mm}
-\textbf{Source snapshot:} \code{9477dabc41a2} \quad\textbar\quad 26 September 2026
+\textbf{Source snapshot:} First educational release working tree \quad\textbar\quad 13 October 2026
 
 \section*{What this simulation represents}
 The app evolves a two-dimensional velocity field and a scalar dye field on a
@@ -71,7 +71,8 @@ Page & Topic \\
 8 & Why incompressibility and conservation are approximate \\
 9 & GPU execution, precision, initial state, and resizing \\
 10 & Displayed fields and the actual tuning parameters \\
-11 & Source map, scope of verification, and rebuilding this PDF \\
+11 & Passive particles and deterministic experiments \\
+12 & Source map, scope of verification, and rebuilding this PDF \\
 \bottomrule
 \end{tabularx}
 
@@ -118,8 +119,7 @@ Dye diffusion $\kappa\nabla^2c$ & No explicit dye-diffusion solve. \\
 Forcing and source & Gaussian velocity increments and Gaussian dye deposits
 around user contacts. \\
 Small-scale rotation & Vorticity confinement, an added visual force. \\
-Decay & The same multiplicative retention factor applied to velocity and dye
-during their advection passes. \\
+Decay & Independent multiplicative retention factors for velocity and dye during their advection passes. \\
 \bottomrule
 \end{tabularx}
 
@@ -133,17 +133,18 @@ units and one advancing frame as a time unit gives effective $h=1$ and
 $\Delta t=1$. Stored velocity is therefore best understood as a displacement in
 cells per simulation step. This convention also absorbs the physical pressure
 and density scale into the pressure-correction field (page 7).
-\src{\code{Renderer.draw(in:)}; \code{Shaders.metal}: \code{advect},
+\src{\code{FluidSimulation.encodeStep}; \code{Shaders.metal}: \code{advect},
 \code{jacobi}, \code{gradient}, and \code{vorticityConfinement}.}
 
 \page{The grid and the exact order of a frame}
-For view bounds measured in platform points, the renderer chooses
+\begingroup\small
+In Free Play, for view bounds measured in platform points, the renderer chooses
 \begin{equation}
  W=\left\lfloor\frac{\text{bounds.width}}{s_g}\right\rfloor,\qquad
  H=\left\lfloor\frac{\text{bounds.height}}{s_g}\right\rfloor,\qquad s_g=1.
 \end{equation}
 $s_g$ is \code{ScreenScaleAdjustment}. The grid uses view bounds, not the
-drawable's Retina pixel dimensions. All quantities are \emph{collocated}: both
+drawable's Retina pixel dimensions. Lessons instead always use a $256\times256$ grid, fitted as a square without distortion; changing the window or orientation changes only its viewport. All quantities are \emph{collocated}: both
 velocity components and each scalar live at the same texel centres.
 For $0\leq i<W$, $0\leq j<H$,
 \begin{equation}
@@ -162,7 +163,7 @@ Slab & First channel & Second channel \\
 Velocity & Horizontal velocity $u$ & Vertical velocity $v$ \\
 Density & Dye $c$ & Carried but not used for dye display \\
 Divergence & Discrete divergence $b$ & Written as zero \\
-Vorticity & Signed curl $\omega$ & Written as zero \\
+Vorticity (two slabs) & Pre-confinement and final-velocity curl & Written as zero \\
 Pressure & Correction potential $\phi$ & Written as zero \\
 \bottomrule
 \end{tabularx}
@@ -173,25 +174,27 @@ Superscripts $a,b$ label intermediate fields, not time derivatives.
 \begin{enumerate}
 \item Advect velocity with itself: $\uvec^a=A_{\uvec^n}(\uvec^n)$.
 \item Advect dye with that \emph{updated} velocity: $c^a=A_{\uvec^a}(c^n)$.
-\item For every contact batch, add velocity and dye splats, giving
-$\uvec^b$ and $c^{n+1}$.
+\item Advance passive particles with $\uvec^a$ using midpoint integration (page 11).
+\item For every contact batch in Free Play, add velocity and dye splats, giving
+$\uvec^b$ and $c^{n+1}$. The stretching lesson instead adds its scripted velocity impulse at this stage.
 \item Compute $\omega=\operatorname{curl}_h\uvec^b$ and store it.
 \item Add confinement to $\uvec^b$, then zero the outer velocity cells,
 giving the provisional velocity $\mathbf w$.
 \item Compute $b=D_h\mathbf w$; perform exactly 40 pressure iterations.
 \item Set $\uvec^{n+1}=\mathbf w-G_h\phi$ and zero outer velocity cells again.
-\item Display the selected stored field, if a drawable is available.
+\item Recompute curl from $\uvec^{n+1}$ into a separate display slab.
+\item Reduce field statistics on the GPU; display the selected field and overlays if a drawable is available.
 \end{enumerate}
 
 This is sequential \emph{operator splitting}. A dye deposit is not transported
 until the next frame, and the current frame's force and pressure correction do
 not enter the current dye backtrace. These are visible timing choices, not
 simultaneous solutions of equations \eqref{eq:ns}--\eqref{eq:dye}.
-When paused or inactive, \code{draw(in:)} skips all evolution and can display an
-existing field without advancing it.
+Paused redraws skip evolution. Each accepted Step request advances exactly once and stays paused, even without a drawable. Inactivity cancels queued steps without changing the user pause choice; returning never catches up hidden steps.
 \src{\code{Renderer.swift}: resize callback, \code{draw(in:)}, and the slab
 pass wrappers; \code{Shaders.metal}: \code{BufferData}.}
 
+\endgroup
 \page{Advection: follow a parcel backwards}
 Ignoring sources and decay, a transported quantity satisfies
 $\partial_tq+\uvec\cdot\nabla q=0$: it is constant along a fluid trajectory.
@@ -205,7 +208,7 @@ along the trajectory (a first-order backtrace),
  A_{\mathbf a}(q)(\xvec)=r\,\mathcal I[q](\xvec_d),\qquad\Delta t=1,
  \label{eq:advect}
 \end{equation}
-where $r$ is retention and $\mathcal I$ is bilinear interpolation. This is a
+where $r=r_u$ for velocity and $r=r_c$ for dye is retention and $\mathcal I$ is bilinear interpolation. This is a
 semi-Lagrangian method: a fixed (Eulerian) grid samples approximate moving
 (Lagrangian) trajectories. Velocity at the destination is sampled with nearest
 filtering; the backtraced field uses four manually interpolated samples.
@@ -253,7 +256,7 @@ The stability argument applies to this sampling operation, not to the whole
 solver with forces, finite precision, and approximate projection.
 \src{\code{Shaders.metal}: \code{advect} and \code{bilerpFrag}.}
 
-\page{User input and the meaning of Fade}
+\page{User input, dye fading, and motion damping}
 For a contact at grid position $\mathbf z_k$, the shader uses
 \begin{equation}
  g_k(\xvec)=\exp\!\left(-\frac{\|\xvec-\mathbf z_k\|^2}{R}\right),\qquad
@@ -274,8 +277,7 @@ dye: on an infinite continuous plane, $\int g\,dA=\pi R$.
 For mouse input the active renderer supplies $R=150/s_g$. For touch input it
 uses $R=150(\min(\text{view width},\text{view height})/375)^2$, with the short
 side clamped to at least one point. At the current $s_g=1$, the touch footprint
-therefore scales with screen size. \code{SimulationTuning.radius} exists but is
-not read by this active path.
+therefore scales with screen size. Without a touch-specific radius, the shared encoder uses \code{SimulationTuning.radius}. Lessons disable user injection.
 
 Contacts occupy ten uniform slots per pass; extra contacts are split into
 additional batches, each with a velocity pass and a dye pass. An unused slot is
@@ -286,9 +288,8 @@ event-to-event displacements; the renderer reuses the latest touch contacts
 until an input update replaces them. Input is consequently frame/event-rate
 dependent rather than a calibrated force measurement.
 
-\subsection*{Retention is applied to both transported fields}
-The scalar $r$ in equation \eqref{eq:advect} multiplies \emph{both} self-advected
-velocity and advected dye. Fade therefore damps motion as well as colour.
+\subsection*{Independent retention for the two transported fields}
+Dye fading sets $r_c$; Motion damping sets $r_u$. Each multiplies only its corresponding advection output. Both default to $0.998$ in Free Play. Both equal one in lessons, whose confinement strength is zero.
 For an isolated value affected only by retention, in exact arithmetic,
 \begin{equation}
  q_n=r^nq_0,\qquad
@@ -306,7 +307,7 @@ The view requests 60 frames per second, but the solver does not compensate for
 missed frames. At 30 advancing frames per second, decay measured in seconds
 roughly slows by a factor of two. Multiplicative damping is proportional to the
 local value; physical viscosity instead depends on spatial curvature.
-\src{\code{Renderer}: \code{writeContacts}, \code{nextBuffer}, input methods;
+\src{\code{Renderer}: \code{writeContacts}, \code{FluidSimulation.uniform}, input methods;
 platform \code{RenderViewController}s; \code{gaussSplat}, \code{applyForceVector},
 \code{applyForceScalar}, and \code{advect}.}
 
@@ -318,7 +319,7 @@ Vorticity measures local rotation. In the shader's coordinate convention,
                          -u_{i,j+1}+u_{i,j-1}\bigr).
 \end{equation}
 This is a central difference with unit grid spacing. The visual interpretation
-of its sign must respect the downward texture $y$ direction.
+of its sign must respect the downward texture $y$ direction: positive is clockwise (orange), negative anticlockwise (blue). Final projected velocity is used for display curl; confinement retains its earlier curl.
 
 Semi-Lagrangian interpolation weakens small vortices. Confinement adds a force
 constructed from variation in the \emph{magnitude} of vorticity, intended to
@@ -335,7 +336,7 @@ retain more rotational detail. Define
  \qquad\epsilon=2.4414\times10^{-4},\label{eq:conf}\\
  \mathbf w&=B\bigl(\uvec^b+\mathbf f_{\mathrm{conf}}\bigr).
 \end{align}
-$S$ is Swirl (default $0.4$), and $B$ is the boundary overwrite below. In code,
+$S$ is Swirl enhancement (Free Play default $0.4$), and $B$ is the boundary overwrite below. In code,
 the two gradient components are constructed in reversed order and the second
 force component is negated. Equation \eqref{eq:conf} is that exact algebra,
 equivalent to a regularized two-dimensional form of $\mathbf N\times\boldsymbol\omega$.
@@ -492,8 +493,7 @@ Each slab owns two \code{rg16Float} textures, called \code{ping} and
 \code{pong}; a fragment invocation computes each destination cell from
 \code{ping}. Swapping the references makes the output the next input.
 This avoids reading and writing the same texture in one pass and makes Jacobi's
-iteration dependency explicit. The active simulation uses render passes, not
-the project's separate \code{ComputeShader} helper.
+iteration dependency explicit. The field solver uses render passes. Particle integration and field-statistics reductions use compute passes with explicit pipeline error context.
 
 With $B_c$ contact batches and an available drawable, an ordinary advancing
 frame uses
@@ -504,31 +504,24 @@ frame uses
  +\underbrace{1}_{\text{divergence}}
  +\underbrace{40}_{\text{pressure}}
  +\underbrace{1}_{\text{gradient}}
- +\underbrace{1}_{\text{display}}=47+2B_c
+ +\underbrace{1}_{\text{final curl}}+\underbrace{1}_{\text{display}}=48+2B_c
 \end{equation}
-render passes. With one contact batch this is 49. Most work is local texture
+render passes, plus compute and optional overlay passes. With one contact batch the field passes total 50. Most work is local texture
 sampling; the 40 pressure passes dominate the pass count. The work scales
 roughly as $O(WH(40+B_c+1))$, with up to ten splats evaluated per input pass.
 This is a cost model, not a measured frame-rate claim.
 
-Five double-buffered slabs at two 16-bit channels per texel require nominally
-$5\times2\times4WH=40WH$ bytes of field storage, excluding alignment, uniforms,
+Six double-buffered slabs at two 16-bit channels per texel require nominally
+$6\times2\times4WH=48WH$ bytes of field storage, excluding alignment, uniforms,
 drawables, and transient resize textures. Scalars still occupy two channels.
 Half storage reduces memory traffic relative to 32-bit channels but has limited
 range and precision. Some shaders calculate in \code{float}; splats, much of
 Jacobi, and final outputs use \code{half}. Rounding occurs between passes.
 
 \subsection*{Initial values and scheduling}
-\code{Slab.init} allocates textures but performs no explicit clear or upload.
-\code{RenderShader} sets \code{loadAction = .dontCare}; its black
-\code{clearColor} is therefore not an initialization pass. From source alone,
-one should not claim a solver-defined zero initial condition. A reproducible
-numerical experiment would explicitly initialize all fields before sampling
-them. The warm-start description applies once a pressure result has been stored.
+The shared encoder explicitly clears every ping and pong field on reset, then uploads deterministic lesson seeds where appropriate. Pressure from the previous run cannot survive a reset. Particles, history, counters, script phase, queued steps, and input also reset.
 
-Three uniform buffers and a semaphore permit up to three frames in flight,
-while command buffers use the same command queue. This is scheduling overlap;
-it does not mean three independent fluid states are simulated.
+A semaphore permits at most three command buffers in flight on one serial queue. Uniform bytes are copied into each encoder; no CPU buffer is overwritten while in flight. Resource replacement drains outstanding commands. Normal frames do not wait synchronously for GPU completion or read statistics back to the CPU.
 
 \subsection*{Resizing preserves an image-space state}
 The resize pass nearest-samples each old field at normalized coordinates. For
@@ -542,51 +535,35 @@ velocity only, it applies componentwise scale factors,
 This preserves displacement as a fraction of the canvas per step. Other fields
 are copied without amplitude scaling. No conservative remap or immediate
 reprojection occurs; copied divergence/vorticity need not be derivatives of the
-resized velocity. They are recomputed on the next advancing frame. Input is
-cleared and new grid offsets are installed.
+resized velocity. Display curl is recomputed immediately; other intermediate fields are recomputed on the next advancing frame. Input is cleared and new grid offsets are installed. Normalized particle positions and history are retained. Lessons do not resample or replace resources on resize.
 \src{\code{Slab.swift}, \code{RenderShader.swift}, \code{Renderer.swift},
 \code{MetalDevice.swift}; \code{Shaders.metal}: \code{resampleField}.}
 
 \page{What the controls and colours mean}
-\subsection*{The displayed field is not a calibrated plot}
-Density and Pressure use the first texture channel $q$ and map it to
-\begin{equation}
- (R,G,B,A)=\left(0,\;0.06|q|,\;0.19|q|,\;1\right).
-\end{equation}
-The absolute value discards pressure sign. Brightness is not normalized to the
-range of the field. On the \code{bgra8Unorm} output target, channels clamp to
-$[0,1]$ and are quantized, so blue saturates at $|q|\simeq5.26$ and green at
-$|q|\simeq16.67$ in ideal arithmetic.
+\subsection*{Qualitative, frame-relative field displays}
+Dye concentration uses $t=\max(c,0)/(1+\max(c,0))$ with black--blue--pale-cyan colours. Velocity uses speed $\|\uvec\|$ with dark-purple--teal--yellow colours and always includes direction arrows. Vorticity uses orange for clockwise, light grey for zero, and blue for anticlockwise.
 
-Velocity \emph{and Vorticity} use \code{visualizeVector}, whose expression is
+Pressure subtracts its spatial mean before display. With $N=WH$,
 \begin{equation}
- \mathbf C=\tfrac12\mathbf 1+\tfrac12\mathbf q.
+ \bar\phi=\frac{1}{N}\sum_{ij}\phi_{ij},\quad
+ m_p=\max\left(10^{-5},\max_{ij}|\phi_{ij}-\bar\phi|\right),\quad
+ t_p=\frac{\phi-\bar\phi}{m_p}.
 \end{equation}
-Velocity therefore places $u$ in red and $v$ in green, centred on mid-grey for
-zero components; it is not a vector-arrow or speed-magnitude plot. Vorticity is
-actually scalar, stored as $(\omega,0)$, so its red channel varies with signed
-$\omega$ and its green channel stays at $0.5$. Values outside $[-1,1]$ clip in
-these displayed channels. The same sample conversion also handles the unused
-blue/alpha components.
+Negative values map to blue, zero to light grey, and positive values to orange. Speed and curl likewise use their current maximum magnitude with a $10^{-5}$ denominator floor. Two-stage GPU reductions accumulate statistics in float32 and feed rendering in the same command buffer. Legends explicitly say that the colour scale adjusts to the frame; colours do not support absolute comparisons between frames.
 
-The stored vorticity was computed \emph{before} confinement and projection in
-the frame. It is not a recomputed curl of the final displayed velocity.
-Divergence has no selectable display field, and selecting a field changes only
-the presentation, not the evolving simulation.
+Arrows sample the final projected velocity, have fixed length, and omit speeds below $10^{-5}$. Approximately 32-point spacing is capped at 32 positions per axis. Contrasting outlines retain visibility. Display changes never alter evolution. Overlays use a load-preserving attachment and explicit alpha blending, with clipping to the simulation viewport.
 
 \subsection*{Slider position versus numerical value}
-For normalized slider position $z\in[0,1]$, Force, Dye, and Swirl each map to
-$2z$. Fade maps to retention by the following piecewise rule:
+For normalized slider position $z\in[0,1]$, Force, Dye, and Swirl enhancement each map to $2z$. Both fading and damping map to their independent retention by the following piecewise rule:
 \begin{equation}
  r(z)=\begin{cases}
- 0.9995-0.0015(z/0.17), & z<0.17,\\
+ 1-0.002(z/0.17), & z<0.17,\\
  0.998, & z=0.17,\\
  0.998-0.0075((z-0.17)/0.83), & z>0.17.
  \end{cases}
 \end{equation}
 The central equality is explicitly special-cased in Swift. The UI range is
-$0.9905\leq r\leq0.9995$: even minimum Fade retains less than one, and maximum
-Fade does not immediately erase a field.
+$0.9905\leq r\leq1$: zero means no explicit decay. Numerical advection can still smooth the field.
 
 \begin{tabularx}{\linewidth}{@{}lclY@{}}
 \toprule
@@ -594,8 +571,9 @@ Control & Default UI & Default value & Effect \\
 \midrule
 Force & 50\% & $F=1$ & Multiplies contact displacement. \\
 Dye & 40\% & $d=0.8$ & Adds dye per contact per advancing frame. \\
-Swirl & 20\% & $S=0.4$ & Scales confinement of existing vorticity. \\
-Fade & 17\% & $r=0.998$ & Retains velocity and dye during advection. \\
+Swirl enhancement & 20\% & $S=0.4$ & Scales confinement of existing vorticity. \\
+Dye fading & 17\% & $r_c=0.998$ & Retains dye during advection. \\
+Motion damping & 17\% & $r_u=0.998$ & Retains velocity during advection. \\
 \bottomrule
 \end{tabularx}
 
@@ -605,21 +583,42 @@ iterations. There is no runtime resolution control. Changing the source grid
 scale alone would also require care with force, splat width, timestep, and
 projection accuracy if consistent physical behaviour were the goal.
 \src{\code{SimulationState.swift}: \code{SimulationTuning}; \code{Renderer}:
-\code{render}, \code{drawSlab}; \code{visualizeScalar}, \code{visualizeVector}.}
+\code{FieldVisualization}; \code{displayField}.}
+
+\page{Particles and deterministic experiments}
+The 256 passive markers start on a $16\times16$ lattice spanning normalized coordinates $0.1$ through $0.9$. They inject neither forces nor dye and continue advancing while hidden. Positions use float32 buffers; $\uvec^a$ is the same updated velocity used to advect dye before the current step's forces.
+
+For normalized position $\mathbf p$, let $D=\operatorname{diag}(1/W,1/H)$ convert grid-cell velocity into normalized displacement. With bilinear velocity sampling,
+\begin{align}
+ \mathbf p_{1/2}&=C(\mathbf p_n+\tfrac12 D\uvec^a(\mathbf p_n)),\\
+ \mathbf p_{n+1}&=C(\mathbf p_n+D\uvec^a(\mathbf p_{1/2})),
+\end{align}
+where $C$ clamps each coordinate to the interior sampling region $[1.5/W,1-1.5/W]$ (and analogously for $H$). There is no wrapping or respawning. A GPU ring stores the last 64 positions per marker. Trails join adjacent chronological samples, fading older segments, without joining newest to oldest. These are recent particle paths, not instantaneous streamlines.
+
+All lessons have a $256\times256$ grid, no explicit retention loss, no confinement, no freehand input, and the unchanged 40-iteration pressure solve. Gaussian vortex templates are derived from
+\begin{equation}
+ \psi=B(x)B(y)\sum_k s_k e^{-\|\mathbf x-\mathbf c_k\|^2/(2\sigma^2)},\qquad
+ \uvec=(\delta_y\psi,-\delta_x\psi).
+\end{equation}
+$B(t)$ multiplies smoothstep ramps over the first and last $0.08$ of the domain. Central differences use grid-cell spacing; the outer two rows and columns are zeroed, then the whole template is normalized to its prescribed maximum speed.
+
+Advection uses one vortex with $\sigma=0.22$ and a dye patch offset to the right. The pair lesson combines two $\sigma=0.10$ vortices at $x=0.35,0.65$ with equal or opposite signs. The stretching lesson starts with a vertical dye stripe, then adds clockwise and anticlockwise templates in successive 120-step phases. Their impulse is $0.04s\sin^2(\pi(k+0.5)/120)$; steps 240--599 have no further forcing. Exact constants live in \code{ExperimentRecipes.swift}.
+
+Every lesson pauses at 600 steps. Restart retains the selected adjustment and display choices and returns to step zero. Matching settings and step counts reproduce results on the same implementation and device. Neither cross-device bitwise identity nor equal playback duration under different GPU loads is promised.
+\src{\code{ParticleSystem.swift}, \code{ExperimentRecipes.swift}, \code{FluidSimulation.encodeStep}. Path terminology: \href{https://web.mit.edu/fluids-modules/www/potential_flows/LecturesHTML/lec02/tutorial/}{MIT flow-visualization tutorial}.}
 
 \page{Source map and reproducibility}
 All paths below are relative to the repository root. Function names are given
 instead of line numbers so that small unrelated edits do not invalidate the map.
-The description was checked against simulation sources at commit
-\code{9477dabc41a24780371c07e8decb7a9ba3d337a0}.
+The description follows the first educational release implementation dated 13 October 2026.
 
 {\small
 \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.43\linewidth}Y@{}}
 \toprule
 File & What to inspect \\
 \midrule
-\path{Sources/Shared/Renderer.swift} & \code{draw(in:)} for order and 40 iterations;
-\code{writeContacts}/\code{nextBuffer} for input; resize callback for grid size
+\path{Sources/Shared/Renderer.swift} & \code{draw(in:)} for scheduling; \code{FluidSimulation.encodeStep} for evolution;
+\code{writeContacts}/\code{FluidSimulation.uniform} for input; resize callback for grid size
 and remapping; \code{render} for field-to-shader selection. \\
 \path{Sources/Shared/Shaders.metal} & \code{advect}/\code{bilerpFrag}; force shaders;
 \code{vorticity}/\code{vorticityConfinement}; \code{divergence}/\code{jacobi}/\code{gradient};
@@ -637,9 +636,8 @@ tap and hold handling. \\
 
 \subsection*{Evidence and limits}
 The equations here are transcriptions or algebraic consequences of the source,
-with ordinary fluid mechanics used to explain their purpose. The document does
-not report a new GPU benchmark, conservation test, or convergence study.
-Existing \path{Tests/Integration/test_phase05_metal.swift} exercises shader
+with ordinary fluid mechanics used to explain their purpose. The release verification report records production-encoder GPU checks and timings; these do not establish physical convergence or conservation.
+\path{Tests/Integration/test_educational_release.swift} checks reset, reproducibility, particles, displays, lessons, and timings. Existing \path{Tests/Integration/test_phase05_metal.swift} exercises shader
 responses to force, dye, retention, and swirl; \path{test_phase03_metal.swift}
 in the same directory exercises resize remapping. Those checks are not a proof
 of Navier--Stokes accuracy or discrete incompressibility.

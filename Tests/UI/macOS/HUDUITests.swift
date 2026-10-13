@@ -13,9 +13,9 @@ final class HUDUITests: XCTestCase {
     }
 
     func testNamedSelectionAndPausedFieldChanges() {
-        let fields = ["Density", "Pressure", "Velocity", "Vorticity"]
+        let fields = ["Dye concentration", "Pressure", "Velocity", "Vorticity"]
         for name in fields { XCTAssertTrue(app.checkBoxes[name].waitForExistence(timeout: 10)) }
-        assertSelected("Density", among: fields)
+        assertSelected("Dye concentration", among: fields)
 
         app.checkBoxes["Vorticity"].click()
         assertSelected("Vorticity", among: fields)
@@ -32,8 +32,8 @@ final class HUDUITests: XCTestCase {
     }
 
     func testCanvasShortcutsKeepControlsInSync() {
-        let fields = ["Density", "Pressure", "Velocity", "Vorticity"]
-        XCTAssertTrue(app.checkBoxes["Density"].waitForExistence(timeout: 10))
+        let fields = ["Dye concentration", "Pressure", "Velocity", "Vorticity"]
+        XCTAssertTrue(app.checkBoxes["Dye concentration"].waitForExistence(timeout: 10))
         // Make the Metal canvas the target before sending window shortcuts.
         app.windows["FluidDynamicsMetalOSX"].coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
         app.windows["FluidDynamicsMetalOSX"].typeKey("s", modifierFlags: [])
@@ -42,22 +42,20 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Resume simulation"].exists)
     }
 
-    func testFocusedFieldSpaceSelectsWithoutPausing() {
-        let vorticity = app.checkBoxes["Vorticity"]
-        XCTAssertTrue(vorticity.waitForExistence(timeout: 10))
-        vorticity.click()
-        // The utility panel starts keyboard focus on Density; Tab moves to Pressure.
-        app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
+    func testFocusedExperimentSpaceDoesNotPauseCanvas() {
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click(); selector.menuItems["Free Play"].click()
         app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
-        XCTAssertTrue(app.buttons["Pause simulation"].exists, "Space on a field control must not pause")
-        assertSelected("Pressure", among: ["Density", "Pressure", "Velocity", "Vorticity"])
+        XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
+        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
     }
 
     func testTuningDisclosureAndDefaultValuesSurvivePauseAndReopen() {
         XCTAssertTrue(app.buttons["Show Tuning"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.sliders["Force"].exists)
         app.buttons["Show Tuning"].click()
-        for (name, value) in [("Force", "50%"), ("Dye", "40%"), ("Swirl", "20%"), ("Fade", "17%")] {
+        for (name, value) in [("Force", "50%"), ("Dye", "40%"), ("Swirl enhancement", "20%"), ("Dye fading", "17%"), ("Motion damping", "17%")] {
             let slider = app.sliders[name]
             XCTAssertTrue(slider.exists, "\(name) must be visible in Tuning")
             XCTAssertEqual(slider.value as? String, value)
@@ -82,7 +80,7 @@ final class HUDUITests: XCTestCase {
         app.checkBoxes["Velocity"].click()
         app.windows["FluidDynamicsMetalOSX"].coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
         XCTAssertTrue(app.buttons["Hide Tuning"].exists)
-        XCTAssertTrue(app.sliders["Fade"].exists)
+        XCTAssertTrue(app.sliders["Dye fading"].exists)
         XCTAssertEqual(app.checkBoxes["Velocity"].value as? String, "Selected")
     }
 
@@ -145,6 +143,53 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Resume simulation"].waitForExistence(timeout: 5))
         app.buttons["Resume simulation"].click()
         XCTAssertTrue(app.buttons["Pause simulation"].exists)
+    }
+
+    func testEveryLessonWorkflowAndKeyboardCommands() {
+        XCTAssertTrue(app.popUpButtons["experimentSelector"].waitForExistence(timeout: 10))
+        for index in 2...4 {
+            command(String(index))
+            XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+            XCTAssertTrue(app.buttons["transport.step"].isEnabled)
+            command(XCUIKeyboardKey.rightArrow.rawValue)
+            XCTAssertTrue(app.staticTexts["Step 1"].waitForExistence(timeout: 5))
+            app.checkBoxes["field.1"].click()
+            XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 1")
+            command("r")
+            XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+            XCTAssertEqual(app.checkBoxes["field.1"].value as? String, "Selected")
+            let adjustment = app.popUpButtons["experimentAdjustment"]
+            adjustment.click()
+            adjustment.menuItems[["1.5 cells per step", "Opposite rotation", "Strong"][index - 2]].click()
+            XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+            command("p")
+            XCTAssertFalse(app.buttons["transport.step"].isEnabled)
+            command("p")
+            XCTAssertTrue(app.buttons["transport.step"].isEnabled)
+            for name in ["FluidDynamicsMetalOSX", "Simulation Controls"] {
+                let capture = XCTAttachment(screenshot: app.windows[name].screenshot())
+                capture.name = "Mac-lesson-\(index)-\(name)"; capture.lifetime = .keepAlways; add(capture)
+            }
+        }
+        command("1")
+        XCTAssertEqual(app.popUpButtons["experimentSelector"].value as? String, "Free Play")
+        XCTAssertFalse(app.buttons["transport.step"].isEnabled)
+    }
+    func testLessonCompletion() {
+        XCTAssertTrue(app.popUpButtons["experimentSelector"].waitForExistence(timeout: 10))
+        command("2"); command("p")
+        let complete = app.staticTexts["stepCount"]
+        let predicate = NSPredicate(format: "value == %@", "Experiment complete. Restart to compare.")
+        expectation(for: predicate, evaluatedWith: complete)
+        waitForExpectations(timeout: 30)
+        XCTAssertFalse(app.buttons["transport.step"].isEnabled); XCTAssertFalse(app.buttons["transport.pause"].isEnabled)
+        command("r")
+        XCTAssertTrue(app.buttons["transport.step"].isEnabled)
+    }
+
+    private func command(_ key: String) {
+        app.activate()
+        app.typeKey(key, modifierFlags: .command)
     }
 
     private func assertSelected(_ expected: String, among fields: [String], file: StaticString = #filePath, line: UInt = #line) {

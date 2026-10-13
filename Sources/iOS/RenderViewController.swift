@@ -9,11 +9,30 @@
 import UIKit
 import MetalKit
 
-let MaxBuffers = 3
 
 class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
 
     var renderer: Renderer!
+    private let experimentSelector = UIButton(type: .system)
+    private let stepButton = UIButton(type: .system)
+    private let restartButton = UIButton(type: .system)
+    private let stepLabel = UILabel()
+    private let lessonStack = UIStackView()
+    private let question = UILabel()
+    private let notice = UILabel()
+    private let adjustmentLabel = UILabel()
+    private let adjustmentSelector = UIButton(type: .system)
+    private let colourLegend = ColourLegendView()
+    private let canvasAccessibility = UIView()
+    private let legend = UILabel()
+    private let explanation = UILabel()
+    private let aboutButton = UIButton(type: .system)
+    private let aboutText = UILabel()
+    private var overlaySwitches: [UISwitch] = []
+    private let bodyStack = UIStackView()
+    private let pinnedStack = UIStackView()
+    private let transport = UIStackView()
+    private var lastComplete = false
     private var touchOrder: [UITouch] = []
     private var positions: [UITouch: CGPoint] = [:]
     private var previousPositions: [UITouch: CGPoint] = [:]
@@ -23,7 +42,6 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     private var lastCanvasSize: CGSize = .zero
     private let hud = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
     private let caption = UILabel()
-    private let activeSummary = UILabel()
     private let fieldStack = UIStackView()
     private let controlsScroll = UIScrollView()
     private let pauseButton = UIButton(type: .system)
@@ -32,11 +50,9 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     private var tuningSliders: [TuningControl: UISlider] = [:]
     private var tuningValues: [TuningControl: UILabel] = [:]
     private var isTuningExpanded = false
-    private var scrollTop: NSLayoutConstraint?
     private var fieldButtons: [DisplayField: UIButton] = [:]
     private var hudWidth: NSLayoutConstraint?
     private var hudHeight: NSLayoutConstraint?
-    private var fieldColumns = 0
     var metalView: MTKView {
         return view as! MTKView
     }
@@ -50,6 +66,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         metalView.isMultipleTouchEnabled = true
 
         installControls()
+        renderer.stateDidChange = { [weak self] in self?.refreshTransport() }
 
         let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(doubleTap))
         doubleTapGesture.numberOfTapsRequired = 2
@@ -77,187 +94,177 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(updateTextSize), name: UIContentSizeCategory.didChangeNotification, object: nil)
     }
 
+    private func label(_ label: UILabel, _ text: String, style: UIFont.TextStyle = .subheadline) {
+        label.text = text; label.font = .preferredFont(forTextStyle: style)
+        label.adjustsFontForContentSizeCategory = true; label.numberOfLines = 0
+    }
+    private func configureButton(_ button: UIButton, title: String, id: String, action: Selector? = nil) {
+        var configuration = UIButton.Configuration.filled()
+        configuration.baseBackgroundColor = .secondarySystemBackground
+        configuration.baseForegroundColor = .tintColor
+        configuration.cornerStyle = .medium
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8)
+        configuration.titleLineBreakMode = .byWordWrapping
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { [weak button] attributes in
+            var attributes = attributes
+            attributes.font = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: button?.traitCollection)
+            return attributes
+        }
+        button.configuration = configuration
+        button.setTitle(title, for: .normal)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true; button.titleLabel?.numberOfLines = 0
+        button.accessibilityIdentifier = id
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        if let action { button.addTarget(self, action: action, for: .touchUpInside) }
+    }
     private func installControls() {
-        hud.translatesAutoresizingMaskIntoConstraints = false
-        hud.layer.cornerRadius = 12
-        hud.clipsToBounds = true
+        hud.translatesAutoresizingMaskIntoConstraints = false; hud.layer.cornerRadius = 12; hud.clipsToBounds = true
+        hud.accessibilityIdentifier = "simulationControls"
+        canvasAccessibility.isUserInteractionEnabled = false
+        canvasAccessibility.isAccessibilityElement = true
+        canvasAccessibility.accessibilityIdentifier = "lessonCanvas"
+        canvasAccessibility.accessibilityLabel = "Fluid experiment canvas"
+        canvasAccessibility.accessibilityTraits = .image
+        metalView.addSubview(canvasAccessibility)
         metalView.addSubview(hud)
-
-        caption.text = "View"
-        caption.font = .preferredFont(forTextStyle: .caption1)
-        caption.adjustsFontForContentSizeCategory = true
-        caption.textColor = .secondaryLabel
-        activeSummary.font = .preferredFont(forTextStyle: .caption1)
-        activeSummary.adjustsFontForContentSizeCategory = true
-        activeSummary.textColor = .label
-        activeSummary.isHidden = true
-
-        fieldStack.axis = .vertical
-        fieldStack.spacing = 8
-        fieldStack.isAccessibilityElement = false
-        fieldStack.accessibilityLabel = "Display field"
+        for stack in [pinnedStack, bodyStack, lessonStack, fieldStack, tuningStack] { stack.axis = .vertical; stack.spacing = 8 }
+        // Keep transport usable within the reserved area; explanatory text in the
+        // scroll view retains the full accessibility text-size range.
+        pinnedStack.maximumContentSizeCategory = .extraExtraExtraLarge
+        configureButton(experimentSelector, title: "Free Play", id: "experimentSelector")
+        experimentSelector.accessibilityLabel = "Experiments"; experimentSelector.showsMenuAsPrimaryAction = true
+        configureButton(pauseButton, title: "Pause", id: "transport.pause", action: #selector(pauseFromHUD(_:)))
+        configureButton(stepButton, title: "Step", id: "transport.step", action: #selector(singleStep))
+        configureButton(restartButton, title: "Reset fluid", id: "transport.restart", action: #selector(restart))
+        transport.axis = .horizontal; transport.spacing = 8; transport.distribution = .fillEqually
+        transport.addArrangedSubview(pauseButton); transport.addArrangedSubview(stepButton); transport.addArrangedSubview(restartButton)
+        label(stepLabel, "Step 0", style: .caption1); stepLabel.accessibilityIdentifier = "stepCount"
+        for view in [experimentSelector, transport, stepLabel] { pinnedStack.addArrangedSubview(view) }
+        label(question, "", style: .headline); question.accessibilityIdentifier = "lesson.question"
+        label(notice, ""); label(adjustmentLabel, "")
+        let noticeHeading = UILabel(); label(noticeHeading, "What to notice", style: .headline)
+        let hint = UILabel(); label(hint, LearningCopy.adjustment, style: .caption1)
+        configureButton(adjustmentSelector, title: "", id: "experimentAdjustment"); adjustmentSelector.showsMenuAsPrimaryAction = true
+        for view in [question, noticeHeading, notice, adjustmentLabel, adjustmentSelector, hint] { lessonStack.addArrangedSubview(view) }
+        bodyStack.addArrangedSubview(lessonStack)
+        label(caption, "View", style: .caption1); bodyStack.addArrangedSubview(caption)
         for field in DisplayField.allCases {
-            let button = UIButton(type: .system)
-            button.tag = field.rawValue
-            button.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
-            button.titleLabel?.adjustsFontForContentSizeCategory = true
-            button.titleLabel?.numberOfLines = 0
-            button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
-            button.backgroundColor = .secondarySystemBackground
-            button.layer.cornerRadius = 8
-            button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-            button.addTarget(self, action: #selector(selectField(_:)), for: .touchUpInside)
+            let button = UIButton(type: .system); button.tag = field.rawValue
+            configureButton(button, title: field.title, id: "field.\(field.rawValue)", action: #selector(selectField(_:)))
             fieldButtons[field] = button
         }
-        pauseButton.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
-        pauseButton.titleLabel?.adjustsFontForContentSizeCategory = true
-        pauseButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-        pauseButton.addTarget(self, action: #selector(pauseFromHUD(_:)), for: .touchUpInside)
-
-        tuningButton.setTitle("Show Tuning", for: .normal)
-        tuningButton.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
-        tuningButton.titleLabel?.adjustsFontForContentSizeCategory = true
-        tuningButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-        tuningButton.addTarget(self, action: #selector(toggleTuning(_:)), for: .touchUpInside)
-        tuningStack.axis = .vertical
-        tuningStack.spacing = 8
-        tuningStack.isAccessibilityElement = false
-        tuningStack.accessibilityLabel = "Fluid tuning"
-        for control in TuningControl.allCases {
-            let name = UILabel()
-            name.text = control.title
-            name.font = .preferredFont(forTextStyle: .subheadline)
-            name.adjustsFontForContentSizeCategory = true
-            name.numberOfLines = 0
-            let value = UILabel()
-            value.font = .preferredFont(forTextStyle: .subheadline)
-            value.adjustsFontForContentSizeCategory = true
-            value.textAlignment = .right
-            value.setContentCompressionResistancePriority(.required, for: .horizontal)
-            tuningValues[control] = value
-            let heading = UIStackView(arrangedSubviews: [name, value])
-            heading.axis = .horizontal
-            heading.spacing = 4
-            let slider = UISlider()
-            slider.minimumValue = 0
-            slider.maximumValue = 1
-            slider.isContinuous = true
-            slider.tag = control.rawValue
-            slider.accessibilityLabel = control.title
-            if control == .fade {
-                slider.accessibilityHint = "Higher values fade dye and motion faster. Zero percent is the slowest available fade."
-            }
-            slider.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-            slider.addTarget(self, action: #selector(changeTuning(_:)), for: .valueChanged)
-            tuningSliders[control] = slider
-            let row = UIStackView(arrangedSubviews: [heading, slider])
-            row.axis = .vertical
-            row.spacing = 8
-            tuningStack.addArrangedSubview(row)
+        for fields in [[DisplayField.density, .pressure], [.velocity, .vorticity]] {
+            let row = UIStackView(arrangedSubviews: fields.compactMap { fieldButtons[$0] }); row.distribution = .fillEqually; row.spacing = 8; fieldStack.addArrangedSubview(row)
         }
-        let fadeHint = UILabel()
-        fadeHint.text = "Higher Fade = faster fade"
-        fadeHint.font = .preferredFont(forTextStyle: .caption1)
-        fadeHint.adjustsFontForContentSizeCategory = true
-        fadeHint.textColor = .secondaryLabel
-        fadeHint.numberOfLines = 0
-        tuningStack.addArrangedSubview(fadeHint)
-        tuningStack.isHidden = true
-
-        let content = UIStackView(arrangedSubviews: [caption, fieldStack, pauseButton, tuningButton, tuningStack])
-        content.axis = .vertical
-        content.spacing = 8
-        content.translatesAutoresizingMaskIntoConstraints = false
-        controlsScroll.translatesAutoresizingMaskIntoConstraints = false
-        controlsScroll.addSubview(content)
-        activeSummary.translatesAutoresizingMaskIntoConstraints = false
-        hud.contentView.addSubview(activeSummary)
-        hud.contentView.addSubview(controlsScroll)
-        scrollTop = controlsScroll.topAnchor.constraint(equalTo: hud.contentView.topAnchor, constant: 16)
-        hudWidth = hud.widthAnchor.constraint(equalToConstant: 300)
-        hudHeight = hud.heightAnchor.constraint(equalToConstant: 208)
+        bodyStack.addArrangedSubview(fieldStack)
+        label(explanation, "", style: .caption1); label(legend, "", style: .caption1); legend.accessibilityIdentifier = "fieldLegend"
+        bodyStack.addArrangedSubview(explanation); bodyStack.addArrangedSubview(colourLegend); bodyStack.addArrangedSubview(legend)
+        colourLegend.heightAnchor.constraint(equalToConstant: 12).isActive = true
+        for (index, title) in ["Velocity arrows", "Particles", "Trails"].enumerated() {
+            let name = UILabel(); label(name, title)
+            let toggle = UISwitch(); toggle.tag = index; toggle.accessibilityLabel = title; toggle.accessibilityIdentifier = "overlay.\(index)"
+            toggle.addTarget(self, action: #selector(changeOverlay), for: .valueChanged); overlaySwitches.append(toggle)
+            let row = UIStackView(arrangedSubviews: [name, toggle]); row.alignment = .center; row.spacing = 8
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true; bodyStack.addArrangedSubview(row)
+        }
+        let trailsHint = UILabel(); label(trailsHint, LearningCopy.trails, style: .caption1); bodyStack.addArrangedSubview(trailsHint)
+        configureButton(tuningButton, title: "Show Tuning", id: "tuning.toggle", action: #selector(toggleTuning(_:)))
+        bodyStack.addArrangedSubview(tuningButton)
+        for control in TuningControl.allCases {
+            let name = UILabel(); label(name, control.title)
+            let value = UILabel(); label(value, ""); value.textAlignment = .right; value.setContentCompressionResistancePriority(.required, for: .horizontal)
+            tuningValues[control] = value
+            let heading = UIStackView(arrangedSubviews: [name, value]); heading.spacing = 4
+            let slider = UISlider(); slider.tag = control.rawValue; slider.isContinuous = true
+            slider.accessibilityLabel = control.title; slider.accessibilityIdentifier = "tuning.\(control.identifier)"
+            slider.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+            slider.addTarget(self, action: #selector(changeTuning(_:)), for: .valueChanged); tuningSliders[control] = slider
+            let row = UIStackView(arrangedSubviews: [heading, slider]); row.axis = .vertical; row.spacing = 8; tuningStack.addArrangedSubview(row)
+        }
+        let fadingHint = UILabel(); label(fadingHint, LearningCopy.fading, style: .caption1); tuningStack.addArrangedSubview(fadingHint)
+        tuningStack.isHidden = true; bodyStack.addArrangedSubview(tuningStack)
+        configureButton(aboutButton, title: "About this simulation", id: "about.toggle", action: #selector(toggleAbout))
+        label(aboutText, LearningCopy.about, style: .caption1); aboutText.isHidden = true
+        bodyStack.addArrangedSubview(aboutButton); bodyStack.addArrangedSubview(aboutText)
+        for view in [pinnedStack, bodyStack, controlsScroll] { view.translatesAutoresizingMaskIntoConstraints = false }
+        controlsScroll.addSubview(bodyStack); hud.contentView.addSubview(pinnedStack); hud.contentView.addSubview(controlsScroll)
+        hudWidth = hud.widthAnchor.constraint(equalToConstant: 340); hudHeight = hud.heightAnchor.constraint(equalToConstant: 380)
         let safe = metalView.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
             hud.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
-            hud.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -16),
-            hud.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 16),
-            hud.topAnchor.constraint(greaterThanOrEqualTo: safe.topAnchor, constant: 16),
-            hudWidth!, hudHeight!,
-            activeSummary.leadingAnchor.constraint(equalTo: hud.contentView.leadingAnchor, constant: 16),
-            activeSummary.topAnchor.constraint(equalTo: hud.contentView.topAnchor, constant: 8),
-            controlsScroll.leadingAnchor.constraint(equalTo: hud.contentView.leadingAnchor, constant: 16),
-            controlsScroll.trailingAnchor.constraint(equalTo: hud.contentView.trailingAnchor, constant: -16),
-            scrollTop!,
-            controlsScroll.bottomAnchor.constraint(equalTo: hud.contentView.bottomAnchor, constant: -16),
-            content.leadingAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.leadingAnchor),
-            content.trailingAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.trailingAnchor),
-            content.topAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.topAnchor),
-            content.bottomAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.bottomAnchor),
-            content.widthAnchor.constraint(equalTo: controlsScroll.frameLayoutGuide.widthAnchor)
+            hud.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -16), hudWidth!, hudHeight!,
+            pinnedStack.leadingAnchor.constraint(equalTo: hud.contentView.leadingAnchor, constant: 12),
+            pinnedStack.trailingAnchor.constraint(equalTo: hud.contentView.trailingAnchor, constant: -12),
+            pinnedStack.topAnchor.constraint(equalTo: hud.contentView.topAnchor, constant: 12),
+            controlsScroll.topAnchor.constraint(equalTo: pinnedStack.bottomAnchor, constant: 8),
+            controlsScroll.leadingAnchor.constraint(equalTo: hud.contentView.leadingAnchor, constant: 12),
+            controlsScroll.trailingAnchor.constraint(equalTo: hud.contentView.trailingAnchor, constant: -12),
+            controlsScroll.bottomAnchor.constraint(equalTo: hud.contentView.bottomAnchor, constant: -12),
+            bodyStack.leadingAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.leadingAnchor),
+            bodyStack.trailingAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.trailingAnchor),
+            bodyStack.topAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.topAnchor),
+            bodyStack.bottomAnchor.constraint(equalTo: controlsScroll.contentLayoutGuide.bottomAnchor),
+            bodyStack.widthAnchor.constraint(equalTo: controlsScroll.frameLayoutGuide.widthAnchor)
         ])
-        updateAppearance()
-        refreshControls()
+        controlsScroll.accessibilityIdentifier = "controlsBody"
+        updateAppearance(); refreshControls()
     }
-
-    private func fieldTitle(_ field: DisplayField) -> String {
-        switch field {
-        case .density: return "Density"
-        case .pressure: return "Pressure"
-        case .velocity: return "Velocity"
-        case .vorticity: return "Vorticity"
-        }
-    }
+    private func fieldTitle(_ field: DisplayField) -> String { field.title }
 
     @objc private func updateAppearance() {
         hud.effect = UIAccessibility.isReduceTransparencyEnabled ? nil : UIBlurEffect(style: .systemMaterial)
         hud.backgroundColor = UIAccessibility.isReduceTransparencyEnabled ? .systemBackground : .clear
     }
 
-    @objc private func updateTextSize() {
-        caption.font = .preferredFont(forTextStyle: .caption1)
-        activeSummary.font = .preferredFont(forTextStyle: .caption1)
-        refreshControls()
-    }
+    @objc private func updateTextSize() { refreshControls() }
 
     private func updateControlLayout() {
+        guard renderer != nil else { return }
         let safe = metalView.safeAreaLayoutGuide.layoutFrame
         guard safe.width > 32, safe.height > 32 else { return }
-        let width = safe.width - 32
-        let height = safe.height - 32
-        let font = UIFont.preferredFont(forTextStyle: .subheadline)
-        let buttonWidth = DisplayField.allCases.map {
-            ("✓ \(fieldTitle($0))" as NSString).size(withAttributes: [.font: font]).width + 32
-        }.max() ?? 120
-        let usableWidth = isTuningExpanded ? min(width, 320) : width
-        let columns = usableWidth >= 4 * buttonWidth + 24 + 32 && height < 280 ? 4 : (usableWidth >= 2 * buttonWidth + 8 + 32 ? 2 : 1)
-        if columns != fieldColumns {
-            fieldColumns = columns
-            for row in fieldStack.arrangedSubviews { fieldStack.removeArrangedSubview(row); row.removeFromSuperview() }
-            let fields = DisplayField.allCases
-            for index in stride(from: 0, to: fields.count, by: columns) {
-                let row = UIStackView(arrangedSubviews: Array(fields[index..<min(index + columns, fields.count)]).compactMap { fieldButtons[$0] })
-                row.axis = .horizontal
-                row.distribution = .fillEqually
-                row.spacing = 8
-                fieldStack.addArrangedSubview(row)
-            }
+        let lesson = renderer.state.mode.experiment != nil
+        let landscape = safe.width > safe.height
+        let width: CGFloat
+        if lesson {
+            width = landscape ? min(safe.width * 0.6, max(safe.width * 0.4, 280)) - 24 : safe.width - 32
+        } else { width = min(360, safe.width - 32) }
+        hudWidth?.constant = width
+        let pinnedHeight = pinnedStack.systemLayoutSizeFitting(CGSize(width: width - 24, height: UIView.layoutFittingCompressedSize.height), withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height
+        let height: CGFloat
+        if lesson {
+            height = landscape ? safe.height - 32 : min(safe.height * 0.6, max(safe.height * 0.4, pinnedHeight + 72))
+        } else { height = min(safe.height - 32, max(pinnedHeight + 100, safe.height * 0.65)) }
+        hudHeight?.constant = height
+        if lesson {
+            let available = landscape
+                ? CGRect(x: safe.minX, y: safe.minY, width: max(1, safe.width - width - 32), height: safe.height)
+                : CGRect(x: safe.minX, y: safe.minY, width: safe.width, height: max(1, safe.height - height - 32))
+            let side = min(available.width, available.height)
+            canvasAccessibility.frame = CGRect(x: available.midX - side / 2, y: available.midY - side / 2, width: side, height: side)
+            canvasAccessibility.isHidden = false
+            if renderer.lessonAvailableRect != available { renderer.lessonAvailableRect = available }
+        } else { canvasAccessibility.isHidden = true; if renderer.lessonAvailableRect != nil { renderer.lessonAvailableRect = nil } }
+    }
+    @objc private func singleStep() { renderer.requestSingleStep() }
+    @objc private func restart() { clearTouches(); renderer.restartCurrentSimulation(); refreshControls() }
+    @objc private func changeOverlay() {
+        renderer.setDisplayOptions(DisplayOptions(arrows: overlaySwitches[0].isOn, particles: overlaySwitches[1].isOn, trails: overlaySwitches[2].isOn)); refreshControls()
+    }
+    @objc private func toggleAbout() { aboutText.isHidden.toggle(); updateControlLayout() }
+    private func refreshTransport() {
+        let state = renderer.state
+        if stepLabel.text != state.status { stepLabel.text = state.status }
+        let title = state.userPaused ? (state.mode.experiment != nil && state.stepCount == 0 ? "Run" : "Resume") : "Pause"
+        if pauseButton.title(for: .normal) != title {
+            pauseButton.setTitle(title, for: .normal)
         }
-        let fieldHeight = CGFloat((4 + columns - 1) / columns) * max(44, font.lineHeight + 16) + CGFloat((4 + columns - 1) / columns - 1) * 8
-        let tuningHeight: CGFloat = isTuningExpanded ? 4 * (max(24, font.lineHeight) + 44 + 16) + 32 : 0
-        let contentHeight = fieldHeight + 88 + tuningHeight + 32 + 24 + caption.intrinsicContentSize.height
-        let compactHeight = height < contentHeight
-        let needsScroll = compactHeight
-        caption.isHidden = compactHeight
-        activeSummary.isHidden = !needsScroll
-        activeSummary.text = "View: \(fieldTitle(renderer.state.field))"
-        let topInset: CGFloat = needsScroll ? 36 : 16
-        if scrollTop?.constant != topInset { scrollTop?.constant = topInset }
-        controlsScroll.isScrollEnabled = needsScroll
-        let desiredWidth = CGFloat(columns) * buttonWidth + CGFloat(columns - 1) * 8 + 32
-        let newWidth = min(usableWidth, max(desiredWidth, 192))
-        let newHeight = min(height, max(192, contentHeight + (needsScroll ? 20 : 0)))
-        if hudWidth?.constant != newWidth { hudWidth?.constant = newWidth }
-        if hudHeight?.constant != newHeight { hudHeight?.constant = newHeight }
+        let pauseLabel = state.userPaused ? "Resume simulation" : "Pause simulation"
+        if pauseButton.accessibilityLabel != pauseLabel { pauseButton.accessibilityLabel = pauseLabel }
+        if pauseButton.isEnabled == state.complete { pauseButton.isEnabled = !state.complete }
+        if stepButton.isEnabled != state.canStep { stepButton.isEnabled = state.canStep }
+        let restartTitle = state.mode == .freePlay ? "Reset fluid" : "Restart experiment"
+        if restartButton.title(for: .normal) != restartTitle { restartButton.setTitle(restartTitle, for: .normal) }
+        if lastComplete != state.complete { lastComplete = state.complete; updateControlLayout() }
     }
 
     private func refreshControls() {
@@ -271,8 +278,29 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
             button.accessibilityLabel = fieldTitle(field)
             button.accessibilityValue = selected ? "Selected" : "Not selected"
         }
-        pauseButton.setTitle(renderer.state.userPaused ? "Resume" : "Pause", for: .normal)
-        pauseButton.accessibilityLabel = renderer.state.userPaused ? "Resume simulation" : "Pause simulation"
+        refreshTransport()
+        let state = renderer.state
+        experimentSelector.setTitle(state.mode.title + " ▾", for: .normal)
+        experimentSelector.menu = UIMenu(title: "Experiments", children: SimulationMode.allCases.map { mode in
+            UIAction(title: mode.title, state: mode == state.mode ? .on : .off) { [weak self] _ in
+                guard let self else { return }; self.clearTouches(); self.renderer.selectMode(mode); self.refreshControls()
+            }
+        })
+        lessonStack.isHidden = state.mode == .freePlay
+        if let lesson = state.mode.experiment {
+            question.text = lesson.question; notice.text = lesson.notice; adjustmentLabel.text = lesson.adjustmentTitle
+            adjustmentSelector.setTitle(state.adjustment!.title + " ▾", for: .normal); adjustmentSelector.accessibilityLabel = lesson.adjustmentTitle
+            adjustmentSelector.menu = UIMenu(children: lesson.choices.map { adjustment in
+                UIAction(title: adjustment.title, state: adjustment == state.adjustment ? .on : .off) { [weak self] _ in
+                    self?.clearTouches(); self?.renderer.setExperimentAdjustment(adjustment); self?.refreshControls()
+                }
+            })
+        }
+        colourLegend.field = state.field
+        explanation.text = state.field.explanation; legend.text = state.field.legend + "\n" + state.field.scaleNote
+        for (toggle, value) in zip(overlaySwitches, [state.displayOptions.arrows, state.displayOptions.particles, state.displayOptions.trails]) { toggle.isOn = value }
+        overlaySwitches[2].isEnabled = state.displayOptions.particles
+        tuningButton.isHidden = state.mode != .freePlay; tuningStack.isHidden = state.mode != .freePlay || !isTuningExpanded
         refreshTuningValues()
         updateControlLayout()
     }
@@ -358,7 +386,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard renderer.state.shouldAdvance else { return }
+        guard renderer.state.acceptsInput else { return }
         for touch in touches where !isHUDTouch(touch) {
             if positions[touch] == nil {
                 touchOrder.append(touch)
@@ -368,7 +396,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
             previousPositions[touch] = location
             startPositions[touch] = location
             let hold = DispatchWorkItem { [weak self, weak touch] in
-                guard let self = self, let touch = touch, self.positions[touch] != nil, self.renderer.state.shouldAdvance else { return }
+                guard let self = self, let touch = touch, self.positions[touch] != nil, self.renderer.state.acceptsInput else { return }
                 self.pendingHolds.removeValue(forKey: touch)
                 self.activeTouches.insert(touch)
                 self.submitTouches()
@@ -380,7 +408,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard renderer.state.shouldAdvance else { return }
+        guard renderer.state.acceptsInput else { return }
         for touch in touches where positions[touch] != nil {
             let location = touch.location(in: metalView)
             let start = startPositions[touch] ?? location
@@ -417,7 +445,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     private func submitTouches() {
-        guard renderer.state.shouldAdvance else { renderer.clearInput(); return }
+        guard renderer.state.acceptsInput else { renderer.clearInput(); return }
         let contacts = touchOrder.compactMap { touch -> FluidContact? in
             guard activeTouches.contains(touch) else { return nil }
             guard let location = positions[touch] else { return nil }
@@ -444,7 +472,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     @objc private func singleTap(_ recognizer: UITapGestureRecognizer) {
-        guard renderer.state.shouldAdvance else { return }
+        guard renderer.state.acceptsInput else { return }
         let point = recognizer.location(in: metalView)
         guard !hud.bounds.contains(recognizer.location(in: hud)) else { return }
         renderer.enqueueTap(at: SIMD2<Float>(Float(point.x), Float(point.y)), in: metalView)
@@ -480,4 +508,16 @@ private extension UIFont {
     func withWeight(_ weight: UIFont.Weight) -> UIFont {
         return UIFont.systemFont(ofSize: pointSize, weight: weight)
     }
+}
+
+private final class ColourLegendView: UIView {
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+    var field: DisplayField = .density { didSet { update() } }
+    private func update() {
+        guard let gradient = layer as? CAGradientLayer else { return }
+        gradient.colors = field.palette.map { UIColor(red: CGFloat($0.x), green: CGFloat($0.y), blue: CGFloat($0.z), alpha: 1).cgColor }
+        gradient.startPoint = CGPoint(x: 0, y: 0.5); gradient.endPoint = CGPoint(x: 1, y: 0.5)
+        layer.borderWidth = 1; layer.borderColor = UIColor.label.cgColor
+    }
+    override func layoutSubviews() { super.layoutSubviews(); update() }
 }

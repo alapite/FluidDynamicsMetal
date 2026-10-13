@@ -18,7 +18,7 @@ struct Uniforms {
     var offsets = SIMD2<Float>(1 / 16, 1 / 16)
     var size = SIMD2<Float>(16, 16)
     var radius: Float = 150
-    var tuning = SIMD4<Float>(0.998, 0.4, 0, 0)
+    var tuning = SIMD4<Float>(0.998, 0.4, 0.998, 0)
 }
 
 func texture(_ fill: SIMD2<Float> = .zero, pattern: Bool = false) -> MTLTexture {
@@ -112,19 +112,20 @@ check(try pixel(render("applyForceVector", empty, nil, forceOnly)).x, 1, "force 
 let stored = texture(SIMD2(1, 0.5))
 var fade = Uniforms()
 for name in ["velocity", "density"] {
-    let baseline = try pixel(render("advect", empty, stored, fade))
+    let shader = name == "velocity" ? "advectVelocity" : "advect"
+    let baseline = try pixel(render(shader, empty, stored, fade))
     check(baseline.x, 0.998, "\(name) original retention", tolerance: 0.0007)
-    fade.tuning.x = 0.9995
-    let slower = try pixel(render("advect", empty, stored, fade))
-    check(slower.x, 0.9995, "\(name) slowest fade", tolerance: 0.0007)
-    fade.tuning.x = 0.9905
-    let faster = try pixel(render("advect", empty, stored, fade))
+    fade.tuning.x = 1; fade.tuning.z = 1
+    let slower = try pixel(render(shader, empty, stored, fade))
+    check(slower.x, 1, "\(name) slowest fade", tolerance: 0.0007)
+    fade.tuning.x = 0.9905; fade.tuning.z = 0.9905
+    let faster = try pixel(render(shader, empty, stored, fade))
     check(faster.x, 0.9905, "\(name) fastest fade", tolerance: 0.0007)
     guard slower.x > baseline.x, baseline.x > faster.x,
           slower.y > baseline.y, baseline.y > faster.y else {
         fatalError("\(name) fade did not increase to the right on both channels")
     }
-    fade.tuning.x = 0.998
+    fade.tuning.x = 0.998; fade.tuning.z = 0.998
 }
 
 // Nonuniform vorticity with a nonzero gradient: curl acts on existing flow without contacts.

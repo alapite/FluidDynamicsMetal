@@ -29,7 +29,7 @@ class RendererCorrectnessTests(unittest.TestCase):
         cls.optimized_executable = Path(cls.directory.name) / "renderer-check-optimized"
         sources = [ROOT / "Sources/Shared" / name for name in
                    ["MetalDevice.swift", "RenderShader.swift", "Slab.swift",
-                    "SimulationState.swift", "Renderer.swift"]]
+                    "SimulationState.swift", "SimulationTypes.swift", "ExperimentRecipes.swift", "FluidSimulation.swift", "FieldVisualization.swift", "ParticleSystem.swift", "Renderer.swift"]]
         for executable, optimization in [(cls.executable, "-Onone"), (cls.optimized_executable, "-O")]:
             result = subprocess.run(
                 ["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", optimization,

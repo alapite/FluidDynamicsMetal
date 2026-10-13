@@ -55,34 +55,53 @@ Run the Metal regression check after a fresh Mac Debug build. An arm64 build on 
 
 Run build-setting checks with `python3 -m unittest Tests.Integration.test_phase02_settings`. To include bundle installation and launch checks on iPhone and iPad simulators, build both Debug schemes first, then run `python3 -m unittest discover -s Tests/Integration`. Integration checks locate the project and Swift harnesses relative to their own files; they can also be run directly from another working directory.
 
-## Manual compatibility checklist
+## Learning with the simulation
 
-Record the actual host, OS version, simulator/device, and results separately for each platform in [Phase 6 compatibility verification](.planning/phases/06-platform-compatibility-closeout/06-COMPATIBILITY-VERIFICATION.md). A build, install, or process launch alone does not prove visual fluid interaction. On each platform:
+Launch opens an empty, running **Free Play** dye canvas with Tuning collapsed. Drag on the canvas to add dye and motion. Choose **Experiments** to explore:
 
-### Mac (Apple Silicon)
+- **Dye carried by a flow:** predict where a patch travels, then compare the three initial speeds after the same number of steps.
+- **Two interacting vortices:** compare same and opposite rotation.
+- **Stretching dye by stirring:** compare gentle, normal, and strong stirring of a narrow stripe.
 
-1. Launch `FluidDynamicsMetalOSX.app` on the Mac being checked. Confirm a **blue-on-black Density** canvas and a closed **Show Tuning** disclosure. Open Tuning and check **Force 50%, Dye 40%, Swirl 20%, Fade 17%**; close it again.
-2. Drag the **Simulation Controls** floating panel by its title bar to place it anywhere on screen, including outside the simulation window. Close it or use **View → Hide/Show Simulation Controls** (**⌥⌘K**) to reclaim the canvas; reopening keeps the current controls. Its position is remembered across launches. Drag on the canvas and confirm blue density is deposited, swirls, and fades.
-3. Click **Pause** and confirm motion stops; choose **Pressure**, **Velocity**, **Vorticity**, then **Density** using the named buttons, including a change while paused. Click **Resume**, confirm motion continues, and drag again. **Space** toggles pause/resume and **S** cycles the four fields when canvas/window focus is appropriate; focused HUD controls may consume Space.
-4. Open **Tuning**, change one slider (for example, set Dye to 0% and drag to stir without depositing, or increase Fade for faster fading), and observe the existing effect. Quit and relaunch; confirm the four starting percentages return and Tuning starts closed. There is no in-app reset action.
+Each lesson opens paused at **Step 0**, with its question and explanation visible. **Run**, **Pause/Resume**, and **Step** let you inspect its progress. Lessons stop at 600 steps. **Restart experiment** preserves the adjustment and display choices, resets everything, and pauses. Changing the adjustment also restarts. Freehand injection is disabled in lessons; canvas pause and field-cycle gestures remain available.
 
-### iPhone (iOS 26)
+**Reset fluid** clears Free Play fluid, particles, trails, and pending input while preserving tuning, views, and the pause choice. Returning from a lesson creates an empty running Free Play canvas and restores this session's Free Play preferences. Settings reset at launch; the Mac panel position remains persistent.
 
-1. Run `FluidDynamicsMetaliOS` on an iOS 26 iPhone simulator or device. Confirm blue-on-black **Density**, **Show Tuning** closed, and on opening it **Force 50%, Dye 40%, Swirl 20%, Fade 17%**.
-2. Swipe/drag **outside the HUD** to add and stir blue density; release and observe it swirl and fade.
-3. Tap **Pause**, then select **Pressure**, **Velocity**, **Vorticity**, and **Density** on-screen, including a field change while paused. Tap **Resume**, check the fluid continues, and drag again. A one-finger double tap outside the HUD also toggles pause/resume.
-4. Open **Tuning**; move one slider and check its effect on subsequent input or existing fluid (for example Dye 0% or higher Fade). Quit and relaunch to confirm the four default percentages and closed disclosure.
+| View | Reading the image |
+|---|---|
+| Dye concentration | Black → blue → pale cyan means less → more dye. |
+| Velocity | Dark purple → teal → yellow means slower → faster; arrows show direction. |
+| Vorticity | Orange means clockwise; grey zero; blue anticlockwise. |
+| Pressure | Blue is below the spatial mean; grey average; orange above it, in simulation units. |
 
-### iPad (iPadOS 26)
+Speed, curl, and pressure colour scales adjust to each frame. They are qualitative views, not calibrated measurements. Optional **Velocity arrows** can appear on every field. **Particles** are passive markers; **Trails** show their recent paths. Hiding particles also hides trails, but markers and history continue evolving.
 
-1. Run `FluidDynamicsMetaliOS` on an iPadOS 26 iPad simulator or device. Check blue-on-black **Density**, the closed **Show Tuning** disclosure, then open it to confirm **Force 50%, Dye 40%, Swirl 20%, Fade 17%**.
-2. Drag across the canvas **outside the HUD** to stir/deposit density, then release and observe its motion/fade.
-3. Use on-screen **Pause** and **Resume**; select **Pressure**, **Velocity**, **Vorticity**, and **Density**, changing at least one field while paused; resume and drag again. A one-finger double tap outside the HUD also toggles pause/resume.
-4. Open **Tuning**, vary one slider and observe the existing effect, then quit/relaunch and confirm the four default values and closed disclosure. Scroll inside the HUD if a compact layout hides a control.
+Free Play tuning defaults are **Force 50%, Dye 40%, Swirl enhancement 20%, Dye fading 17%, Motion damping 17%**. The last two controls are independent: 0% retains 1.0 per step, 17% retains 0.998, and 100% retains 0.9905. Zero disables explicit decay, though numerical advection still smooths details.
 
-On iPhone and iPad, a **two-finger double tap outside the HUD** cycles the displayed field. Xcode 27 Device Hub does not provide the needed two-finger touch simulation here: check that shortcut and concurrent touches on a physical device when available, and record **NOT TESTED** otherwise. Single taps outside the HUD can add dye. Input inside the HUD operates controls rather than stirring the canvas.
+These are two-dimensional qualitative demonstrations using the existing solver and 40 pressure iterations. The counter measures steps, not physical time. Repeatability means matching settings and step counts on the same implementation and device; playback duration depends on render callbacks and GPU load. Physical viscosity, calibrated units, obstacles, and replay remain deferred.
 
-The four sliders adjust live Force, Dye, Swirl, and Fade without editing shaders. Simulation resolution/quality, an in-app reset control, and further accessibility work are deferred; parameters without UI controls still live in source.
+## Controls and manual checks
+
+On Mac, the floating **Simulation Controls** panel can move, close, and reopen with **⌥⌘K** or the View menu. The **Simulation** menu exposes **⌘P** pause/resume, **⌘→** single-step, **⌘R** reset/restart, and **⌘1–4** experiment selection. **Space** and **S** still pause and cycle fields when the canvas has focus. Focused controls consume their own keys.
+
+On iPhone/iPad, Free Play keeps an overlay HUD. Lessons reserve controls below the square canvas in portrait and beside it in landscape. The selector and transport stay pinned; scroll the body for explanations, views, overlays, and tuning. One-finger double tap outside the HUD pauses; two-finger double tap cycles fields. Single taps and drags add dye only in Free Play.
+
+For each platform:
+
+1. Check the initial empty canvas and tuning defaults. Inject dye, pause, change all four views and overlays, and confirm the step counter remains unchanged. Step once, then reset; tuning and presentation choices must remain.
+2. Select each lesson. Predict its behaviour, run, pause, step, change an adjustment, and restart. Verify step zero, the 600-step completion message, and disabled Run/Step at completion. Return to Free Play and check restored preferences.
+3. Confirm HUD interactions do not inject fluid. On Mac, test all menu shortcuts, focused-control Space handling, panel movement/closing/reopening, and a paused window resize.
+4. On **both iPhone and iPad**, repeat in portrait and landscape, including accessibility text sizes, VoiceOver, increased contrast, and reduced transparency. Controls must not cover the square; all body controls must be scroll-reachable.
+5. On physical iPhone/iPad hardware, check concurrent touches and the two-finger shortcut. Simulator results alone do not establish physical multitouch behaviour.
+
+See [educational release verification](docs/educational-release-verification.md) for actual environments, measurements, results, and unavailable coverage. macOS 27 testing does not establish macOS 26 runtime behaviour. Mark unavailable hardware checks **NOT TESTED**.
+
+The production GPU harness loads the freshly built Mac Metal library, writes lesson captures at steps 0/120/240/600 and hardware timings under `.build/educational-evidence`, and compares floating-point state with relative `1e-3` plus absolute `1e-4` tolerance:
+
+```bash
+python3 -m unittest Tests.Integration.test_educational_release
+python3 -m unittest discover -s Tests/Integration
+```
 
 ## Understanding the simulation
 

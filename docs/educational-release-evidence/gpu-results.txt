@@ -1,0 +1,26 @@
+Hardware: Apple M3 Pro
+OS: Version 27.0 (Build 26A428)
+GPU comparisons: absolute 1e-4 + relative 1e-3; RG16F fields, float32 particles.
+PASS real renderer: no-drawable stepping, rapid queue, paused redraw, inactivity, resize resource identity, pending-input reset
+PASS complete reset, zero fields, stationary tracers, suppressed zero arrows
+PASS uniform particle displacement, ring wrap ordering, reset history, overlay compositing
+PASS retention isolation, rotating-field signs/colours, pressure offset invariance
+PASS Free Play resize preserves normalized particles and recomputes display curl
+Lesson 0-0 GPU ms mean: overlays off 1.1546645066974794, all on 1.2645262929787537; measurements [0.1917761]
+  Offscreen encode/submit/completion ms mean: overlays off 2.834624857770659, all on 2.9951304598743547
+Lesson 0-1 GPU ms mean: overlays off 1.2160978961984101, all on 1.3667974143353259; measurements [0.33017457]
+  Offscreen encode/submit/completion ms mean: overlays off 3.093391003902473, all on 3.2827943962886286
+Lesson 0-2 GPU ms mean: overlays off 1.153085785829317, all on 1.2688673848029355; measurements [0.39728445]
+  Offscreen encode/submit/completion ms mean: overlays off 2.8065903954994202, all on 2.955015229888196
+Lesson 1-0 GPU ms mean: overlays off 1.1983421304066597, all on 1.3510830463552526; measurements [0.15452409]
+  Offscreen encode/submit/completion ms mean: overlays off 3.0173104075927637, all on 3.2286185323630043
+Lesson 1-1 GPU ms mean: overlays off 1.1270165791457911, all on 1.2270637938415567; measurements [0.14683968]
+  Offscreen encode/submit/completion ms mean: overlays off 2.7857102084321625, all on 2.927401723693414
+Lesson 2-0 GPU ms mean: overlays off 1.1562347203850825, all on 1.256711639319386; measurements [0.12452176, 54.83204]
+  Offscreen encode/submit/completion ms mean: overlays off 2.881200837292048, all on 3.018166525048557
+Lesson 2-1 GPU ms mean: overlays off 1.2635852056748804, all on 1.539289078008833; measurements [0.16603723, 88.54582]
+  Offscreen encode/submit/completion ms mean: overlays off 2.954146194966207, all on 3.2526525857472985
+Lesson 2-2 GPU ms mean: overlays off 1.1119443472478037, all on 1.2147254318576948; measurements [0.15697117, 102.620125]
+  Offscreen encode/submit/completion ms mean: overlays off 2.7760888111880724, all on 2.9544518676441935
+PASS reproducibility, manual/running equivalence, display/viewport isolation, final curl, lesson observations
+PASS: educational production engine

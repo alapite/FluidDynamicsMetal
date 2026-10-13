@@ -39,10 +39,10 @@ final class GPUCheck {
         self.device = device
         self.library = library
         queue = device.makeCommandQueue()!
-        vertices = Renderer.vertexData.withUnsafeBytes {
+        vertices = FluidSimulation.vertexData.withUnsafeBytes {
             device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared)!
         }
-        indices = Renderer.indices.withUnsafeBytes {
+        indices = FluidSimulation.indexData.withUnsafeBytes {
             device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared)!
         }
     }
@@ -95,7 +95,7 @@ final class GPUCheck {
         encoder.setVertexBuffer(vertices, offset: 0, index: 0)
         encoder.setFragmentBuffer(uniforms, offset: 0, index: 0)
         for (index, input) in inputs.enumerated() { encoder.setFragmentTexture(input, index: index) }
-        encoder.drawIndexedPrimitives(type: .triangle, indexCount: Renderer.indices.count,
+        encoder.drawIndexedPrimitives(type: .triangle, indexCount: FluidSimulation.indexData.count,
                                       indexType: .uint16, indexBuffer: indices, indexBufferOffset: 0)
         encoder.endEncoding()
         finish(command)
@@ -114,12 +114,12 @@ final class GPUCheck {
         var data = StaticData(positions: contacts, impulses: contacts, impulseScalar: zero,
                               offsets: SIMD2(1 / Float(width), 1 / Float(height)),
                               screenSize: SIMD2(Float(width), Float(height)), inkRadius: 150,
-                              tuning: SIMD4(0.998, 0.4, 0, 0))
+                              tuning: SIMD4(0.998, 0.4, 0.998, 0))
         let uniforms = device.makeBuffer(bytes: &data, length: MemoryLayout<StaticData>.stride,
                                          options: .storageModeShared)!
         // Run the production shaders in simulation order, including pressure warm-start.
         for _ in 0..<3 {
-            fields[0] = try apply("advect", inputs: [fields[0], fields[0]], uniforms: uniforms)
+            fields[0] = try apply("advectVelocity", inputs: [fields[0], fields[0]], uniforms: uniforms)
             fields[1] = try apply("advect", inputs: [fields[0], fields[1]], uniforms: uniforms)
             fields[3] = try apply("vorticity", inputs: [fields[0]], uniforms: uniforms)
             fields[0] = try apply("vorticityConfinement", inputs: [fields[0], fields[3]], uniforms: uniforms)
@@ -158,7 +158,7 @@ final class GPUCheck {
         var data = StaticData(positions: slots, impulses: slots, impulseScalar: zero,
                               offsets: SIMD2(1 / Float(width), 1 / Float(height)),
                               screenSize: SIMD2(Float(width), Float(height)), inkRadius: 150,
-                              tuning: SIMD4(0.998, 0.4, 0, 0))
+                              tuning: SIMD4(0.998, 0.4, 0.998, 0))
         Renderer.writeContacts([contact], tuning: SimulationTuning(), radius: 150, to: &data)
         let uniforms = device.makeBuffer(bytes: &data, length: MemoryLayout<StaticData>.stride,
                                          options: .storageModeShared)!
@@ -188,8 +188,8 @@ final class GPUCheck {
     }
 
     func cache() throws {
-        let firstKey = RenderPipelineKey(vertexFunctionName: "ab", fragmentFunctionName: "c", pixelFormat: .rg16Float)
-        let secondKey = RenderPipelineKey(vertexFunctionName: "a", fragmentFunctionName: "bc", pixelFormat: .rg16Float)
+        let firstKey = RenderPipelineKey(vertexFunctionName: "ab", fragmentFunctionName: "c", pixelFormat: .rg16Float, blending: false)
+        let secondKey = RenderPipelineKey(vertexFunctionName: "a", fragmentFunctionName: "bc", pixelFormat: .rg16Float, blending: false)
         precondition(Set([firstKey, secondKey]).count == 2, "Function names must have distinct key components")
         // Exercise both insertion orders so neither format can accidentally mask the other.
         for formats: [MTLPixelFormat] in [[.rg16Float, .rgba16Float], [.rgba16Float, .rg16Float]] {
@@ -212,7 +212,7 @@ final class GPUCheck {
                 let output = device.makeTexture(descriptor: descriptor)!
                 let shader = RenderShader(fragmentShader: "visualizeVector", vertexShader: "vertexShader",
                                           pixelFormat: format, metalDevice: metal)
-                shader.calculateWithCommandBuffer(buffer: command, indices: indices, count: Renderer.indices.count,
+                shader.calculateWithCommandBuffer(buffer: command, indices: indices, count: FluidSimulation.indexData.count,
                                                   texture: output) { encoder in
                     encoder.setVertexBuffer(self.vertices, offset: 0, index: 0)
                     encoder.setFragmentTexture(input, index: 0)

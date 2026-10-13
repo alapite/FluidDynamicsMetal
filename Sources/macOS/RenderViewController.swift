@@ -11,13 +11,29 @@ import MetalKit
 
 class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValidation {
     var renderer: Renderer!
+    private let experimentSelector = NSPopUpButton()
+    private let stepButton = NSButton(title: "Step", target: nil, action: nil)
+    private let restartButton = NSButton(title: "Reset fluid", target: nil, action: nil)
+    private let stepLabel = NSTextField(wrappingLabelWithString: "Step 0")
+    private let lessonGroup = NSStackView()
+    private let question = NSTextField(wrappingLabelWithString: "")
+    private let notice = NSTextField(wrappingLabelWithString: "")
+    private let adjustmentLabel = NSTextField(labelWithString: "")
+    private let adjustmentSelector = NSPopUpButton()
+    private let colourLegend = ColourLegendView()
+    private let legend = NSTextField(wrappingLabelWithString: "")
+    private let explanation = NSTextField(wrappingLabelWithString: "")
+    private let aboutButton = NSButton(title: "About this simulation", target: nil, action: nil)
+    private let aboutText = NSTextField(wrappingLabelWithString: LearningCopy.about)
+    private var overlayButtons: [NSButton] = []
+    private let bodyStack = NSStackView()
+    private let pinnedStack = NSStackView()
+    private var displayedLesson: ExperimentID?
     private var mouseHeld = false
     private var rebaseDrag = false
     private var lastCanvasSize: CGSize = .zero
     private let hud = NSVisualEffectView()
     private let opaqueSurface = NSView()
-    private let caption = NSTextField(labelWithString: "View")
-    private let activeSummary = NSTextField(labelWithString: "")
     private let fieldGroup = NSStackView()
     private let controlsScroll = NSScrollView()
     private let pauseButton = NSButton(title: "Pause", target: nil, action: nil)
@@ -32,7 +48,6 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private var restorePanelAfterMinimize = false
     private var hudWidth: NSLayoutConstraint?
     private var hudHeight: NSLayoutConstraint?
-    private var usingOneColumn = false
     var metalView: MTKView {
         return view as! MTKView
     }
@@ -46,6 +61,9 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         metalView.delegate = renderer
 
         installControls()
+        renderer.stateDidChange = { [weak self] in self?.refreshTransport() }
+        NotificationCenter.default.addObserver(self, selector: #selector(resignActive), name: NSApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(becomeActive), name: NSApplication.didBecomeActiveNotification, object: nil)
 
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] in
             guard let self else { return $0 }
@@ -53,13 +71,10 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             guard $0.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return $0 }
             // AppKit may forward a focused button's Space through keyDown to the
             // controller. Activate it here so that forwarding cannot also pause.
-            if $0.keyCode == 0x31,
-               let button = $0.window?.firstResponder as? NSButton,
-               self.fieldButtons.values.contains(where: { $0 === button }) || button === self.pauseButton || button === self.tuningButton {
-                button.performClick(nil)
-                return nil
+            if $0.keyCode == 0x31, let button = $0.window?.firstResponder as? NSButton {
+                button.performClick(nil); return nil
             }
-            if $0.window?.firstResponder is NSSlider { return $0 }
+            if $0.window?.firstResponder is NSControl || $0.window?.firstResponder is NSTextView { return $0 }
             if $0.keyCode == 0x31 || $0.keyCode == 0x01 {
                 self.keyDown(with: $0)
                 return nil
@@ -113,13 +128,18 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     @objc private func canvasWillMinimize() {
+        renderer.resignActive()
         restorePanelAfterMinimize = controlsPanel?.isVisible == true
         controlsPanel?.orderOut(nil)
     }
 
     @objc private func canvasDidRestore() {
+        if NSApp.isActive { renderer.becomeActive() }
         if restorePanelAfterMinimize { showControlsPanel() }
     }
+
+    @objc private func resignActive() { mouseHeld = false; rebaseDrag = false; renderer.resignActive() }
+    @objc private func becomeActive() { if view.window?.isMiniaturized != true { renderer.becomeActive() } }
 
     private func installControlsMenu() {
         guard let mainMenu = NSApp.mainMenu else { return }
@@ -136,6 +156,31 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         item.keyEquivalentModifierMask = [.command, .option]
         item.target = self
         viewItem.submenu?.addItem(item)
+        // Storyboard text-editing menus ship Cmd-P (Print) and Cmd-R (Align Right).
+        // Reserve the documented simulation equivalents before installing our commands.
+        func clearConflicts(_ menu: NSMenu) {
+            for item in menu.items {
+                if item.keyEquivalentModifierMask == .command,
+                   ["p", "r", "1", "2", "3", "4", String(UnicodeScalar(NSRightArrowFunctionKey)!)].contains(item.keyEquivalent) {
+                    item.keyEquivalent = ""
+                }
+                if let submenu = item.submenu { clearConflicts(submenu) }
+            }
+        }
+        clearConflicts(mainMenu)
+        let simulationMenu = NSMenu(title: "Simulation")
+        let root = NSMenuItem(title: "Simulation", action: nil, keyEquivalent: "")
+        root.submenu = simulationMenu; mainMenu.insertItem(root, at: min(2, mainMenu.items.count))
+        for (title, action, key) in [("Pause", #selector(togglePause(_:)), "p"), ("Step", #selector(singleStep(_:)), String(UnicodeScalar(NSRightArrowFunctionKey)!)), ("Reset fluid", #selector(restart(_:)), "r")] {
+            let command = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            command.target = self; command.keyEquivalentModifierMask = .command; simulationMenu.addItem(command)
+        }
+        simulationMenu.addItem(.separator())
+        for (index, mode) in SimulationMode.allCases.enumerated() {
+            let command = NSMenuItem(title: mode.title, action: #selector(selectExperimentMenu(_:)), keyEquivalent: String(index + 1))
+            command.tag = index; command.target = self; command.keyEquivalentModifierMask = .command; simulationMenu.addItem(command)
+        }
+
     }
 
     @objc private func toggleControlsPanel(_ sender: Any?) {
@@ -150,6 +195,10 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         if menuItem.action == #selector(toggleControlsPanel(_:)) {
             menuItem.title = controlsPanel?.isVisible == true ? "Hide Simulation Controls" : "Show Simulation Controls"
         }
+        if menuItem.action == #selector(singleStep(_:)) { return renderer.state.canStep }
+        if menuItem.action == #selector(togglePause(_:)) { menuItem.title = pauseButton.title; return !renderer.state.complete }
+        if menuItem.action == #selector(restart(_:)) { menuItem.title = restartButton.title }
+        if menuItem.action == #selector(selectExperimentMenu(_:)) { menuItem.state = renderer.state.mode == SimulationMode.allCases[menuItem.tag] ? .on : .off }
         return view.window?.isVisible == true
     }
 
@@ -191,103 +240,93 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             opaqueSurface.bottomAnchor.constraint(equalTo: hud.bottomAnchor)
         ])
 
-        caption.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        caption.textColor = .secondaryLabelColor
-        activeSummary.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
-        activeSummary.textColor = .labelColor
-        activeSummary.isHidden = true
-        fieldGroup.orientation = .vertical
-        fieldGroup.spacing = 8
-        fieldGroup.setAccessibilityLabel("Display field")
-        for field in DisplayField.allCases {
-            let button = NSButton(title: fieldTitle(field), target: self, action: #selector(selectField(_:)))
-            button.tag = field.rawValue
-            button.bezelStyle = .rounded
-            button.setButtonType(.toggle)
-            button.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-            button.contentTintColor = .labelColor
+        func vertical(_ stack: NSStackView) {
+            stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 8
+        }
+        func button(_ button: NSButton, _ action: Selector, _ id: String) {
+            button.target = self; button.action = action; button.bezelStyle = .rounded
+            button.setAccessibilityIdentifier(id)
             button.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
-            button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-            fieldButtons[field] = button
         }
-
-        pauseButton.target = self
-        pauseButton.action = #selector(togglePause(_:))
-        pauseButton.bezelStyle = .rounded
-        pauseButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
-
-        tuningButton.target = self
-        tuningButton.action = #selector(toggleTuning(_:))
-        tuningButton.bezelStyle = .rounded
-        tuningButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
-        tuningGroup.orientation = .vertical
-        tuningGroup.spacing = 8
-        tuningGroup.setAccessibilityLabel("Fluid tuning")
+        experimentSelector.addItems(withTitles: SimulationMode.allCases.map(\.title))
+        experimentSelector.target = self; experimentSelector.action = #selector(selectExperiment(_:))
+        experimentSelector.setAccessibilityLabel("Experiments"); experimentSelector.setAccessibilityIdentifier("experimentSelector")
+        button(pauseButton, #selector(togglePause(_:)), "transport.pause")
+        button(stepButton, #selector(singleStep(_:)), "transport.step")
+        button(restartButton, #selector(restart(_:)), "transport.restart")
+        let transport = NSStackView(views: [pauseButton, stepButton, restartButton]); transport.spacing = 4
+        stepLabel.setAccessibilityIdentifier("stepCount")
+        vertical(pinnedStack)
+        for view in [experimentSelector, transport, stepLabel] { pinnedStack.addArrangedSubview(view) }
+        vertical(bodyStack); vertical(fieldGroup); vertical(lessonGroup); vertical(tuningGroup)
+        question.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        question.setAccessibilityIdentifier("lesson.question")
+        let noticeHeading = NSTextField(labelWithString: "What to notice")
+        noticeHeading.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+        adjustmentSelector.target = self; adjustmentSelector.action = #selector(changeAdjustment(_:))
+        adjustmentSelector.setAccessibilityIdentifier("experimentAdjustment")
+        for view in [question, noticeHeading, notice, adjustmentLabel, adjustmentSelector, NSTextField(wrappingLabelWithString: LearningCopy.adjustment)] { lessonGroup.addArrangedSubview(view) }
+        bodyStack.addArrangedSubview(lessonGroup)
+        bodyStack.addArrangedSubview(NSTextField(labelWithString: "View"))
+        for field in DisplayField.allCases {
+            let item = NSButton(title: field.title, target: self, action: #selector(selectField(_:)))
+            item.tag = field.rawValue; item.setButtonType(.toggle); item.bezelStyle = .rounded
+            item.setAccessibilityIdentifier("field.\(field.rawValue)"); fieldButtons[field] = item
+        }
+        for fields in [[DisplayField.density, .pressure], [.velocity, .vorticity]] {
+            let row = NSStackView(views: fields.compactMap { fieldButtons[$0] }); row.distribution = .fillEqually
+            fieldGroup.addArrangedSubview(row); row.widthAnchor.constraint(equalTo: fieldGroup.widthAnchor).isActive = true
+        }
+        bodyStack.addArrangedSubview(fieldGroup); bodyStack.addArrangedSubview(explanation); bodyStack.addArrangedSubview(colourLegend); bodyStack.addArrangedSubview(legend)
+        colourLegend.heightAnchor.constraint(equalToConstant: 12).isActive = true
+        legend.setAccessibilityIdentifier("fieldLegend")
+        for (index, title) in ["Velocity arrows", "Particles", "Trails"].enumerated() {
+            let item = NSButton(checkboxWithTitle: title, target: self, action: #selector(changeOverlay(_:)))
+            item.tag = index; item.setAccessibilityIdentifier("overlay.\(index)"); overlayButtons.append(item); bodyStack.addArrangedSubview(item)
+        }
+        bodyStack.addArrangedSubview(NSTextField(wrappingLabelWithString: LearningCopy.trails))
+        button(tuningButton, #selector(toggleTuning(_:)), "tuning.toggle")
+        bodyStack.addArrangedSubview(tuningButton)
         for control in TuningControl.allCases {
-            let label = NSTextField(labelWithString: control.title)
-            label.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-            let value = NSTextField(labelWithString: "")
-            value.alignment = .right
-            tuningValues[control] = value
-            let heading = NSStackView(views: [label, value])
-            heading.orientation = .horizontal
-            heading.distribution = .fill
+            let label = NSTextField(labelWithString: control.title), value = NSTextField(labelWithString: "")
+            value.alignment = .right; tuningValues[control] = value
+            let heading = NSStackView(views: [label, value]); heading.distribution = .fill
             let slider = NSSlider(value: 0, minValue: 0, maxValue: 1, target: self, action: #selector(changeTuning(_:)))
-            slider.isContinuous = true
-            slider.tag = control.rawValue
-            slider.setAccessibilityLabel(control.title)
+            slider.isContinuous = true; slider.tag = control.rawValue
+            slider.setAccessibilityLabel(control.title); slider.setAccessibilityIdentifier("tuning.\(control.identifier)")
             tuningSliders[control] = slider
-            let row = NSStackView(views: [heading, slider])
-            row.orientation = .vertical
-            row.spacing = 8
-            tuningGroup.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: tuningGroup.widthAnchor).isActive = true
+            let row = NSStackView(views: [heading, slider]); vertical(row)
+            tuningGroup.addArrangedSubview(row); row.widthAnchor.constraint(equalTo: tuningGroup.widthAnchor).isActive = true
+            slider.widthAnchor.constraint(equalTo: row.widthAnchor).isActive = true
         }
-        let fadeHint = NSTextField(labelWithString: "Higher Fade = faster fade")
-        fadeHint.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        fadeHint.textColor = .secondaryLabelColor
-        tuningGroup.addArrangedSubview(fadeHint)
-        tuningGroup.isHidden = true
-
-        let content = NSStackView(views: [caption, fieldGroup, pauseButton, tuningButton, tuningGroup])
-        content.orientation = .vertical
-        content.alignment = .leading
-        content.spacing = 8
-        content.translatesAutoresizingMaskIntoConstraints = false
-        controlsScroll.drawsBackground = false
-        controlsScroll.hasVerticalScroller = true
-        controlsScroll.autohidesScrollers = true
-        controlsScroll.translatesAutoresizingMaskIntoConstraints = false
-        controlsScroll.documentView = content
-        hud.addSubview(activeSummary)
-        hud.addSubview(controlsScroll)
-        activeSummary.translatesAutoresizingMaskIntoConstraints = false
+        tuningGroup.addArrangedSubview(NSTextField(wrappingLabelWithString: LearningCopy.fading))
+        tuningGroup.isHidden = true; bodyStack.addArrangedSubview(tuningGroup)
+        button(aboutButton, #selector(toggleAbout(_:)), "about.toggle")
+        aboutText.isHidden = true; bodyStack.addArrangedSubview(aboutButton); bodyStack.addArrangedSubview(aboutText)
+        for stack in [pinnedStack, bodyStack] {
+            stack.translatesAutoresizingMaskIntoConstraints = false
+            for child in stack.arrangedSubviews { child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        }
+        for child in lessonGroup.arrangedSubviews { child.widthAnchor.constraint(equalTo: lessonGroup.widthAnchor).isActive = true }
+        controlsScroll.drawsBackground = false; controlsScroll.hasVerticalScroller = true; controlsScroll.autohidesScrollers = true
+        controlsScroll.translatesAutoresizingMaskIntoConstraints = false; controlsScroll.documentView = bodyStack
+        hud.addSubview(pinnedStack); hud.addSubview(controlsScroll)
         NSLayoutConstraint.activate([
-            activeSummary.leadingAnchor.constraint(equalTo: hud.leadingAnchor, constant: 16),
-            activeSummary.topAnchor.constraint(equalTo: hud.topAnchor, constant: 8),
+            pinnedStack.leadingAnchor.constraint(equalTo: hud.leadingAnchor, constant: 16),
+            pinnedStack.trailingAnchor.constraint(equalTo: hud.trailingAnchor, constant: -16),
+            pinnedStack.topAnchor.constraint(equalTo: hud.topAnchor, constant: 12),
             controlsScroll.leadingAnchor.constraint(equalTo: hud.leadingAnchor, constant: 16),
             controlsScroll.trailingAnchor.constraint(equalTo: hud.trailingAnchor, constant: -16),
-            controlsScroll.topAnchor.constraint(equalTo: hud.topAnchor, constant: 16),
-            controlsScroll.bottomAnchor.constraint(equalTo: hud.bottomAnchor, constant: -16),
-            content.widthAnchor.constraint(equalTo: controlsScroll.contentView.widthAnchor),
-            fieldGroup.widthAnchor.constraint(equalTo: content.widthAnchor),
-            pauseButton.widthAnchor.constraint(equalTo: content.widthAnchor)
+            controlsScroll.topAnchor.constraint(equalTo: pinnedStack.bottomAnchor, constant: 12),
+            controlsScroll.bottomAnchor.constraint(equalTo: hud.bottomAnchor, constant: -12),
+            bodyStack.widthAnchor.constraint(equalTo: controlsScroll.contentView.widthAnchor)
         ])
-        tuningButton.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
-        tuningGroup.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
-        NotificationCenter.default.addObserver(self, selector: #selector(updateAppearance), name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(updateAppearance), name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         updateAppearance()
         refreshControls()
     }
 
-    private func fieldTitle(_ field: DisplayField) -> String {
-        switch field {
-        case .density: return "Density"
-        case .pressure: return "Pressure"
-        case .velocity: return "Velocity"
-        case .vorticity: return "Vorticity"
-        }
-    }
+    private func fieldTitle(_ field: DisplayField) -> String { field.title }
 
     @objc private func updateAppearance() {
         opaqueSurface.isHidden = !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
@@ -295,40 +334,45 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     private func updateControlLayout() {
-        guard view.bounds.width > 0, view.bounds.height > 0 else { return }
-        let availableWidth: CGFloat = 280
-        let availableHeight = max(196, (controlsPanel?.screen?.visibleFrame.height ?? 800) - 80)
-        let buttonWidth = fieldButtons.values.map { $0.intrinsicContentSize.width + 8 }.max() ?? 96
-        let twoColumnWidth = buttonWidth * 2 + 8 + 32
-        let oneColumn = twoColumnWidth > availableWidth
-        if oneColumn != usingOneColumn || fieldGroup.arrangedSubviews.isEmpty {
-            usingOneColumn = oneColumn
-            for row in fieldGroup.arrangedSubviews { fieldGroup.removeArrangedSubview(row); row.removeFromSuperview() }
-            let fields = DisplayField.allCases
-            for index in stride(from: 0, to: fields.count, by: oneColumn ? 1 : 2) {
-                let row = NSStackView(views: Array(fields[index..<min(index + (oneColumn ? 1 : 2), fields.count)]).compactMap { fieldButtons[$0] })
-                row.orientation = .horizontal
-                row.distribution = .fillEqually
-                row.spacing = 8
-                fieldGroup.addArrangedSubview(row)
-                row.widthAnchor.constraint(equalTo: fieldGroup.widthAnchor).isActive = true
+        guard renderer != nil else { return }
+        let width: CGFloat = 368
+        hudWidth?.constant = width
+        hud.layoutSubtreeIfNeeded()
+        let wanted = pinnedStack.fittingSize.height + bodyStack.fittingSize.height + 36
+        let available = max(240, (controlsPanel?.screen?.visibleFrame.height ?? 800) - 80)
+        let height = min(available, max(240, wanted))
+        if hudHeight?.constant != height {
+            hudHeight?.constant = height
+            if let panel = controlsPanel {
+                let top = panel.frame.maxY
+                panel.setContentSize(NSSize(width: width, height: height))
+                panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: top - panel.frame.height))
             }
         }
-        let scrolling = availableHeight < (isTuningExpanded ? 440 : oneColumn ? 284 : 176)
-        activeSummary.isHidden = !scrolling
-        caption.isHidden = scrolling
-        let width = min(320, availableWidth, max(oneColumn ? buttonWidth + 32 : twoColumnWidth, 248))
-        let wantedHeight: CGFloat = (oneColumn ? 252 : 160) + 36 + (isTuningExpanded ? 260 : 0)
-        hudWidth?.constant = width
-        hudHeight?.constant = min(availableHeight, wantedHeight)
-        if let panel = controlsPanel {
-            let top = panel.frame.maxY
-            panel.setContentSize(NSSize(width: width, height: min(availableHeight, wantedHeight)))
-            panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: top - panel.frame.height))
-        }
-        fieldGroup.frame.size.width = width - 32
-        fieldGroup.layoutSubtreeIfNeeded()
-        controlsScroll.contentView.scroll(to: .zero)
+    }
+    @objc private func selectExperiment(_ sender: NSPopUpButton) { changeMode(SimulationMode.allCases[sender.indexOfSelectedItem]) }
+    @objc private func selectExperimentMenu(_ sender: NSMenuItem) { changeMode(SimulationMode.allCases[sender.tag]) }
+    private func changeMode(_ mode: SimulationMode) {
+        mouseHeld = false; rebaseDrag = false; renderer.clearInput(); renderer.selectMode(mode); refreshControls()
+    }
+    @objc private func singleStep(_ sender: Any?) { renderer.requestSingleStep() }
+    @objc private func restart(_ sender: Any?) { mouseHeld = false; renderer.restartCurrentSimulation(); refreshControls() }
+    @objc private func changeAdjustment(_ sender: NSPopUpButton) {
+        guard let lesson = renderer.state.mode.experiment else { return }
+        renderer.setExperimentAdjustment(lesson.choices[sender.indexOfSelectedItem]); refreshControls()
+    }
+    @objc private func changeOverlay(_ sender: NSButton) {
+        renderer.setDisplayOptions(DisplayOptions(arrows: overlayButtons[0].state == .on, particles: overlayButtons[1].state == .on, trails: overlayButtons[2].state == .on)); refreshControls()
+    }
+    @objc private func toggleAbout(_ sender: Any?) { aboutText.isHidden.toggle(); updateControlLayout() }
+    private func refreshTransport() {
+        let state = renderer.state
+        stepLabel.stringValue = state.status
+        pauseButton.title = state.userPaused ? (state.mode.experiment != nil && state.stepCount == 0 ? "Run" : "Resume") : "Pause"
+        pauseButton.setAccessibilityLabel(state.userPaused ? "Resume simulation" : "Pause simulation")
+        pauseButton.isEnabled = !state.complete
+        stepButton.isEnabled = state.canStep
+        restartButton.title = state.mode == .freePlay ? "Reset fluid" : "Restart experiment"
     }
 
     @objc private func selectField(_ sender: NSButton) {
@@ -372,9 +416,25 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             button.setAccessibilityLabel(fieldTitle(field))
             button.setAccessibilityValue(selected ? "Selected" : "Not selected")
         }
-        activeSummary.stringValue = "View: \(fieldTitle(renderer.state.field))"
-        pauseButton.title = renderer.state.userPaused ? "Resume" : "Pause"
-        pauseButton.setAccessibilityLabel(renderer.state.userPaused ? "Resume simulation" : "Pause simulation")
+        refreshTransport()
+        let state = renderer.state
+        experimentSelector.selectItem(at: SimulationMode.allCases.firstIndex(of: state.mode)!)
+        lessonGroup.isHidden = state.mode == .freePlay
+        if let lesson = state.mode.experiment {
+            question.stringValue = lesson.question; notice.stringValue = lesson.notice; adjustmentLabel.stringValue = lesson.adjustmentTitle
+            adjustmentSelector.setAccessibilityLabel(lesson.adjustmentTitle)
+            if displayedLesson != lesson { adjustmentSelector.removeAllItems(); adjustmentSelector.addItems(withTitles: lesson.choices.map(\.title)) }
+            adjustmentSelector.selectItem(at: lesson.choices.firstIndex(of: state.adjustment!)!)
+        }
+        displayedLesson = state.mode.experiment
+        explanation.stringValue = state.field.explanation
+        colourLegend.field = state.field
+        legend.stringValue = state.field.legend + "\n" + state.field.scaleNote
+        let options = state.displayOptions
+        for (button, value) in zip(overlayButtons, [options.arrows, options.particles, options.trails]) { button.state = value ? .on : .off }
+        overlayButtons[2].isEnabled = options.particles
+        tuningButton.isHidden = state.mode != .freePlay
+        tuningGroup.isHidden = state.mode != .freePlay || !isTuningExpanded
         refreshTuningValues()
         updateControlLayout()
     }
@@ -441,5 +501,14 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         renderer.togglePause()
         if mouseHeld { rebaseDrag = true }
         refreshControls()
+    }
+}
+
+private final class ColourLegendView: NSView {
+    var field: DisplayField = .density { didSet { needsDisplay = true } }
+    override func draw(_ dirtyRect: NSRect) {
+        let colors = field.palette.map { NSColor(srgbRed: CGFloat($0.x), green: CGFloat($0.y), blue: CGFloat($0.z), alpha: 1) }
+        NSGradient(colors: colors)?.draw(in: bounds, angle: 0)
+        NSColor.labelColor.setStroke(); NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5)).stroke()
     }
 }

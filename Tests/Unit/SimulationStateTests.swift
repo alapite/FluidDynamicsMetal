@@ -25,7 +25,7 @@ final class SimulationStateTests: XCTestCase {
 
     func testFadeMapsContinuousPositionsAcrossOriginalDetent() {
         var tuning = SimulationTuning()
-        for (position, retention) in [(Float(0), Float(0.9995)), (0.17, 0.998), (1, 0.9905), (0.085, 0.99875), (0.585, 0.99425)] {
+        for (position, retention) in [(Float(0), Float(1)), (0.17, 0.998), (1, 0.9905), (0.085, 0.999), (0.585, 0.99425)] {
             tuning.setPosition(position, for: .fade)
             XCTAssertEqual(tuning.retention, retention, accuracy: 0.00001)
             XCTAssertEqual(tuning.position(for: .fade), position, accuracy: 0.0001)
@@ -153,5 +153,76 @@ final class SimulationStateTests: XCTestCase {
         XCTAssertEqual(state.tuning.pressureIterations, 40)
         XCTAssertEqual(state.field, .pressure)
         XCTAssertTrue(state.userPaused)
+    }
+
+    func testQueuedStepsAndInactivity() {
+        var state = SimulationState()
+        XCTAssertFalse(state.requestSingleStep())
+        state.togglePause()
+        for _ in 0..<31 { XCTAssertTrue(state.requestSingleStep()) }
+        for expected in 1...31 { XCTAssertTrue(state.consumeStep()); XCTAssertEqual(state.stepCount, expected); XCTAssertTrue(state.userPaused) }
+        XCTAssertFalse(state.consumeStep())
+        state.requestSingleStep(); state.resignActive()
+        XCTAssertEqual(state.pendingSteps, 0); XCTAssertFalse(state.consumeStep())
+        state.becomeActive(); XCTAssertTrue(state.userPaused)
+        state.requestSingleStep(); state.togglePause()
+        XCTAssertEqual(state.pendingSteps, 0)
+    }
+    func testLessonTransitionsAndPreferences() {
+        var state = SimulationState()
+        state.tuning.force = 1.7; state.selectField(.pressure)
+        state.setDisplayOptions(DisplayOptions(arrows: true, particles: false, trails: true))
+        let saved = state.tuning
+        state.selectMode(.experiment(.advection))
+        XCTAssertTrue(state.resetting); XCTAssertFalse(state.requestSingleStep())
+        state.finishReset()
+        XCTAssertTrue(state.userPaused); XCTAssertEqual(state.stepCount, 0)
+        XCTAssertEqual(state.adjustment, .speed(.normal)); XCTAssertEqual(state.field, .density)
+        XCTAssertEqual(state.tuning, .lesson)
+        state.selectField(.velocity); state.setDisplayOptions(DisplayOptions())
+        XCTAssertTrue(state.setExperimentAdjustment(.speed(.fast))); state.finishReset()
+        state.requestSingleStep(); state.consumeStep(); state.beginReset(); state.finishReset()
+        XCTAssertEqual(state.stepCount, 0); XCTAssertEqual(state.pendingSteps, 0)
+        XCTAssertEqual(state.adjustment, .speed(.fast)); XCTAssertEqual(state.field, .velocity)
+        XCTAssertEqual(state.displayOptions, DisplayOptions())
+        state.selectMode(.experiment(.interactingVortices)); state.finishReset()
+        XCTAssertEqual(state.adjustment, .rotation(.same)); XCTAssertEqual(state.field, .vorticity)
+        XCTAssertFalse(state.setExperimentAdjustment(.speed(.fast)))
+        state.selectMode(.freePlay); state.finishReset()
+        XCTAssertTrue(state.shouldAdvance); XCTAssertEqual(state.tuning, saved)
+        XCTAssertEqual(state.field, .pressure); XCTAssertTrue(state.displayOptions.arrows)
+        state.togglePause(); state.requestSingleStep(); state.beginReset(); state.finishReset()
+        XCTAssertTrue(state.userPaused); XCTAssertEqual(state.pendingSteps, 0); XCTAssertEqual(state.tuning, saved)
+    }
+    func testCompletionAndRestart() {
+        var state = SimulationState()
+        state.selectMode(.experiment(.dyeStretching)); state.finishReset(); state.togglePause()
+        for _ in 0..<600 { XCTAssertTrue(state.consumeStep()) }
+        XCTAssertTrue(state.complete); XCTAssertTrue(state.userPaused)
+        XCTAssertFalse(state.requestSingleStep()); XCTAssertFalse(state.consumeStep())
+        state.togglePause(); XCTAssertTrue(state.userPaused)
+        state.beginReset(); state.finishReset(); XCTAssertFalse(state.complete); XCTAssertTrue(state.canStep)
+    }
+    func testRetentionIsolation() {
+        var tuning = SimulationTuning()
+        tuning.setPosition(1, for: .fade)
+        XCTAssertEqual(tuning.velocityRetention, 0.998); XCTAssertEqual(tuning.dyeRetention, 0.9905, accuracy: 0.00001)
+        tuning.setPosition(0, for: .damping)
+        XCTAssertEqual(tuning.velocityRetention, 1); XCTAssertEqual(tuning.dyeRetention, 0.9905, accuracy: 0.00001)
+        tuning.setPosition(.nan, for: .damping); XCTAssertEqual(tuning.velocityRetention, 0.998)
+    }
+    func testRecipeConstantsAndDeterministicSeeds() {
+        XCTAssertEqual(ExperimentRecipes.gridSize, 256)
+        XCTAssertEqual(ExperimentRecipes.phaseLength, 120)
+        for lesson in ExperimentID.allCases {
+            let a = ExperimentRecipes.seed(lesson, adjustment: lesson.defaultAdjustment)
+            let b = ExperimentRecipes.seed(lesson, adjustment: lesson.defaultAdjustment)
+            XCTAssertEqual(a.velocity, b.velocity); XCTAssertEqual(a.dye, b.dye)
+            XCTAssertTrue(a.dye.contains { $0.x > 0.5 })
+            XCTAssertTrue(a.velocity.allSatisfy { $0.x.isFinite && $0.y.isFinite })
+            for i in 0..<512 { XCTAssertEqual(a.velocity[i], .zero) }
+        }
+        XCTAssertEqual(ExperimentRecipes.stirringAmplitude(step: 240, adjustment: .strength(.strong)), 0)
+        XCTAssertGreaterThan(ExperimentRecipes.stirringAmplitude(step: 60, adjustment: .strength(.strong)), 0.059)
     }
 }

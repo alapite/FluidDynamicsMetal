@@ -7,6 +7,21 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E100000000000000000004004 /* ParticleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000004001 /* ParticleSystem.swift */; };
+		E100000000000000000004003 /* ParticleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000004001 /* ParticleSystem.swift */; };
+		E100000000000000000004002 /* ParticleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000004001 /* ParticleSystem.swift */; };
+		E100000000000000000003004 /* FieldVisualization.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000003001 /* FieldVisualization.swift */; };
+		E100000000000000000003003 /* FieldVisualization.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000003001 /* FieldVisualization.swift */; };
+		E100000000000000000003002 /* FieldVisualization.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000003001 /* FieldVisualization.swift */; };
+		E100000000000000000002004 /* FluidSimulation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000002001 /* FluidSimulation.swift */; };
+		E100000000000000000002003 /* FluidSimulation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000002001 /* FluidSimulation.swift */; };
+		E100000000000000000002002 /* FluidSimulation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000002001 /* FluidSimulation.swift */; };
+		E100000000000000000001004 /* ExperimentRecipes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000001001 /* ExperimentRecipes.swift */; };
+		E100000000000000000001003 /* ExperimentRecipes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000001001 /* ExperimentRecipes.swift */; };
+		E100000000000000000001002 /* ExperimentRecipes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000001001 /* ExperimentRecipes.swift */; };
+		E100000000000000000000004 /* SimulationTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000000001 /* SimulationTypes.swift */; };
+		E100000000000000000000003 /* SimulationTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000000001 /* SimulationTypes.swift */; };
+		E100000000000000000000002 /* SimulationTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000000001 /* SimulationTypes.swift */; };
 		B40000000000000000000001 /* Mac HUDUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000003 /* Mac HUDUITests.swift */; };
 		B40000000000000000000002 /* iOS HUDUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000004 /* iOS HUDUITests.swift */; };
 		A30000000000000000000001 /* SimulationState.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SimulationState.swift */; };
@@ -42,6 +57,11 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		E100000000000000000004001 /* ParticleSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticleSystem.swift; sourceTree = "<group>"; };
+		E100000000000000000003001 /* FieldVisualization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldVisualization.swift; sourceTree = "<group>"; };
+		E100000000000000000002001 /* FluidSimulation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidSimulation.swift; sourceTree = "<group>"; };
+		E100000000000000000001001 /* ExperimentRecipes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentRecipes.swift; sourceTree = "<group>"; };
+		E100000000000000000000001 /* SimulationTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationTypes.swift; sourceTree = "<group>"; };
 		C60000000000000000000004 /* Integration */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Integration; sourceTree = "<group>"; };
 		B40000000000000000000003 /* Mac HUDUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDUITests.swift; sourceTree = "<group>"; };
 		B40000000000000000000004 /* iOS HUDUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDUITests.swift; sourceTree = "<group>"; };
@@ -148,6 +168,11 @@
 				753C09581F43988D00D67F17 /* MetalDevice.swift */,
 				7594D4391F4361F300E4AE27 /* Slab.swift */,
 				756896A41FEB08A800727447 /* Renderer.swift */,
+				E100000000000000000000001 /* SimulationTypes.swift */,
+				E100000000000000000001001 /* ExperimentRecipes.swift */,
+				E100000000000000000002001 /* FluidSimulation.swift */,
+				E100000000000000000003001 /* FieldVisualization.swift */,
+				E100000000000000000004001 /* ParticleSystem.swift */,
 				A30000000000000000000004 /* SimulationState.swift */,
 				75F3F0811F31AE8D00A3EC4A /* Shaders.metal */,
 			);
@@ -337,13 +362,16 @@
 /* Begin PBXSourcesBuildPhase section */
 		B4000000000000000000000D /* Mac UI Test Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B40000000000000000000001 /* Mac HUDUITests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 		B4000000000000000000000E /* iOS UI Test Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B40000000000000000000002 /* iOS HUDUITests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
-		A3000000000000000000000B /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A30000000000000000000003 /* SimulationState.swift in Test Sources */, A30000000000000000000012 /* Renderer.swift in Test Sources */, A30000000000000000000013 /* MetalDevice.swift in Test Sources */, A30000000000000000000014 /* RenderShader.swift in Test Sources */, A30000000000000000000015 /* Slab.swift in Test Sources */, A30000000000000000000005 /* SimulationStateTests.swift in Sources */, A30000000000000000000010 /* RendererContactTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A3000000000000000000000B /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (E100000000000000000000004 /* SimulationTypes.swift in Sources */, E100000000000000000001004 /* ExperimentRecipes.swift in Sources */, E100000000000000000002004 /* FluidSimulation.swift in Sources */, E100000000000000000003004 /* FieldVisualization.swift in Sources */, E100000000000000000004004 /* ParticleSystem.swift in Sources */, A30000000000000000000003 /* SimulationState.swift in Test Sources */, A30000000000000000000012 /* Renderer.swift in Test Sources */, A30000000000000000000013 /* MetalDevice.swift in Test Sources */, A30000000000000000000014 /* RenderShader.swift in Test Sources */, A30000000000000000000015 /* Slab.swift in Test Sources */, A30000000000000000000005 /* SimulationStateTests.swift in Sources */, A30000000000000000000010 /* RendererContactTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 		75D5208E1FE5539E003525F9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				756896A61FEB08A800727447 /* Renderer.swift in Sources */,
-				A30000000000000000000002 /* SimulationState.swift in Mac Sources */,
+				E100000000000000000000003 /* SimulationTypes.swift in Sources */,
+				E100000000000000000001003 /* ExperimentRecipes.swift in Sources */,
+				E100000000000000000002003 /* FluidSimulation.swift in Sources */,
+				E100000000000000000003003 /* FieldVisualization.swift in Sources */, E100000000000000000004003 /* ParticleSystem.swift in Sources */, A30000000000000000000002 /* SimulationState.swift in Mac Sources */,
 				75D520AA1FE553EA003525F9 /* MetalDevice.swift in Sources */,
 				75D520AD1FE553EA003525F9 /* Shaders.metal in Sources */,
 				75D520A91FE553EA003525F9 /* RenderShader.swift in Sources */,
@@ -359,7 +387,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				756896A51FEB08A800727447 /* Renderer.swift in Sources */,
-				A30000000000000000000001 /* SimulationState.swift in iOS Sources */,
+				E100000000000000000000002 /* SimulationTypes.swift in Sources */,
+				E100000000000000000001002 /* ExperimentRecipes.swift in Sources */,
+				E100000000000000000002002 /* FluidSimulation.swift in Sources */,
+				E100000000000000000003002 /* FieldVisualization.swift in Sources */, E100000000000000000004002 /* ParticleSystem.swift in Sources */, A30000000000000000000001 /* SimulationState.swift in iOS Sources */,
 				753C095A1F43995300D67F17 /* ComputeShader.swift in Sources */,
 				753C095B1F43995300D67F17 /* MetalDevice.swift in Sources */,
 				75F3F0821F31AE8D00A3EC4A /* Shaders.metal in Sources */,

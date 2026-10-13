@@ -17,6 +17,7 @@ struct RenderPipelineKey: Hashable {
     let vertexFunctionName: String
     let fragmentFunctionName: String
     let pixelFormat: MTLPixelFormat
+    let blending: Bool
 }
 
 @MainActor
@@ -81,10 +82,10 @@ class MetalDevice {
         return commandQueue.makeCommandBuffer()!
     }
     
-    final func createRenderPipeline(vertexFunctionName: String = "basicVertexFunction", fragmentFunctionName: String, pixelFormat: MTLPixelFormat) throws -> MTLRenderPipelineState {
+    final func createRenderPipeline(vertexFunctionName: String = "basicVertexFunction", fragmentFunctionName: String, pixelFormat: MTLPixelFormat, blending: Bool = false) throws -> MTLRenderPipelineState {
         let cacheKey = RenderPipelineKey(vertexFunctionName: vertexFunctionName,
                                          fragmentFunctionName: fragmentFunctionName,
-                                         pixelFormat: pixelFormat)
+                                         pixelFormat: pixelFormat, blending: blending)
         
         if let pipelineState = renderPipelineCache[cacheKey] {
             return pipelineState
@@ -100,6 +101,14 @@ class MetalDevice {
         
         let pipelineStateDescriptor = MTLRenderPipelineDescriptor()
         pipelineStateDescriptor.colorAttachments[0].pixelFormat = pixelFormat
+        if blending {
+            let attachment = pipelineStateDescriptor.colorAttachments[0]!
+            attachment.isBlendingEnabled = true
+            attachment.sourceRGBBlendFactor = .sourceAlpha
+            attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
+            attachment.sourceAlphaBlendFactor = .one
+            attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        }
         pipelineStateDescriptor.vertexFunction = vertexFunction
         pipelineStateDescriptor.fragmentFunction = fragmentFunction
         pipelineStateDescriptor.label = fragmentFunctionName

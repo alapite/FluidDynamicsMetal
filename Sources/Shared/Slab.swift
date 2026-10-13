@@ -14,15 +14,15 @@ class Slab {
     var ping: MTLTexture!
     var pong: MTLTexture!
 
-    init(width: Int, height: Int, format: MTLPixelFormat = .rgba16Float, usage: MTLTextureUsage = .unknown, name: String? = nil) {
+    init(width: Int, height: Int, format: MTLPixelFormat = .rgba16Float, usage: MTLTextureUsage = .unknown, name: String? = nil, metalDevice: MetalDevice = .sharedInstance) {
         let textureDescriptor = MTLTextureDescriptor()
         textureDescriptor.pixelFormat = format
         textureDescriptor.usage = MTLTextureUsage(rawValue: MTLTextureUsage.shaderRead.rawValue | MTLTextureUsage.renderTarget.rawValue)
         textureDescriptor.width = width
         textureDescriptor.height = height
 
-        ping = MetalDevice.createTexture(descriptor: textureDescriptor)
-        pong = MetalDevice.createTexture(descriptor: textureDescriptor)
+        ping = metalDevice.device.makeTexture(descriptor: textureDescriptor)!
+        pong = metalDevice.device.makeTexture(descriptor: textureDescriptor)!
 
         ping.label = name
         pong.label = name
@@ -34,8 +34,7 @@ class Slab {
         pong = temp
     }
 
-    // Only initial read surfaces need clearing: every pong is fully overwritten
-    // before it becomes a source. Resized ping surfaces are populated by resampling.
+    // Callers supply both ping and pong for a complete reset.
     static func clearInitialFields(_ textures: [MTLTexture], commandBuffer: MTLCommandBuffer) {
         for texture in textures {
             let pass = MTLRenderPassDescriptor()
