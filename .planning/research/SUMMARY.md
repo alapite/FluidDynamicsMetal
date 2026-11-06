@@ -82,7 +82,7 @@ Suggested delivery boundaries, subject to approved requirements:
 
 ### Gaps to Address
 
-- Confirm the benchmark target and named reference hardware; recommended starting policy is a 30 fps floor, with 60 fps an optimization goal.
+- Requirements follow-up confirmed a 30 fps floor at 64³ / 1280×720 on a named available Apple Silicon reference Mac, with 60 fps an optimization goal; select and record the actual benchmark host during implementation.
 - In Phase 7, define reference fixtures and tolerances before implementation acceptance; establish projection quality independently of image appearance.
 - Choose a nonplanar initial flow with compatible boundaries and calibrate the educational observation window.
 - In volume planning, define output-size/ray-step budgets and the tracer/volume visibility contract.

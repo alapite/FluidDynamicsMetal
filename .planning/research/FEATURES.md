@@ -51,11 +51,11 @@ This is a focused teaching extension, not a commercial feature survey. Expectati
 
 This ordering is a recommendation for requirements-based roadmapping, not an approved roadmap. Numerical and regression tests belong with each feature, not solely in a final test phase.
 
-## Decisions Still Needed for Requirements
+## Decisions Confirmed During Requirements
 
-- Confirm that dye-only slices and passive tracers are sufficient; other field views and trails remain future scope.
-- Confirm a performance target and reference hardware policy; no 3D benchmark exists yet.
-- Confirm familiar 600-step completion, current-speed restart, and reset-on-adjustment semantics.
+- User selected dye-only slices and passive tracers; other field views and trails remain future scope.
+- User selected a 30 fps floor at 64³ / 1280×720 on a named available Apple Silicon reference Mac, with 60 fps a goal. No 3D benchmark exists yet.
+- User confirmed familiar 600-step completion, current-speed restart, and reset-on-adjustment semantics.
 
 ## Sources
 

@@ -57,6 +57,7 @@ People can interact with a responsive, visually familiar fluid simulation on bot
 - **Architecture:** Shared simulation code must work in both app targets; Swift/Metal function names and buffer layouts are cross-language contracts.
 - **Milestone platform:** Deliver the new 3D mode on Apple Silicon Mac first while retaining both existing app builds and 2D behaviour.
 - **Numerics:** Use a fixed 64³ starting grid, deterministic lesson setup, step-based progression, and qualitative explanations. Choose pressure-solve settings using numerical evidence rather than inheriting 40 iterations without validation.
+- **Performance:** Measured 30 fps floor at 64³ and 1280×720 output on a named available Apple Silicon reference Mac for both slices/tracers and volume/tracers; 60 fps is an optimization goal, not a milestone gate.
 
 ## Key Decisions
 
@@ -72,6 +73,9 @@ People can interact with a responsive, visually familiar fluid simulation on bot
 | Close v1.0 with macOS 26 runtime deferred | Prioritize other work rather than hold the milestone for an unavailable runtime host | User decision on 2026-09-25; archive PLAT-01 as NOT TESTED, keep Phase 1 UAT open for later. |
 | Deliver v1.1 as a Mac-first 3D teaching foundation | Validate real 3D dynamics, inspection, and performance before expanding lesson/platform scope | User approved 2026-11-06; implementation pending. |
 | Start with one 64³ dye-advection lesson and slices/tracers before volume rendering | Establish a testable, inspectable vertical slice early | User approved 2026-11-06; implementation pending. |
+| Keep inspection focused on dye slices, camera, passive tracers, and a selectable volume view | Make depth understandable within a bounded foundation milestone | User approved 2026-11-06; other fields and trails deferred. |
+| Reuse the existing 600-step lesson contract | Keep comparison and transport behaviour familiar | User approved 2026-11-06; three initial speeds, restart-on-adjustment, paused entry/restart. |
+| Require 30 fps at 64³ / 1280×720 on a named reference Mac | Establish a measured usable baseline before pursuing higher quality | User approved 2026-11-06; measurements pending. |
 
 ## Current State
 
@@ -88,7 +92,7 @@ v1.0 is archived with 14/14 implementation plans complete and 11/12 v1 requireme
 - Basic transparent dye-volume rendering after the slice/tracer foundation.
 - GPU correctness, repeatability, presentation-independence, and performance evidence.
 
-Phases continue at 7. Requirements and roadmap are being defined. Deferred macOS 26 runtime and device-only multitouch checks remain tracked follow-ups rather than newly asserted compatibility claims.
+Phases continue at 7. The user approved 23 requirements in `.planning/REQUIREMENTS.md`; the roadmap is being defined. Deferred macOS 26 runtime and device-only multitouch checks remain tracked follow-ups rather than newly asserted compatibility claims.
 
 ## Evolution
 
