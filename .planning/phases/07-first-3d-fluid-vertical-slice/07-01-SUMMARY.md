@@ -108,6 +108,13 @@ None — no external service or account configuration is required.
 - This is **not** GPU acceptance and does not claim that user-facing `SIM-05` or production-check `VER-03` behavior is complete. The phase-level requirement tracker remains pending until the production 3D kernels and GPU checks are delivered; no requirement checkbox or project state was changed here.
 - `.planning/STATE.md` and `.planning/ROADMAP.md` were left untouched as instructed.
 
+## Self-Check: PASSED
+
+- This required summary file exists, and all six task commits plus the prior summary commit are present in the history of `worktree-agent-07-01`.
+- The focused CPU suite passed **3/3 tests** (quick `0.022 s`, 64³ feasibility `2.004 s`); fixture export and the pinned contract hash check passed.
+- The export audit verified all six payload shapes, byte counts, and SHA-256 hashes; manifest SHA-256: `b7042898c88e3872699de8e8d3fcdc3da20cbfc8c21fe31ac7fe11e0188ec7e0`.
+- `.planning/STATE.md`, `.planning/ROADMAP.md`, and `Sources/` have no changes.
+
 ---
 *Phase: 07-first-3d-fluid-vertical-slice*
 *Completed: 2026-11-06*
