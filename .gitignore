@@ -1,6 +1,7 @@
 /.build/
 /build/
 /DerivedData/
+/.worktrees/
 /FluidDynamicsMetalOSX.app/
 __pycache__/
 xcuserdata/
