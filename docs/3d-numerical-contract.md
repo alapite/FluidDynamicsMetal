@@ -10,7 +10,7 @@
 - Cell-centred dye `C` and pressure correction `q` have shape `(Nx, Ny, Nz) = (64,64,64)` and sample coordinates `((i+1/2)h,(j+1/2)h,(k+1/2)h)`. X is the fastest-varying coordinate: `index(i,j,k) = (k*Ny + j)*Nx + i`.
 - Face-centred velocity uses three independent arrays, in `(x,y,z)` array order: `u: (65,64,64)` at `(i*h,(j+1/2)h,(k+1/2)h)`; `v: (64,65,64)` at `((i+1/2)h,j*h,(k+1/2)h)`; `w: (64,64,65)` at `((i+1/2)h,(j+1/2)h,k*h)`. Each array is x-fastest. Its normal coordinate includes both boundary faces.
 - Velocity is in domain-lengths per simulation-time unit; divergence is per simulation-time unit; dye is a dimensionless concentration clamped to `[0,1]` for the lesson; `q=dt*p/rho` is the pressure correction scaled by timestep and density. No physical-pressure or real-time interpretation is exposed.
-- The GPU candidate uses Float32 for every field, scratch value, uniform lane, and reduction input. The independent CPU oracle uses Double and independently formed loops. Any Swift/Metal uniform is a separately defined, 16-byte-lane ABI; this work does not change `StaticData`, `BufferData`, or any 2D shader entry point.
+- The GPU candidate uses Float32 for every field, scratch value, uniform lane, and reduction input. The independent CPU oracle uses Double and independently formed loops. The first 3D compute ABI is exactly three aligned 16-byte lanes (48-byte stride): lane 0 `uint4(gridNx, gridNy, gridNz, operationID)` at byte offset 0; lane 1 `float4(h, dt, inverseH, scalarScale)` at offset 16; lane 2 `uint4(outputWidth, outputHeight, outputDepth, componentID)` at offset 32. Swift uses `SIMD4<UInt32>`, `SIMD4<Float>`, `SIMD4<UInt32>` in that order; Metal uses `uint4`, `float4`, `uint4`. Compile-time/runtime assertions must verify offsets `0/16/32`, alignment `16`, stride `48`, and an asymmetric round-trip before GPU acceptance. Do not append padded `SIMD3` or change `StaticData`, `BufferData`, or any 2D shader entry point.
 
 ## Compatible MAC Operators and Closed Walls
 
@@ -51,9 +51,9 @@ For any transported sample at location `x`, define `V(x)` by trilinearly reconst
 
 ## Projection Solver and Failure Policy
 
-Use zero-mean, matrix-free, diagonally preconditioned conjugate gradient (PCG), with `q=0` as the initial guess and an initial candidate cap of 256 iterations. Project vectors to zero mean where required and normalize the reported `q` gauge to zero mean. The pressure correction is not compared before removing its constant gauge.
+Use zero-mean, matrix-free, diagonally preconditioned conjugate gradient (PCG), with `q=0` as the initial guess and a selected candidate cap of 320 iterations. The original 256-iteration candidate was exercised against every full-grid family; the wall/edge/corner fixture required 270 iterations, so the cap was revised to 320 before any 3D kernel work, retaining a 50-iteration margin and every preregistered residual/divergence threshold. Project vectors to zero mean where required and normalize the reported `q` gauge to zero mean. The pressure correction is not compared before removing its constant gauge.
 
-The closed-box RHS must be compatible. Compute and report `mean(b)` and maximum absolute RHS. Remove only a roundoff-sized compatibility mean, bounded by `64 * epsilon(working precision) * max(normInf(b), 1e-30)`; exceeding that bound is a flux/boundary failure, not permission to conceal a nonzero net flux. A zero RHS returns `q=0` successfully without dividing by a zero norm. A candidate convergence result is accepted only after recomputing `r=b-Aq` from the operator. If recursive residual reports convergence but the true residual does not, replace the recurrence residual with `b-Aq`, reproject, and restart PCG. Any nonfinite input, reduction, iterate, residual, or nonpositive/nonfinite search denominator fails the solve. Exhausting 256 iterations without the true-residual acceptance below fails; it is not a PASS or a silent approximate update. Report iteration count, cap hit, compatibility mean, true residual, divergence, identity error, and failure status.
+The closed-box RHS must be compatible. Compute and report `mean(b)`, maximum absolute RHS, and a face-flux scale. Remove only a roundoff-sized compatibility mean, bounded by `64 * epsilon(working precision) * max(normInf(b), h*normInf(u*), 1e-30)`; scaling by the input face flux is necessary when a divergence-free field's true RHS is zero but independent face differences cancel to roundoff. Exceeding that bound is a flux/boundary failure, not permission to conceal a nonzero net flux. A zero RHS returns `q=0` successfully without dividing by a zero norm. A candidate convergence result is accepted only after recomputing `r=b-Aq` from the operator. If recursive residual reports convergence but the true residual does not, replace the recurrence residual with `b-Aq`, reproject, and restart PCG. Any nonfinite input, reduction, iterate, residual, or nonpositive/nonfinite search denominator fails the solve. Exhausting 320 iterations without the true-residual acceptance below fails; it is not a PASS or a silent approximate update. Report iteration count, cap hit, compatibility mean, true residual, divergence, identity error, and failure status.
 
 Projection acceptance for each nonzero fixture is both:
 
@@ -84,6 +84,23 @@ Every fixture records array shape, x-fastest layout, units, precision, input gen
 | Curved/nonplanar trajectory | Integrate independent RK2 trajectories in a smooth analytic divergence-free 3D reference field; fit a least-squares plane to the trajectory points | Report `planeRMS = sqrt(lambdaMin(covariance))`, normalized by trajectory arc length. Preregister minimum `planeRMS/arcLength >= 0.01`; CPU reference must demonstrate the positive threshold before GPU acceptance. |
 | Fixed slice midpoint/orientation | Asymmetric scalar with a known Z ramp and distinct X/Y landmarks | At `z=0.5`, sample the equal average of cell planes 31 and 32 (not plane 32 alone); X is right, Y is up after one display conversion. |
 
+### Deterministic fixture inputs
+
+- The `8x7x6` operator pressure is `0.013*(i+2*j+3*k) + sin(0.37*i+0.19*j+0.43*k)`; its independently formed `D(Gq)` and neighbour stencil are compared elementwise. The fixed-gauge direct solve sets cell `(0,0,0)` to zero and solves the remaining graph-Laplacian system by pivoted Double elimination; compare its mean-normalized pressure with PCG.
+- Full-grid alternating pressure is `0.125*(-1)^(i+j+k)`. Manufactured cosine pressure is exactly the cell-centred formula in the table. Their input velocities are formed only by interior MAC face differences, with all six exterior normal faces zero.
+- The mixed-frequency projection uses the following values at the corresponding face-centre coordinates; set wall-normal faces to exact zero after evaluation:
+
+  ```text
+  u = .11 sin(pi*x) cos(2pi*y) cos(3pi*z) + .03 sin(3pi*x) cos(pi*y) sin(2pi*z)
+  v = .07 cos(2pi*x) sin(pi*y) cos(4pi*z) + .02 sin(pi*x) sin(2pi*y) cos(pi*z)
+  w = .09 cos(pi*x) cos(2pi*y) sin(pi*z) + .025 sin(2pi*x) cos(pi*y) sin(3pi*z)
+  ```
+
+- The wall/edge/corner projection excites every interior face one index in from its normal wall and all tangential boundary-adjacent rows. For `u`, set those faces to `.02*(1+i+3*j+5*k)`; for `v`, `-.015*(2+2*i+j+4*k)`; for `w`, `.0125*(3+4*i+2*j+k)`. Keep the exterior normal planes exactly zero. These values are stress-fixture inputs, not a claimed lesson velocity.
+- The independent divergence-free face fixture starts from vertex streamfunction `psi(i,j,k)=sin(pi*i/Nx)*sin(2pi*j/Ny)*sin(pi*(k+1/2)/Nz)`. Set `u=(psi(i,j+1,k)-psi(i,j,k))/h`, `v=-(psi(i+1,j,k)-psi(i,j,k))/h`, `w=0`, then enforce exterior zeros. The two transverse divergence terms cancel by independently computed differences.
+- The full-volume analytic transport check uses a compact smooth blob `exp(1-1/(1-s²))` for `s=|x-center|/radius<1`, zero otherwise, with center `(.42,.48,.43)`, radius `.105`, and constant reference velocity `(.071,-.043,.113)`. Evaluate its exact translated field at steps 0, 24 and 48 using `x-v*step*dt`. Its support stays inside the box; this is an analytic transport/centroid fixture, not the projected lesson recipe and not a mass-conservation claim for semi-Lagrangian transport.
+- The independent nonplanar trajectory uses `A=(sin(pi*y)sin(pi*z), sin(pi*z)sin(pi*x), sin(pi*x)sin(pi*y))`, velocity `0.25*curl(A)`, midpoint RK2, `dt=1/60`, 48 steps, and start `(.35,.21,.785)`. Record all 49 points. This trajectory is a geometric reference for the positive best-fit-plane threshold, separate from the pressure solver and not a user-visible tracer.
+
 Tolerance policy: Double operator identities and affine interpolation use absolute `1e-10`; Float32 GPU elementwise reference checks use `abs(error) <= 2e-5 + 2e-4*abs(reference)`; uniform-dye preservation uses absolute `2e-6`; the all-wall normal-face value is exactly zero. These values are fixed before kernels, not fit to GPU outputs. Reject nonfinite values before evaluating any expression involving a tolerance.
 
 ## Candidate Full-Volume Observation Metrics
@@ -108,7 +125,7 @@ python3 -m unittest Tests.Integration.test_fluid3d_reference.ReferenceContractTe
 python3 -m unittest Tests.Integration.test_fluid3d_reference.ReferenceContractTests.test_reference_feasibility
 ```
 
-`test_quick_contract` covers the asymmetric `8x7x6` operator and direct-solve cross-check plus analytic advection/reflection identities. `test_reference_feasibility` runs every contracted pressure fixture at 64³ against the 256-iteration cap and the same absolute residual/divergence/reduction criteria. Both commands fail on a compilation error, assertion failure, nonfinite value, or timeout; they must not skip. Report quick-feedback and full-feasibility durations separately.
+`test_quick_contract` covers the asymmetric `8x7x6` operator and direct-solve cross-check plus analytic advection/reflection identities. `test_reference_feasibility` runs every contracted pressure fixture at 64³ against the selected 320-iteration cap and the same absolute residual/divergence/reduction criteria. Both commands fail on a compilation error, assertion failure, nonfinite value, or timeout; they must not skip. Report quick-feedback and full-feasibility durations separately.
 
 <!-- END PREREGISTERED CONTRACT -->
 
@@ -116,8 +133,24 @@ python3 -m unittest Tests.Integration.test_fluid3d_reference.ReferenceContractTe
 
 The SHA-256 is computed over the exact UTF-8 bytes before the marker above, including the newline immediately preceding it. Results may be appended after the marker without changing the preregistered-contract hash. The reference driver pins the resulting digest and `--check-contract` fails if this prefix changes without an intentional review and test update.
 
-**Preregistered contract SHA-256:** `059a73992073273dc3e044daee1a06eef20306726816c4fb48280b17a2ea5a2d`
+**Preregistered contract SHA-256:** `a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b`
 
 ## CPU Reference Results
 
-Pending Task 2. This section will record actual CPU Double fixture outcomes, iteration counts, quick/full durations, and any justified pre-kernel contract revision. No GPU kernel, GPU acceptance, or lesson visibility result is claimed by this plan.
+The initial 256-iteration candidate did not meet the unchanged `1e-5` true-residual/divergence gate for `wall_edge_corner`: at 256 iterations both metrics were `3.88010297e-5`. An isolated CPU probe at cap 512 converged that same fixture in 270 iterations at `9.5921123e-6`; the pre-kernel contract therefore selects cap 320, leaving 50 iterations of measured margin without relaxing any accuracy threshold. The divergence-free fixture also exposed that compatibility roundoff must be scaled against `h*normInf(u*)`, not only the near-zero RHS; its exact-wall/curl fixture then returned a finite zero-iteration result. The originally chosen trajectory point/scale did not meet the preregistered `0.01` plane-RMS/arc-length threshold, so the independently integrated geometric fixture was fixed to the exact start/field/scale listed above; it yields `0.01662382` and Z displacement `40.0725` cells in 48 RK2 advances. The full-volume analytic unequal-axis fixture moves its dye centroid `5.78616` cells in Z over 48 advances. No GPU kernel, GPU acceptance, or production-lesson visibility result is claimed by this plan.
+
+The final focused unittest run passed all three gates. The quick oracle invocation took `0.022 s`; all full `64³` pressure feasibility families took `1.989 s`. These are per-operation subprocess runtimes and exclude Swift compilation and unittest setup. The table reports the independently recomputed true residual and divergence in timestep-scaled infinity norm; each remained at or below `1e-5`, every case was finite/converged, and no case hit the 320-iteration cap.
+
+| 64³ fixture | Iterations | Input `dt*||Du*||∞` | True residual `dt*||r||∞/h²` | Projected `dt*||DuNew||∞` | Divergence reduction |
+|---|---:|---:|---:|---:|---:|
+| zero RHS | 0 | 0 | 0 | 0 | 1 |
+| constant pressure | 0 | 0 | 0 | 0 | 1 |
+| alternating pressure | 1 | 102.4 | 0 | 0 | zero projected divergence |
+| manufactured cosine | 154 | 2.29551945 | 7.58125988e-6 | 7.58125992e-6 | 302788.65x |
+| mixed-frequency asymmetric | 159 | 0.0159617343 | 9.43789588e-6 | 9.43789588e-6 | 1691.24x |
+| wall/edge/corner | 270 | 18.4213333 | 9.59211229e-6 | 9.59211228e-6 | 1920466.82x |
+| divergence-free | 0 | 9.47390314e-16 | 9.47390314e-16 | 9.47390314e-16 | 1 |
+
+Maximum `dt`-scaled residual/divergence identity error was `1.14e-13`; maximum wall-normal flux was exactly zero. The analytic full-volume fixture remained finite and moved its dye centroid `5.78616` cells in Z after 48 steps. The independent curved trajectory had `planeRMS/arcLength = 0.01662382` against the preregistered `0.01` minimum and moved `40.0725` cells in Z.
+
+The `--export .build/fluid3d-reference --check-contract` run passed with the unchanged contract prefix SHA-256 `a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b`. Its six binary payloads all matched their manifest byte counts and SHA-256 values. The manifest SHA-256 is `b7042898c88e3872699de8e8d3fcdc3da20cbfc8c21fe31ac7fe11e0188ec7e0`; the asymmetric `8x7x6` operator payload matches the registered pressure formula and independently agrees between `-h²DG` and the neighbor stencil (SHA-256 `2d079f132f8b44135ce939be16cea4aa4f7628829b5d02ce15d22968d7b6c5c3`). The full-volume unequal-axis payload is `reference-64-full-volume-unequal-axis.f64le` (12,681,216 bytes; SHA-256 `9059ac449e0f16bc2e67d6909448192cf4e9e1aeb6c907668eeb22cc9ba7a0b3`) and carries the three staggered velocity inputs plus dye at steps 0/24/48. No GPU result is included or implied.
