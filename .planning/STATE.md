@@ -1,34 +1,34 @@
 ---
-gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Modernization
-status: Awaiting next milestone
-stopped_at: v1.0 archived; PLAT-01 runtime verification deferred
-last_updated: "2026-09-25T21:57:56.627Z"
-last_activity: 2026-09-25 — Milestone v1.0 completed and archived
+gsd_state_version: "1.0"
+milestone: v1.1
+milestone_name: 3D Teaching Foundation
+status: planning
+last_updated: "2026-11-06T19:38:51.012Z"
+last_activity: 2026-11-06
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 14
-  completed_plans: 14
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-09-25)
+See: `.planning/PROJECT.md` (updated 2026-11-06)
 
 **Core value:** People can interact with a responsive, visually familiar fluid simulation on both supported platforms and adjust it without editing source code.
-**Current focus:** v1.0 closed; prioritize other work
+**Current focus:** v1.1 3D Teaching Foundation — milestone research and requirements
 
 ## Current Position
 
-Phase: Milestone v1.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-25 — Milestone v1.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-11-06 — Milestone v1.1 started
+
 
 ## Performance Metrics
 
@@ -46,6 +46,9 @@ Last activity: 2026-09-25 — Milestone v1.0 completed and archived
 
 ### Roadmap Evolution
 
+- v1.1 approved 2026-11-06: Mac-first 64³ true-3D dye-advection lesson, orbit camera, slices, tracers, then basic volume rendering; phases continue at 7.
+- v1.0 phase histories are archived under `.planning/milestones/v1.0-phases/`; their deferred verification remains open.
+- Post-v1.0 educational features were delivered outside the GSD phase sequence; `docs/educational-release-verification.md` records the 2026-10-13 baseline.
 - Phase 6 edited: repurposed Phase 6 for macOS 26 and iOS/iPadOS 26 compatibility verification; deferred CTRL-05/06/07 to v2
 
 ### Decisions
@@ -92,10 +95,10 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 
 ## Session Continuity
 
-Last session: 2026-09-25T21:44:19.907Z
-Stopped at: v1.0 archived; PLAT-01 runtime verification deferred
+Last session: 2026-11-06
+Stopped at: v1.1 scope confirmed; research decision and requirements next
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Continue v1.1 initialization: research decision, scoped requirements, and roadmap approval.
