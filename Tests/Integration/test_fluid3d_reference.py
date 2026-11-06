@@ -5,8 +5,10 @@ They do not import Metal or treat a production/GPU implementation as reference.
 """
 
 import json
+import math
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import tempfile
 import time
@@ -125,6 +127,11 @@ class ReferenceContractTests(unittest.TestCase):
         self.assertGreaterEqual(trajectory["centroid_z_displacement_cells"], 0.5)
         self.assertGreaterEqual(trajectory["plane_rms_arc_ratio"], 0.01)
         self.assertTrue(trajectory["finite"], trajectory)
+        volume = result["full_volume_unequal_axis"]
+        self.assertTrue(volume["finite"], volume)
+        self.assertEqual(volume["shape"], [64, 64, 64])
+        self.assertGreaterEqual(volume["centroid_z_displacement_cells"], 0.5, volume)
+        self.assertTrue(result["passed"], result)
         print(f"PASS: full 64^3 CPU feasibility ({elapsed:.3f}s)")
 
     def test_reference_export_contains_full_volume_fixture(self):
@@ -141,6 +148,28 @@ class ReferenceContractTests(unittest.TestCase):
             manifest_path = Path(directory) / "manifest.json"
             manifest = json.loads(manifest_path.read_text())
             self.assertEqual(manifest["contractHash"], "a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b")
+            operator = next((item for item in manifest["binaryPayloads"]
+                             if item["fixture"] == "asymmetric_operator_identity"), None)
+            self.assertIsNotNone(operator, manifest["binaryPayloads"])
+            self.assertEqual(operator["byteCount"], 3 * 8 * 7 * 6 * 8)
+            operator_arrays = operator["arrayOrder"]
+            self.assertEqual([item["name"] for item in operator_arrays],
+                             ["pressure_q", "A_from_DG", "A_neighbour_stencil"])
+            self.assertTrue(all(item["shape"] == [8, 7, 6] for item in operator_arrays))
+            operator_values = list(struct.iter_unpack(
+                "<d", (Path(directory) / operator["file"]).read_bytes()))
+            cells = 8 * 7 * 6
+            pressure = [item[0] for item in operator_values[:cells]]
+            dg = [item[0] for item in operator_values[cells:2 * cells]]
+            stencil = [item[0] for item in operator_values[2 * cells:]]
+            expected_pressure = [
+                0.013 * (i + 2 * j + 3 * k) + math.sin(0.37 * i + 0.19 * j + 0.43 * k)
+                for k in range(6) for j in range(7) for i in range(8)
+            ]
+            self.assertLessEqual(max(abs(actual - expected) for actual, expected
+                                     in zip(pressure, expected_pressure)), 1e-12)
+            self.assertLessEqual(max(abs(actual - expected) for actual, expected
+                                     in zip(dg, stencil)), 1e-10)
             fixture = next((item for item in manifest["binaryPayloads"]
                             if item["fixture"] == "full_volume_unequal_axis"), None)
             self.assertIsNotNone(fixture, manifest["binaryPayloads"])
