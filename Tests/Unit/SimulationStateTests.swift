@@ -194,6 +194,137 @@ final class SimulationStateTests: XCTestCase {
         state.togglePause(); state.requestSingleStep(); state.beginReset(); state.finishReset()
         XCTAssertTrue(state.userPaused); XCTAssertEqual(state.pendingSteps, 0); XCTAssertEqual(state.tuning, saved)
     }
+    func testThreeDEntryAndExactQueuedSteps() {
+        var state = SimulationState()
+        state.selectMode(.experiment(.advection)); state.finishReset()
+        XCTAssertTrue(state.requestSingleStep())
+
+        state.selectMode(.dyeAdvection3D)
+        XCTAssertTrue(state.mode.is3D)
+        XCTAssertTrue(state.mode.isLesson)
+        XCTAssertNil(state.mode.experiment)
+        XCTAssertTrue(state.resetting)
+        XCTAssertTrue(state.userPaused)
+        XCTAssertEqual(state.stepCount, 0)
+        XCTAssertEqual(state.pendingSteps, 0)
+        XCTAssertFalse(state.acceptsInput)
+        state.finishReset()
+        XCTAssertTrue(state.canStep)
+
+        for _ in 0..<31 { XCTAssertTrue(state.requestSingleStep()) }
+        XCTAssertEqual(state.pendingSteps, 31)
+        for expected in 1...31 {
+            XCTAssertTrue(state.consumeStep())
+            XCTAssertEqual(state.stepCount, expected)
+            XCTAssertTrue(state.userPaused)
+        }
+        XCTAssertEqual(state.pendingSteps, 0)
+        XCTAssertFalse(state.consumeStep())
+        XCTAssertEqual(state.stepCount, 31)
+    }
+
+    func testThreeDReselectAndRestartResetPausedTransport() {
+        var state = SimulationState()
+        state.selectMode(.dyeAdvection3D); state.finishReset()
+        XCTAssertTrue(state.requestSingleStep())
+        XCTAssertTrue(state.consumeStep())
+        XCTAssertEqual(state.stepCount, 1)
+        XCTAssertTrue(state.requestSingleStep())
+        XCTAssertEqual(state.pendingSteps, 1)
+
+        state.selectMode(.dyeAdvection3D)
+        XCTAssertTrue(state.resetting)
+        XCTAssertTrue(state.userPaused)
+        XCTAssertEqual(state.stepCount, 0)
+        XCTAssertEqual(state.pendingSteps, 0)
+        state.finishReset()
+        XCTAssertTrue(state.canStep)
+
+        XCTAssertTrue(state.requestSingleStep())
+        XCTAssertTrue(state.consumeStep())
+        state.requestSingleStep()
+        state.beginReset()
+        XCTAssertTrue(state.resetting)
+        XCTAssertTrue(state.userPaused)
+        XCTAssertEqual(state.stepCount, 0)
+        XCTAssertEqual(state.pendingSteps, 0)
+        state.finishReset()
+        XCTAssertTrue(state.canStep)
+    }
+
+    func testThreeDInactivityPreservesManualIntent() {
+        var state = SimulationState()
+        state.selectMode(.dyeAdvection3D); state.finishReset()
+        XCTAssertTrue(state.requestSingleStep())
+        state.resignActive()
+        XCTAssertEqual(state.pendingSteps, 0)
+        XCTAssertFalse(state.consumeStep())
+        state.becomeActive()
+        XCTAssertTrue(state.userPaused)
+        XCTAssertFalse(state.shouldAdvance)
+        XCTAssertEqual(state.stepCount, 0)
+
+        state.togglePause()
+        XCTAssertTrue(state.shouldAdvance)
+        XCTAssertFalse(state.userPaused)
+        state.resignActive()
+        XCTAssertFalse(state.shouldAdvance)
+        state.becomeActive()
+        XCTAssertTrue(state.shouldAdvance)
+        XCTAssertFalse(state.userPaused)
+        XCTAssertEqual(state.stepCount, 0)
+
+        state.togglePause()
+        state.resignActive()
+        state.becomeActive()
+        XCTAssertTrue(state.userPaused)
+        XCTAssertFalse(state.shouldAdvance)
+    }
+
+    func testThreeDFieldActionsAreNoOps() {
+        var state = SimulationState()
+        state.selectField(.pressure)
+        let options = DisplayOptions(arrows: true, particles: false, trails: true)
+        state.setDisplayOptions(options)
+        state.selectMode(.dyeAdvection3D); state.finishReset()
+        let field = state.field
+
+        state.nextField()
+        state.selectField(.velocity)
+        state.setDisplayOptions(DisplayOptions())
+
+        XCTAssertEqual(state.field, field)
+        XCTAssertEqual(state.displayOptions, options)
+        XCTAssertNil(state.adjustment)
+        XCTAssertFalse(state.setExperimentAdjustment(.speed(.fast)))
+        XCTAssertNil(state.adjustment)
+    }
+
+    func testThreeDReturnPreservesTwoDPreferences() {
+        var state = SimulationState()
+        state.tuning.force = 1.7
+        state.selectField(.pressure)
+        let options = DisplayOptions(arrows: true, particles: false, trails: true)
+        state.setDisplayOptions(options)
+        let tuning = state.tuning
+
+        state.selectMode(.dyeAdvection3D); state.finishReset()
+        state.selectMode(.freePlay); state.finishReset()
+        XCTAssertTrue(state.shouldAdvance)
+        XCTAssertEqual(state.tuning, tuning)
+        XCTAssertEqual(state.field, .pressure)
+        XCTAssertEqual(state.displayOptions, options)
+
+        state.selectMode(.dyeAdvection3D); state.finishReset()
+        state.selectMode(.experiment(.interactingVortices)); state.finishReset()
+        XCTAssertTrue(state.userPaused)
+        XCTAssertEqual(state.field, .vorticity)
+        XCTAssertEqual(state.adjustment, .rotation(.same))
+        XCTAssertEqual(state.tuning, .lesson)
+        XCTAssertEqual(state.displayOptions, .lesson)
+        XCTAssertFalse(state.acceptsInput)
+    }
+
     func testCompletionAndRestart() {
         var state = SimulationState()
         state.selectMode(.experiment(.dyeStretching)); state.finishReset(); state.togglePause()

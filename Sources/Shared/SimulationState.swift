@@ -32,10 +32,21 @@ struct DisplayOptions: Equatable {
 }
 
 enum SimulationMode: Equatable {
-    case freePlay, experiment(ExperimentID)
+    case freePlay, experiment(ExperimentID), dyeAdvection3D
     var experiment: ExperimentID? { if case let .experiment(id) = self { return id }; return nil }
-    static var allCases: [SimulationMode] { [.freePlay] + ExperimentID.allCases.map { .experiment($0) } }
-    var title: String { experiment?.title ?? "Free Play" }
+    var is3D: Bool { self == .dyeAdvection3D }
+    var isLesson: Bool { self != .freePlay }
+    static var twoDimensionalModes: [SimulationMode] { [.freePlay] + ExperimentID.allCases.map { .experiment($0) } }
+    static var macModes: [SimulationMode] { twoDimensionalModes + [.dyeAdvection3D] }
+    // Compatibility list for existing positional 2D selectors. Platform UI should use an explicit list.
+    static var allCases: [SimulationMode] { twoDimensionalModes }
+    var title: String {
+        switch self {
+        case .freePlay: return "Free Play"
+        case let .experiment(id): return id.title
+        case .dyeAdvection3D: return "3D Dye Advection"
+        }
+    }
 }
 
 enum ExperimentID: Int, CaseIterable {
@@ -152,21 +163,30 @@ struct SimulationState {
     private var freePlayField: DisplayField = .density
     private var freePlayOptions = DisplayOptions()
     static let lessonSteps = 600
-    var complete: Bool { mode.experiment != nil && stepCount >= Self.lessonSteps }
+    var complete: Bool { mode.isLesson && stepCount >= Self.lessonSteps }
     var shouldAdvance: Bool { !userPaused && !inactive && !resetting && !complete }
     var canStep: Bool { userPaused && !inactive && !resetting && !complete }
     var acceptsInput: Bool { mode == .freePlay && shouldAdvance }
     var status: String { complete ? "Experiment complete. Restart to compare." : "Step \(stepCount)" }
-    mutating func nextField() { field = DisplayField(rawValue: (field.rawValue + 1) % DisplayField.allCases.count)! }
-    mutating func selectField(_ field: DisplayField) { self.field = field }
-    mutating func setDisplayOptions(_ options: DisplayOptions) { displayOptions = options }
+    mutating func nextField() {
+        guard !mode.is3D else { return }
+        field = DisplayField(rawValue: (field.rawValue + 1) % DisplayField.allCases.count)!
+    }
+    mutating func selectField(_ field: DisplayField) {
+        guard !mode.is3D else { return }
+        self.field = field
+    }
+    mutating func setDisplayOptions(_ options: DisplayOptions) {
+        guard !mode.is3D else { return }
+        displayOptions = options
+    }
     mutating func togglePause() {
         guard !complete else { return }
         userPaused.toggle()
         if !userPaused { pendingSteps = 0 }
     }
     @discardableResult mutating func requestSingleStep() -> Bool {
-        guard canStep, mode.experiment == nil || pendingSteps < Self.lessonSteps - stepCount else { return false }
+        guard canStep, !mode.isLesson || pendingSteps < Self.lessonSteps - stepCount else { return false }
         pendingSteps += 1; return true
     }
     // Called once for each encoded step, independently of drawable availability.
@@ -179,8 +199,11 @@ struct SimulationState {
     }
     mutating func resignActive() { inactive = true; pendingSteps = 0 }
     mutating func becomeActive() { inactive = false }
-    mutating func resetTuning() { tuning = mode == .freePlay ? SimulationTuning() : .lesson }
-    mutating func beginReset() { resetting = true; pendingSteps = 0; stepCount = 0; if mode.experiment != nil { userPaused = true } }
+    mutating func resetTuning() {
+        guard !mode.is3D else { return }
+        tuning = mode == .freePlay ? SimulationTuning() : .lesson
+    }
+    mutating func beginReset() { resetting = true; pendingSteps = 0; stepCount = 0; if mode.isLesson { userPaused = true } }
     mutating func finishReset() { resetting = false }
     mutating func selectMode(_ mode: SimulationMode) {
         if self.mode == .freePlay { freePlayTuning = tuning; freePlayField = field; freePlayOptions = displayOptions }
@@ -188,6 +211,8 @@ struct SimulationState {
         if let lesson = mode.experiment {
             adjustment = lesson.defaultAdjustment; tuning = .lesson
             field = lesson.defaultField; displayOptions = .lesson; userPaused = true
+        } else if mode.is3D {
+            adjustment = nil; userPaused = true
         } else {
             adjustment = nil; tuning = freePlayTuning; field = freePlayField; displayOptions = freePlayOptions; userPaused = false
         }

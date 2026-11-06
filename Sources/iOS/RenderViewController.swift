@@ -281,7 +281,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         refreshTransport()
         let state = renderer.state
         experimentSelector.setTitle(state.mode.title + " ▾", for: .normal)
-        experimentSelector.menu = UIMenu(title: "Experiments", children: SimulationMode.allCases.map { mode in
+        experimentSelector.menu = UIMenu(title: "Experiments", children: SimulationMode.twoDimensionalModes.map { mode in
             UIAction(title: mode.title, state: mode == state.mode ? .on : .off) { [weak self] _ in
                 guard let self else { return }; self.clearTouches(); self.renderer.selectMode(mode); self.refreshControls()
             }

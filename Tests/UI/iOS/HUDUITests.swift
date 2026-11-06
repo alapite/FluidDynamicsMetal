@@ -175,6 +175,29 @@ final class HUDUITests: XCTestCase {
         app.buttons["experimentSelector"].tap(); app.buttons["Free Play"].tap()
         XCTAssertFalse(app.buttons["transport.step"].isEnabled)
     }
+
+    func testExperimentMenuRemainsTwoDOnly() {
+        let selector = app.buttons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 15))
+        selector.tap()
+
+        for title in ["Free Play", "Dye carried by a flow", "Two interacting vortices", "Stretching dye by stirring"] {
+            XCTAssertTrue(app.buttons[title].waitForExistence(timeout: 5), "The existing 2D mode \(title) must remain available")
+        }
+        XCTAssertFalse(app.buttons["3D Dye Advection"].exists)
+        XCTAssertFalse(app.staticTexts["3D"].exists)
+
+        app.buttons["Dye carried by a flow"].tap()
+        XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 0")
+        app.buttons["transport.step"].tap()
+        XCTAssertTrue(app.staticTexts["Step 1"].waitForExistence(timeout: 5))
+
+        selector.tap()
+        XCTAssertTrue(app.buttons["Free Play"].waitForExistence(timeout: 5))
+        app.buttons["Free Play"].tap()
+        XCTAssertFalse(app.buttons["transport.step"].isEnabled)
+    }
+
     func testLessonCompletion() {
         XCTAssertTrue(app.buttons["experimentSelector"].waitForExistence(timeout: 15))
         chooseLesson("Dye carried by a flow"); app.buttons["transport.pause"].tap()
