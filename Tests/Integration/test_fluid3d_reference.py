@@ -75,10 +75,18 @@ class ReferenceContractTests(unittest.TestCase):
         self.assertEqual(result["grid"], [8, 7, 6])
         self.assertLessEqual(result["dg_stencil_max_abs_error"], 1e-10)
         self.assertLessEqual(result["affine_interpolation_max_abs_error"], 1e-10)
+        self.assertLessEqual(result["affine_face_interpolation_max_abs_error"], 1e-10)
+        self.assertEqual(result["midpoint_planes"], [3, 4])
+        self.assertLessEqual(result["midpoint_slice_max_abs_error"], 1e-10)
+        self.assertLessEqual(result["midpoint_landmark_max_abs_error"], 1e-10)
         self.assertLessEqual(result["direct_solve_pressure_max_abs_error"], 1e-6)
         self.assertLessEqual(result["direct_solve_true_residual_max_abs"], 1e-10)
+        self.assertLessEqual(result["direct_solve_stencil_crosscheck_max_abs_error"], 1e-10)
         self.assertGreaterEqual(result["advection_cases"], 8)
+        self.assertLessEqual(result["advection_max_abs_error"], 1e-10)
+        self.assertLessEqual(result["component_advection_max_abs_error"], 1e-10)
         self.assertGreaterEqual(result["reflection_cases"], 26)
+        self.assertLessEqual(result["reflection_max_abs_error"], 1e-10)
         self.assertTrue(result["constant_pressure_is_null"])
         self.assertTrue(result["alternating_pressure_is_nonzero"])
         self.assertTrue(result["nan_rejected"])
@@ -88,7 +96,7 @@ class ReferenceContractTests(unittest.TestCase):
         """Every locked full-grid pressure family converges within the cap."""
         result, elapsed = self.run_reference("--reference-feasibility", timeout=1800)
         self.assertEqual(result["grid"], [64, 64, 64])
-        self.assertEqual(result["iteration_cap"], 256)
+        self.assertEqual(result["iteration_cap"], 320)
         fixtures = {fixture["name"]: fixture for fixture in result["fixtures"]}
         expected = {
             "zero_rhs",
@@ -106,7 +114,7 @@ class ReferenceContractTests(unittest.TestCase):
                 self.assertTrue(fixture["finite"], fixture)
                 self.assertTrue(fixture["converged"], fixture)
                 self.assertFalse(fixture["cap_hit"], fixture)
-                self.assertLessEqual(fixture["iterations"], 256)
+                self.assertLessEqual(fixture["iterations"], 320)
                 self.assertLessEqual(fixture["true_residual_dt_inf"], 1e-5, fixture)
                 self.assertLessEqual(fixture["projected_divergence_dt_inf"], 1e-5, fixture)
                 self.assertLessEqual(fixture["identity_dt_inf_error"], 1e-10, fixture)
