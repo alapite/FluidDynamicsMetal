@@ -1,0 +1,33 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": "v1.1 — 3D Teaching Foundation",
+  "phases": [
+    {
+      "number": "7",
+      "name": "First 3D Fluid Vertical Slice",
+      "status": "pending"
+    },
+    {
+      "number": "8",
+      "name": "Spatial Inspection",
+      "status": "pending"
+    },
+    {
+      "number": "9",
+      "name": "Repeatable 3D Advection Lesson",
+      "status": "pending"
+    },
+    {
+      "number": "10",
+      "name": "Volume View and Measured Release Quality",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd-progress --next",
+    "label": "Advance to the next step (plan phase 7)",
+    "reason": "Phase 1 of 4 — needs a plan"
+  },
+  "updated_at": "2026-11-06T19:58:39.887Z"
+}

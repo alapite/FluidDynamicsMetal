@@ -2,11 +2,16 @@
 gsd_state_version: "1.0"
 milestone: v1.1
 milestone_name: 3D Teaching Foundation
+current_phase: 7
+current_phase_name: First 3D Fluid Vertical Slice
 status: planning
-last_updated: "2026-11-06T19:38:51.012Z"
+stopped_at: "v1.1 milestone initialized; roadmap approved; next: discuss Phase 7"
+last_updated: "2026-11-06T19:57:25.934Z"
 last_activity: 2026-11-06
+last_activity_desc: v1.1 roadmap approved; Phase 7 ready for discussion and planning
+state_head: e7eaeabddf5fd928112e66e90d2e8a5e9db7938a
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +25,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-11-06)
 
 **Core value:** People can interact with a responsive, visually familiar fluid simulation on both supported platforms and adjust it without editing source code.
-**Current focus:** v1.1 3D Teaching Foundation — milestone research and requirements
+**Current focus:** v1.1 3D Teaching Foundation — Phase 7 discussion and planning
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-11-06 — Milestone v1.1 started
+Phase: 7 of 10 (First 3D Fluid Vertical Slice); 1 of 4 in v1.1
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-06 — v1.1 roadmap approved; Phase 7 ready for discussion and planning
 
 
 ## Performance Metrics
@@ -47,6 +52,7 @@ Last activity: 2026-11-06 — Milestone v1.1 started
 ### Roadmap Evolution
 
 - v1.1 approved 2026-11-06: Mac-first 64³ true-3D dye-advection lesson, orbit camera, slices, tracers, then basic volume rendering; phases continue at 7.
+- v1.1 requirements approved: focused dye inspection, existing 600-step lesson contract, and measured 30 fps floor at 64³ / 1280×720 on a named reference Mac. Research and roadmap review performed inline.
 - v1.0 phase histories are archived under `.planning/milestones/v1.0-phases/`; their deferred verification remains open.
 - Post-v1.0 educational features were delivered outside the GSD phase sequence; `docs/educational-release-verification.md` records the 2026-10-13 baseline.
 - Phase 6 edited: repurposed Phase 6 for macOS 26 and iOS/iPadOS 26 compatibility verification; deferred CTRL-05/06/07 to v2
@@ -95,10 +101,10 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 
 ## Session Continuity
 
-Last session: 2026-11-06
-Stopped at: v1.1 scope confirmed; research decision and requirements next
+Last session: 2026-11-06T19:57:25.920Z
+Stopped at: v1.1 milestone initialized; roadmap approved; next: discuss Phase 7
 Resume file: None
 
 ## Operator Next Steps
 
-- Continue v1.1 initialization: research decision, scoped requirements, and roadmap approval.
+- Run `$gsd-discuss-phase 7` to settle the numerical contract and first visible 3D slice, then `$gsd-plan-phase 7`.

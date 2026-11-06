@@ -92,7 +92,7 @@ v1.0 is archived with 14/14 implementation plans complete and 11/12 v1 requireme
 - Basic transparent dye-volume rendering after the slice/tracer foundation.
 - GPU correctness, repeatability, presentation-independence, and performance evidence.
 
-Phases continue at 7. The user approved 23 requirements in `.planning/REQUIREMENTS.md`; the roadmap is being defined. Deferred macOS 26 runtime and device-only multitouch checks remain tracked follow-ups rather than newly asserted compatibility claims.
+The user approved 23 requirements in `.planning/REQUIREMENTS.md` and the four-phase roadmap (phases 7–10) on 2026-11-06. Phase 7 is ready for discussion and planning. Deferred macOS 26 runtime and device-only multitouch checks remain tracked follow-ups rather than newly asserted compatibility claims.
 
 ## Evolution
 

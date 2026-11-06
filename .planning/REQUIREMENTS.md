@@ -83,35 +83,35 @@
 
 ## Traceability
 
-Roadmap mapping pending. Every v1.1 requirement must map to exactly one delivery phase.
+Every v1.1 requirement maps to exactly one delivery phase. Later phases extend and rerun relevant earlier checks without duplicating requirement ownership.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SIM-04 | TBD | Pending |
-| SIM-05 | TBD | Pending |
-| SIM-06 | TBD | Pending |
-| LES-01 | TBD | Pending |
-| LES-02 | TBD | Pending |
-| LES-03 | TBD | Pending |
-| LES-04 | TBD | Pending |
-| LES-05 | TBD | Pending |
-| LES-06 | TBD | Pending |
-| INS-01 | TBD | Pending |
-| INS-02 | TBD | Pending |
-| INS-03 | TBD | Pending |
-| INS-04 | TBD | Pending |
-| INS-05 | TBD | Pending |
-| INS-06 | TBD | Pending |
-| CTRL-08 | TBD | Pending |
-| EDU-01 | TBD | Pending |
-| EDU-02 | TBD | Pending |
-| EDU-03 | TBD | Pending |
-| VER-03 | TBD | Pending |
-| VER-04 | TBD | Pending |
-| VER-05 | TBD | Pending |
-| VER-06 | TBD | Pending |
+| SIM-04 | Phase 7 | Pending |
+| SIM-05 | Phase 7 | Pending |
+| SIM-06 | Phase 7 | Pending |
+| LES-01 | Phase 7 | Pending |
+| LES-02 | Phase 7 | Pending |
+| LES-03 | Phase 9 | Pending |
+| LES-04 | Phase 9 | Pending |
+| LES-05 | Phase 9 | Pending |
+| LES-06 | Phase 7 | Pending |
+| INS-01 | Phase 8 | Pending |
+| INS-02 | Phase 8 | Pending |
+| INS-03 | Phase 8 | Pending |
+| INS-04 | Phase 8 | Pending |
+| INS-05 | Phase 10 | Pending |
+| INS-06 | Phase 10 | Pending |
+| CTRL-08 | Phase 8 | Pending |
+| EDU-01 | Phase 9 | Pending |
+| EDU-02 | Phase 9 | Pending |
+| EDU-03 | Phase 9 | Pending |
+| VER-03 | Phase 7 | Pending |
+| VER-04 | Phase 9 | Pending |
+| VER-05 | Phase 10 | Pending |
+| VER-06 | Phase 10 | Pending |
 
-**Coverage:** 23 requirements; 0 mapped, 23 awaiting roadmap.
+**Coverage:** 23 requirements; 23 mapped, 0 unmapped. All remain pending implementation.
 
 ---
 *Requirements approved: 2026-11-06. Implementation has not started.*
