@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+import hashlib
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -125,6 +126,35 @@ class ReferenceContractTests(unittest.TestCase):
         self.assertGreaterEqual(trajectory["plane_rms_arc_ratio"], 0.01)
         self.assertTrue(trajectory["finite"], trajectory)
         print(f"PASS: full 64^3 CPU feasibility ({elapsed:.3f}s)")
+
+    def test_reference_export_contains_full_volume_fixture(self):
+        """The exporter gives the next GPU harness the whole XYZ advection oracle."""
+        self.require_oracle()
+        with tempfile.TemporaryDirectory(prefix="fluid3d-reference-data-") as directory:
+            result = subprocess.run(
+                [str(self.runner), "--check-contract", str(CONTRACT), "--export", directory, "--contract", str(CONTRACT)],
+                capture_output=True,
+                text=True,
+                timeout=1800,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            manifest_path = Path(directory) / "manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            self.assertEqual(manifest["contractHash"], "a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b")
+            fixture = next((item for item in manifest["binaryPayloads"]
+                            if item["fixture"] == "full_volume_unequal_axis"), None)
+            self.assertIsNotNone(fixture, manifest["binaryPayloads"])
+            arrays = {item["name"]: item for item in fixture["arrayOrder"]}
+            self.assertEqual(set(arrays), {"u_input", "v_input", "w_input", "dye_step0", "dye_step24", "dye_step48"})
+            self.assertEqual(arrays["u_input"]["shape"], [65, 64, 64])
+            self.assertEqual(arrays["v_input"]["shape"], [64, 65, 64])
+            self.assertEqual(arrays["w_input"]["shape"], [64, 64, 65])
+            for name in ("dye_step0", "dye_step24", "dye_step48"):
+                self.assertEqual(arrays[name]["shape"], [64, 64, 64])
+                self.assertEqual(arrays[name]["unit"], "dimensionless concentration")
+            binary = (Path(directory) / fixture["file"]).read_bytes()
+            self.assertEqual(len(binary), fixture["byteCount"])
+            self.assertEqual(hashlib.sha256(binary).hexdigest(), fixture["sha256"])
 
 
 def export_reference(destination, check_contract):
