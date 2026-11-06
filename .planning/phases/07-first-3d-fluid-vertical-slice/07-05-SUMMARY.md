@@ -39,7 +39,7 @@ patterns-established:
 requirements-completed: [SIM-04, SIM-06, LES-01, LES-02, LES-06]
 
 # Metrics
-duration: 13min
+duration: 21min
 completed: 2026-11-06
 ---
 
@@ -49,9 +49,9 @@ completed: 2026-11-06
 
 ## Performance
 
-- **Duration:** 13 min
+- **Duration:** 21 min
 - **Started:** 2026-11-06T21:59:59Z
-- **Completed:** 2026-11-06T22:13:17Z
+- **Completed:** 2026-11-06T22:21:17Z
 - **Tasks:** 2 completed
 - **Files modified:** 4
 
@@ -59,6 +59,7 @@ completed: 2026-11-06
 
 - Added the `dyeAdvection3D` mode with the exact title `3D Dye Advection`, `is3D` / `isLesson` capabilities, and separate `twoDimensionalModes` / `macModes` catalogs. `experiment` remains `nil` for 3D rather than fabricating a 2D lesson identity.
 - Made 3D mode selection and reset enter paused at step 0, cleared queued steps on reset/inactivity, bounded queued advances as a lesson, and prevented unsupported field, overlay, tuning-reset, and adjustment actions from changing 3D state. Free Play preferences and existing 2D lesson defaults remain intact.
+- Added supplemental direct coverage that same-mode 3D re-selection and restart both clear queued work and reset the paused lesson transport to step 0.
 - Switched the iOS experiment menu to `twoDimensionalModes` and added a HUD regression covering the four existing titles, 3D absence, lesson selection, a single paused step, and return to Free Play.
 - Kept the existing Mac selector's compatibility list 2D-only; no unfinished 3D GPU path was exposed through its positional selection behavior.
 
@@ -68,13 +69,14 @@ completed: 2026-11-06
 2. **Task 1 GREEN: explicit 3D state behavior** — `5baadb5` (`feat(07-05): implement explicit 3D mode state`)
 3. **Task 2: iOS 2D-only menu regression** — `5183db1` (`test(07-05): cover iOS 2D-only experiment navigation`)
 4. **Task 2: explicit iOS mode list** — `43c2379` (`fix(07-05): use explicit 2D modes on iOS`)
+5. **Supplemental: 3D reselect/restart reset regression** — `da13c02` (`test(07-05): cover 3D reselect and restart reset`)
 
-**Plan metadata:** `docs(07-05): complete 3D state transport and mobile 2D continuity plan`
+**Initial plan metadata commit:** `f11a503` (`docs(07-05): complete 3D state transport and mobile 2D continuity plan`); this summary was updated afterward to record the supplemental regression and final verification.
 
 ## Files Created/Modified
 
 - `Sources/Shared/SimulationState.swift` — 3D mode identity/capabilities, platform catalogs, bounded lesson transport, no-op guards, and preference-safe transitions.
-- `Tests/Unit/SimulationStateTests.swift` — 3D entry/step, inactivity/manual intent, no-op actions, and 2D preference/default regression coverage.
+- `Tests/Unit/SimulationStateTests.swift` — 3D entry/step, same-mode re-selection/restart reset, inactivity/manual intent, no-op actions, and 2D preference/default regression coverage.
 - `Sources/iOS/RenderViewController.swift` — explicit 2D-only source for the mobile experiment menu.
 - `Tests/UI/iOS/HUDUITests.swift` — menu availability and existing 2D lesson navigation/transport coverage.
 
@@ -82,6 +84,8 @@ completed: 2026-11-06
 
 - **Task 1 RED:** the focused Mac state-test build failed at the expected missing API symbols (`dyeAdvection3D`, `is3D`, `isLesson`) before implementation; XCTest assertions could not run in that compile-failure state.
 - **Task 1 GREEN:** focused Mac state suite passed — **24 tests, 0 failures**, including all four added 3D state tests and existing 2D defaults/field-cycle/600-step tests.
+- **Supplemental review regression:** `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO -only-testing:FluidDynamicsMetalStateTests` — **25 tests, 0 failures** (18 simulation-state and 7 renderer-contact tests); `testThreeDReselectAndRestartResetPausedTransport` passed.
+- `git diff --check` — passed for the supplemental regression.
 - `xcrun swiftc -swift-version 6 -typecheck Sources/Shared/SimulationState.swift Sources/Shared/ExperimentRecipes.swift` — passed.
 - `testExperimentMenuRemainsTwoDOnly` — passed on an iPhone 17 Pro simulator (iOS 26.4) and an iPad Pro 13-inch M5 simulator (iOS 26.4). Both runs verified all four 2D choices, absence of the 3D title/heading, lesson selection, Step 1, and return to Free Play.
 - No-override Mac Debug build — passed.
@@ -94,6 +98,7 @@ completed: 2026-11-06
 
 - The Task 1 RED run demonstrated the missing production API through expected compiler errors; the full runtime assertions passed after the GREEN implementation.
 - The Task 2 menu test was already green before the one-line selector change because `allCases` was intentionally still the legacy 2D-only compatibility list. The implementation makes that availability explicit through `twoDimensionalModes`; the same UI test passed again on both simulator form factors after the change.
+- Inline review identified that the original state tests did not directly distinguish same-mode re-selection and lesson restart reset semantics; the supplemental regression now covers both and passed in the fresh 25-test run.
 
 ## Decisions Made
 
@@ -107,6 +112,7 @@ None in scope or file ownership. The TDD observations above reflect that the new
 ## Issues Encountered
 
 - The expected RED compile failure prevented runtime state assertions until the new mode API existed; implementation then passed the complete focused state suite.
+- The supplemental state run emitted non-failing Xcode App Intents metadata and IDETestOperationsObserver/launch-session warnings; all 25 tests passed.
 - Xcode and simulator emitted platform/tooling warnings (App Intents metadata skipped, upcoming `UIScene` lifecycle notice, and simulator accessibility duplicate-class notice). They did not cause test or build failures and were outside this plan's code scope.
 
 ## User Setup Required
@@ -130,6 +136,6 @@ No new network, authentication, filesystem, or schema trust-boundary surface was
 ## Self-Check: PASSED
 
 - Summary file exists at the planned phase path.
-- All four task commits are present in the worktree history.
-- Summary records both simulator UI runs, both no-override builds, focused state tests, and integration regressions.
+- All four task implementation commits and the supplemental regression commit are present in the worktree history; the initial summary commit is `f11a503`.
+- Summary records both simulator UI runs, both no-override builds, the original focused state run and fresh 25-test regression run, and integration regressions.
 - `.planning/STATE.md` and `.planning/ROADMAP.md` were not modified.
