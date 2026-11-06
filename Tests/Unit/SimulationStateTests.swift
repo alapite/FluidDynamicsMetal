@@ -223,6 +223,35 @@ final class SimulationStateTests: XCTestCase {
         XCTAssertEqual(state.stepCount, 31)
     }
 
+    func testThreeDReselectAndRestartResetPausedTransport() {
+        var state = SimulationState()
+        state.selectMode(.dyeAdvection3D); state.finishReset()
+        XCTAssertTrue(state.requestSingleStep())
+        XCTAssertTrue(state.consumeStep())
+        XCTAssertEqual(state.stepCount, 1)
+        XCTAssertTrue(state.requestSingleStep())
+        XCTAssertEqual(state.pendingSteps, 1)
+
+        state.selectMode(.dyeAdvection3D)
+        XCTAssertTrue(state.resetting)
+        XCTAssertTrue(state.userPaused)
+        XCTAssertEqual(state.stepCount, 0)
+        XCTAssertEqual(state.pendingSteps, 0)
+        state.finishReset()
+        XCTAssertTrue(state.canStep)
+
+        XCTAssertTrue(state.requestSingleStep())
+        XCTAssertTrue(state.consumeStep())
+        state.requestSingleStep()
+        state.beginReset()
+        XCTAssertTrue(state.resetting)
+        XCTAssertTrue(state.userPaused)
+        XCTAssertEqual(state.stepCount, 0)
+        XCTAssertEqual(state.pendingSteps, 0)
+        state.finishReset()
+        XCTAssertTrue(state.canStep)
+    }
+
     func testThreeDInactivityPreservesManualIntent() {
         var state = SimulationState()
         state.selectMode(.dyeAdvection3D); state.finishReset()
