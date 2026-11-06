@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: 3D Teaching Foundation
-status: planning
-stopped_at: Phase 7 UI-SPEC approved
-last_updated: "2026-11-06T20:32:07.183Z"
-last_activity: 2026-11-06 — Phase 7 research saved and UI-SPEC approved inline; ready for implementation planning
+status: executing
+stopped_at: Phase 7 planned and verified inline; ready to execute
+last_updated: "2026-11-06T20:49:24.634Z"
+last_activity: 2026-11-06 -- Phase 7 planning complete
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 9
   completed_plans: 0
   percent: 0
 ---
@@ -21,14 +21,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-11-06)
 
 **Core value:** People can interact with a responsive, visually familiar fluid simulation on both supported platforms and adjust it without editing source code.
-**Current focus:** v1.1 3D Teaching Foundation — Phase 7 implementation planning
+**Current focus:** v1.1 3D Teaching Foundation — Phase 7 ready to execute (implementation not started)
 
 ## Current Position
 
 Phase: 7 of 10 (First 3D Fluid Vertical Slice); 1 of 4 in v1.1
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-06 — Phase 7 research saved and UI-SPEC approved inline; ready for implementation planning
+Plan: 0 of 9 complete; next 07-01 (07-05 is the other independent Wave 1 plan)
+Status: Ready to execute
+Last activity: 2026-11-06 -- Phase 7 planning complete
 
 ## Performance Metrics
 
@@ -71,7 +71,7 @@ None yet.
 - The user confirmed visual drag/Space/S behavior on macOS 27. Actual macOS 26 runtime launch and drag remain NOT TESTED for future follow-up; a macOS 26 VM with a usable Metal device is a possible test host.
 - Tart's interrupted image download restarted at 0%; if the macOS 26 runtime check is reprioritized, use the resumable `curl -C -` command in `01-BASELINE.md`. A partial macOS 26.6.2 IPSW is retained under ignored `.build/`.
 - GSD researcher and roadmapper agent definitions are unavailable in this runtime; initial research and roadmap were produced inline.
-- Phase 7 UI-SPEC is approved after six-dimension inline review (five PASS, one non-blocking inherited-spacing FLAG, zero BLOCK). Research and draft validation are saved; executable plans and implementation verification have not run.
+- Phase 7 UI-SPEC remains approved (five PASS, one non-blocking inherited-spacing FLAG). Nine executable plans / eight waves / 20 tasks pass inline plan review and structural/coverage checks: all seven owned requirements and D-01–17 covered. Pattern mapping and executable validation strategy are saved. No implementation, app build, numerical test, benchmark or human acceptance was performed during planning.
 - Phase 7 research observed that active Xcode 27.2 lacks its Metal Toolchain (`xcrun metal --version` failed), despite the historical Xcode 27.0 installation noted above. Recheck/install the active toolchain before fresh builds/GPU evidence; this does not block planning documents.
 - Phase 3 inline code review `03-REVIEW.md` records an advisory resample-pipeline failure-path warning; successful Mac/iOS user interaction and current GPU tests do not exercise that negative path.
 
@@ -98,10 +98,10 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 
 ## Session Continuity
 
-Last session: 2026-11-06T20:32:07.176Z
-Stopped at: Phase 7 UI-SPEC approved
-Resume file: .planning/phases/07-first-3d-fluid-vertical-slice/07-UI-SPEC.md
+Last session: 2026-11-06T20:49:24.634Z
+Stopped at: Phase 7 planned and verified inline; ready to execute
+Resume file: .planning/phases/07-first-3d-fluid-vertical-slice/07-01-PLAN.md
 
 ## Operator Next Steps
 
-- Run `$gsd-plan-phase 7` using the saved context, research, draft validation and approved `07-UI-SPEC.md`. No additional UI-SPEC override is needed. Finalize the numerical reference contract before kernel implementation; do not treat proposed numerical settings or design review as passing runtime evidence.
+- Run `$gsd-execute-phase 7` in fresh context. Follow plan wave/dependency ordering; parallelization is disabled in project config even though 07-01/07-05 have independent source ownership. The numerical contract/independent CPU reference gate must pass before 3D kernels. Recheck/install the active Metal Toolchain before GPU builds/tests. Final human visual/interaction approval is a blocking execution checkpoint in 07-09, not already granted.

@@ -321,13 +321,15 @@ These mitigations should become per-plan `<threat_model>` entries and verificati
 
 Environment probes are fresh observations; historical notes about an installed Xcode 27.0 Metal Toolchain do not establish availability under active Xcode 27.2. [VERIFIED: tool output; STATE.md historical environment]
 
-## Open Questions and Implementation Gates
+## Open Questions (RESOLVED for Planning; Execution Gates Remain)
 
-1. **Numerical reference feasibility:** Run/lock the CPU contract before GPU implementation; verify PCG gauge/preconditioning/cap and tolerances. No solve was benchmarked here. [PROPOSED]
-2. **Readable initial flow and future comparison window:** Candidate recipe/seed and snapshots above need actual production-kernel evidence. Do not promise that steps 24/48/72 already show usable ordering or sustained visibility. [PROPOSED]
-3. **Actual device formats and ABI:** Validate allocation, all 3D extents, interpolation, staging alignment and named entry points on the selected GPU after the toolchain is repaired. [PROPOSED]
-4. **UI contract missing:** `07-UI-SPEC.md` does not exist and both UI flags are enabled. Manual plan-phase must stop at workflow §5.6 before pattern mapping/planner/checker; next action is `/gsd-ui-phase 7`, then `/gsd-plan-phase 7`. [VERIFIED: phase directory; config; workflow gate]
-5. **Execution environment:** Missing active Metal Toolchain blocks builds and GPU evidence, not writing research or plans. Installation is a separately visible prerequisite; no toolchain download was attempted. [VERIFIED: xcrun metal failure]
+1. **Numerical reference feasibility — RESOLVED planning approach:** Select MAC float32 storage, RK2/trilinear advection and zero-mean diagonal-PCG as specified above. Plan 07-01 locks the contract and runs independent CPU Double fixtures, including 64³ convergence feasibility, before 07-02 kernels. A failed reference gate stops numerical implementation for investigation, not tolerance dilution. No solve is claimed benchmarked by research. [PLANNING DISPOSITION: 2026-11-06]
+2. **Readable initial flow and future comparison window — RESOLVED validation approach:** Start with the stated curl seed/blob and fixed no-decay transfer function; 07-01 preregisters observability metrics and 07-04 calibrates/validates steps 0/24/48/72 through real fields and captures. Internal 0.5/1/1.5 seed-scale probes inform later feasibility only. Camera motion, replenishment and adaptive brightness are excluded. Visual quality and speed ordering remain unmeasured, not assumed. [PLANNING DISPOSITION]
+3. **Actual device formats and ABI — RESOLVED approach:** Use checked `.type3D`/`.r32Float` private fields and separate 16-byte uniform lanes; 07-02 must pass allocation/ABI/depth/stride/advection fixtures on the actual device before projection integration. Runtime failure is an error, not fake 3D. [PLANNING DISPOSITION]
+4. **UI contract — RESOLVED:** `07-UI-SPEC.md` was subsequently created and approved on 2026-11-06. Its navigation, copy, fixed midpoint, palette, layout and failure contract are authoritative. The earlier missing-UI observations above describe the research run, not the current directory. Workflow §5.6 is now satisfied. [VERIFIED: current approved UI-SPEC]
+5. **Execution environment — RESOLVED handling:** 07-02 rechecks `xcrun metal --version` and attempts the documented component installation if needed before fresh builds. Installation failure blocks GPU execution with an explicit reason; it does not block planning. No download or new compiler probe was run during planning. [PLANNING DISPOSITION]
+
+These resolutions settle implementation choices and assign mandatory evidence-producing gates; they do **not** mean numerical feasibility, appearance, resource support, toolchain repair or runtime tests have passed. Saved research is reused, not force-refreshed. Current init with canonical phase `7` also now reports the seven requirement IDs correctly; retain the explicit requirement table as the source cross-check.
 
 ## Assumptions Log
 
