@@ -39,8 +39,8 @@ The post-v1.0 educational release (`07703e2`, documented 2026-10-13) established
 Plans:
 **Wave 1**
 
-- [ ] 07-01-PLAN.md — Preregister the numerical contract and prove independent CPU reference feasibility.
-- [ ] 07-05-PLAN.md — Define explicit 3D state/transport capabilities and preserve mobile 2D-only availability.
+- [x] 07-01-PLAN.md — Preregister the numerical contract and prove independent CPU reference feasibility.
+- [x] 07-05-PLAN.md — Define explicit 3D state/transport capabilities and preserve mobile 2D-only availability.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -135,7 +135,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 7. First 3D Fluid Vertical Slice | 0/9 | Planned | — |
+| 7. First 3D Fluid Vertical Slice | 2/9 | In Progress | — |
 | 8. Spatial Inspection | 0/TBD | Not started | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |
