@@ -1396,7 +1396,200 @@ private func writeExport(_ directory: URL, _ full: FullReference) throws -> [Str
     let manifestData = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted])
     try manifestData.write(to: directory.appendingPathComponent("manifest.json"), options: .atomic)
     return ["contractHash": expectedContractHash, "manifest": "manifest.json", "payloadCount": binaryPayloads.count,
-            "manifestSHA256": sha256(manifestData), "directory": directory.path]
+             "manifestSHA256": sha256(manifestData), "directory": directory.path]
+}
+
+private struct AdvectionFixtureInput {
+    let name: String
+    let grid: Grid
+    let velocity: FaceVelocity
+    let dye: [Double]
+}
+
+private func makeAffineDye(_ grid: Grid) -> [Double] {
+    var values = Array(repeating: 0.0, count: grid.cellCount)
+    for k in 0..<grid.nz {
+        for j in 0..<grid.ny {
+            for i in 0..<grid.nx {
+                let x = (Double(i) + 0.5) / Double(grid.nx)
+                let y = (Double(j) + 0.5) / Double(grid.ny)
+                let z = (Double(k) + 0.5) / Double(grid.nz)
+                values[grid.cell(i, j, k)] = 0.25 + 0.22 * x + 0.16 * y + 0.12 * z
+            }
+        }
+    }
+    return values
+}
+
+private func advectFixture(_ fixture: AdvectionFixtureInput, dt: Double) -> (FaceVelocity, [Double]) {
+    let grid = fixture.grid
+    let velocity = fixture.velocity
+    var outputVelocity = FaceVelocity(grid)
+    for k in 0..<grid.nz {
+        for j in 0..<grid.ny {
+            for i in 0...grid.nx {
+                let point = Vector3(x: Double(i) * grid.h,
+                                    y: (Double(j) + 0.5) * grid.h,
+                                    z: (Double(k) + 0.5) * grid.h)
+                outputVelocity.u[grid.u(i, j, k)] = advectComponent(
+                    grid, velocity, component: 0, target: point, dt: dt
+                )
+            }
+        }
+    }
+    for k in 0..<grid.nz {
+        for j in 0...grid.ny {
+            for i in 0..<grid.nx {
+                let point = Vector3(x: (Double(i) + 0.5) * grid.h,
+                                    y: Double(j) * grid.h,
+                                    z: (Double(k) + 0.5) * grid.h)
+                outputVelocity.v[grid.v(i, j, k)] = advectComponent(
+                    grid, velocity, component: 1, target: point, dt: dt
+                )
+            }
+        }
+    }
+    for k in 0...grid.nz {
+        for j in 0..<grid.ny {
+            for i in 0..<grid.nx {
+                let point = Vector3(x: (Double(i) + 0.5) * grid.h,
+                                    y: (Double(j) + 0.5) * grid.h,
+                                    z: Double(k) * grid.h)
+                outputVelocity.w[grid.w(i, j, k)] = advectComponent(
+                    grid, velocity, component: 2, target: point, dt: dt
+                )
+            }
+        }
+    }
+    outputVelocity.enforceWalls(grid)
+
+    var outputDye = Array(repeating: 0.0, count: grid.cellCount)
+    for k in 0..<grid.nz {
+        for j in 0..<grid.ny {
+            for i in 0..<grid.nx {
+                let point = Vector3(x: (Double(i) + 0.5) * grid.h,
+                                    y: (Double(j) + 0.5) * grid.h,
+                                    z: (Double(k) + 0.5) * grid.h)
+                outputDye[grid.cell(i, j, k)] = advectCell(
+                    grid, fixture.dye, outputVelocity, point, dt: dt
+                )
+            }
+        }
+    }
+    return (outputVelocity, outputDye)
+}
+
+private func advectionFixtures() throws -> [AdvectionFixtureInput] {
+    let small = Grid(nx: 8, ny: 7, nz: 6, h: 1.0 / 8.0)
+    let production = Grid(nx: 64, ny: 64, nz: 64, h: 1.0 / 64.0)
+    let zeroVelocity = FaceVelocity(small)
+    let uniformDye = Array(repeating: 0.375, count: small.cellCount)
+    var fixtures = [AdvectionFixtureInput(name: "zero_uniform", grid: small,
+                                          velocity: zeroVelocity, dye: uniformDye)]
+
+    let axisCases: [(String, Vector3)] = [
+        ("positive_x", Vector3(x: 0.12, y: 0, z: 0)),
+        ("negative_x", Vector3(x: -0.12, y: 0, z: 0)),
+        ("positive_y", Vector3(x: 0, y: 0.12, z: 0)),
+        ("negative_y", Vector3(x: 0, y: -0.12, z: 0)),
+        ("positive_z", Vector3(x: 0, y: 0, z: 0.12)),
+        ("negative_z", Vector3(x: 0, y: 0, z: -0.12)),
+        ("combined_xyz", Vector3(x: 0.13, y: -0.07, z: 0.19)),
+        ("combined_xyz_mixed", Vector3(x: -0.09, y: 0.16, z: -0.05)),
+    ]
+    let affineDye = makeAffineDye(small)
+    for (name, value) in axisCases {
+        fixtures.append(AdvectionFixtureInput(
+            name: name,
+            grid: small,
+            velocity: constantVelocity(small, value),
+            dye: affineDye
+        ))
+    }
+    fixtures.append(AdvectionFixtureInput(
+        name: "wall_edge_corner",
+        grid: small,
+        velocity: makeWallEdgeCornerVelocity(small),
+        dye: affineDye
+    ))
+    fixtures.append(AdvectionFixtureInput(
+        name: "production_mixed",
+        grid: production,
+        velocity: makeMixedVelocity(production),
+        dye: makeAffineDye(production)
+    ))
+    return fixtures
+}
+
+private func writeAdvectionFixtures(_ directory: URL) throws -> [String: Any] {
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    var cases: [[String: Any]] = []
+    let dt = 1.0 / 60.0
+    for fixture in try advectionFixtures() {
+        guard fixture.velocity.allFinite, allFinite(fixture.dye),
+              fixture.dye.allSatisfy({ (0.0...1.0).contains($0) }) else {
+            throw ReferenceError.failed("nonfinite or out-of-range input in advection fixture \(fixture.name)")
+        }
+        let (outputVelocity, outputDye) = advectFixture(fixture, dt: dt)
+        guard outputVelocity.allFinite, allFinite(outputDye),
+              outputDye.allSatisfy({ (0.0...1.0).contains($0) }) else {
+            throw ReferenceError.failed("nonfinite or out-of-range output in advection fixture \(fixture.name)")
+        }
+
+        let grid = fixture.grid
+        let fields: [(String, [Int], String, [Double])] = [
+            ("u_input", [grid.nx + 1, grid.ny, grid.nz], "domain-length/simulation-time", fixture.velocity.u),
+            ("v_input", [grid.nx, grid.ny + 1, grid.nz], "domain-length/simulation-time", fixture.velocity.v),
+            ("w_input", [grid.nx, grid.ny, grid.nz + 1], "domain-length/simulation-time", fixture.velocity.w),
+            ("dye_input", grid.cellShape, "dimensionless concentration", fixture.dye),
+            ("u_advected", [grid.nx + 1, grid.ny, grid.nz], "domain-length/simulation-time", outputVelocity.u),
+            ("v_advected", [grid.nx, grid.ny + 1, grid.nz], "domain-length/simulation-time", outputVelocity.v),
+            ("w_advected", [grid.nx, grid.ny, grid.nz + 1], "domain-length/simulation-time", outputVelocity.w),
+            ("dye_advected", grid.cellShape, "dimensionless concentration", outputDye),
+        ]
+        var offsetElements = 0
+        let arrays: [[String: Any]] = fields.map { field in
+            let elementCount = field.3.count
+            let descriptor: [String: Any] = [
+                "name": field.0,
+                "shape": field.1,
+                "unit": field.2,
+                "elementType": "float64-le",
+                "offsetElements": offsetElements,
+                "elementCount": elementCount,
+            ]
+            offsetElements += elementCount
+            return descriptor
+        }
+        let data = appendLittleEndian(fields.map(\.3))
+        let filename = "reference-advection-\(fixture.name).f64le"
+        try data.write(to: directory.appendingPathComponent(filename), options: .atomic)
+        cases.append([
+            "name": fixture.name,
+            "grid": ["nx": grid.nx, "ny": grid.ny, "nz": grid.nz, "h": grid.h, "dt": dt, "xFastest": true],
+            "file": filename,
+            "byteCount": data.count,
+            "sha256": sha256(data),
+            "arrays": arrays,
+            "maxWallNormalValue": maxWallFlux(grid, outputVelocity),
+            "dyeMin": outputDye.min() ?? 0,
+            "dyeMax": outputDye.max() ?? 0,
+        ])
+    }
+
+    let manifest: [String: Any] = [
+        "schemaVersion": 1,
+        "contractHash": expectedContractHash,
+        "precision": ["reference": "float64", "gpuCandidate": "float32", "binaryByteOrder": "little-endian"],
+        "tolerance": ["absolute": 2e-5, "relative": 2e-4],
+        "step": ["dt": dt, "velocityGeneration": "all outputs read the same old u/v/w",
+                 "dyeVelocityGeneration": "advected velocity after exact wall enforcement"],
+        "cases": cases,
+    ]
+    let data = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted])
+    try data.write(to: directory.appendingPathComponent("advection-manifest.json"), options: .atomic)
+    return ["manifest": "advection-manifest.json", "caseCount": cases.count,
+            "manifestSHA256": sha256(data), "directory": directory.path]
 }
 
 private func emitJSON(_ object: [String: Any]) throws {
@@ -1411,13 +1604,14 @@ private struct Fluid3DReferenceMain {
         do {
             let arguments = Array(CommandLine.arguments.dropFirst())
             guard !arguments.isEmpty else {
-                throw ReferenceError.usage("usage: fluid3d_reference --check-contract PATH [--quick-contract|--reference-feasibility|--export DIR --contract PATH]")
+                throw ReferenceError.usage("usage: fluid3d_reference --check-contract PATH [--quick-contract|--reference-feasibility|--export DIR --contract PATH|--advection-fixtures DIR]")
             }
 
             if let checkIndex = arguments.firstIndex(of: "--check-contract") {
                 guard arguments.indices.contains(checkIndex + 1) else { throw ReferenceError.usage("--check-contract requires a contract path") }
                 try checkContract(URL(fileURLWithPath: arguments[checkIndex + 1]))
-                if !arguments.contains("--quick-contract") && !arguments.contains("--reference-feasibility") && !arguments.contains("--export") {
+                if !arguments.contains("--quick-contract") && !arguments.contains("--reference-feasibility")
+                    && !arguments.contains("--export") && !arguments.contains("--advection-fixtures") {
                     try emitJSON(["checked": true, "contractHash": expectedContractHash, "finite": true])
                     return
                 }
@@ -1444,6 +1638,16 @@ private struct Fluid3DReferenceMain {
                 try checkContract(URL(fileURLWithPath: arguments[contractIndex + 1]))
                 let full = try fullFeasibility()
                 let output = try writeExport(URL(fileURLWithPath: arguments[exportIndex + 1], isDirectory: true), full)
+                try emitJSON(output)
+                return
+            }
+            if let fixturesIndex = arguments.firstIndex(of: "--advection-fixtures") {
+                guard arguments.indices.contains(fixturesIndex + 1) else {
+                    throw ReferenceError.usage("--advection-fixtures requires an output directory")
+                }
+                let output = try writeAdvectionFixtures(URL(
+                    fileURLWithPath: arguments[fixturesIndex + 1], isDirectory: true
+                ))
                 try emitJSON(output)
                 return
             }

@@ -44,7 +44,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 07-02-PLAN.md — Verify production 3D storage, ABI, all-axis advection and boundary sampling.
+- [x] 07-02-PLAN.md — Verify production 3D storage, ABI, all-axis advection and boundary sampling.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -135,7 +135,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 7. First 3D Fluid Vertical Slice | 2/9 | In Progress | — |
+| 7. First 3D Fluid Vertical Slice | 3/9 | In Progress | — |
 | 8. Spatial Inspection | 0/TBD | Not started | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |

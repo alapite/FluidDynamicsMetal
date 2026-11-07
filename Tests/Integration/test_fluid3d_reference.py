@@ -185,8 +185,56 @@ class ReferenceContractTests(unittest.TestCase):
             self.assertEqual(len(binary), fixture["byteCount"])
             self.assertEqual(hashlib.sha256(binary).hexdigest(), fixture["sha256"])
 
+    def test_advection_export_contains_staggered_cpu_oracles(self):
+        """Advection fixtures preregister full input/output fields for GPU comparison."""
+        self.require_oracle()
+        with tempfile.TemporaryDirectory(prefix="fluid3d-advection-reference-") as directory:
+            result = subprocess.run(
+                [str(self.runner), "--check-contract", str(CONTRACT),
+                 "--advection-fixtures", directory],
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            manifest_path = Path(directory) / "advection-manifest.json"
+            self.assertTrue(manifest_path.is_file(), result.stdout + result.stderr)
+            manifest = json.loads(manifest_path.read_text())
+            self.assertEqual(manifest["schemaVersion"], 1)
+            self.assertEqual(manifest["contractHash"],
+                             "a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b")
+            cases = {item["name"]: item for item in manifest["cases"]}
+            expected = {
+                "zero_uniform", "positive_x", "negative_x", "positive_y", "negative_y",
+                "positive_z", "negative_z", "combined_xyz", "combined_xyz_mixed",
+                "wall_edge_corner", "production_mixed",
+            }
+            self.assertEqual(set(cases), expected)
+            for name, case in cases.items():
+                with self.subTest(fixture=name):
+                    grid = case["grid"]
+                    if name == "production_mixed":
+                        self.assertEqual([grid[axis] for axis in ("nx", "ny", "nz")], [64, 64, 64])
+                    else:
+                        self.assertEqual([grid[axis] for axis in ("nx", "ny", "nz")], [8, 7, 6])
+                    arrays = {item["name"]: item for item in case["arrays"]}
+                    self.assertEqual(set(arrays), {
+                        "u_input", "v_input", "w_input", "dye_input",
+                        "u_advected", "v_advected", "w_advected", "dye_advected",
+                    })
+                    self.assertEqual(arrays["u_input"]["shape"], [grid["nx"] + 1, grid["ny"], grid["nz"]])
+                    self.assertEqual(arrays["v_input"]["shape"], [grid["nx"], grid["ny"] + 1, grid["nz"]])
+                    self.assertEqual(arrays["w_input"]["shape"], [grid["nx"], grid["ny"], grid["nz"] + 1])
+                    for scalar in ("dye_input", "dye_advected"):
+                        self.assertEqual(arrays[scalar]["shape"], [grid["nx"], grid["ny"], grid["nz"]])
+                    payload = (Path(directory) / case["file"]).read_bytes()
+                    self.assertEqual(len(payload), case["byteCount"])
+                    self.assertEqual(hashlib.sha256(payload).hexdigest(), case["sha256"])
+                    self.assertTrue(all(math.isfinite(value) for (value,) in struct.iter_unpack("<d", payload)))
+            self.assertEqual(manifest["tolerance"], {"absolute": 2e-5, "relative": 2e-4})
 
-def export_reference(destination, check_contract):
+
+def export_reference(destination, check_contract, advection_destination=None):
     """Compile in a scoped temporary directory and export deterministic oracle data."""
     if not SWIFT_SOURCE.is_file():
         raise RuntimeError(f"missing independent Swift CPU oracle: {SWIFT_SOURCE}")
@@ -222,6 +270,17 @@ def export_reference(destination, check_contract):
         if exported.returncode != 0:
             raise RuntimeError(exported.stdout + exported.stderr)
         print(exported.stdout, end="")
+        if advection_destination is not None:
+            advection_export = subprocess.run(
+                [str(executable), "--check-contract", str(CONTRACT),
+                 "--advection-fixtures", str(advection_destination)],
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            if advection_export.returncode != 0:
+                raise RuntimeError(advection_export.stdout + advection_export.stderr)
+            print(advection_export.stdout, end="")
 
 
 if __name__ == "__main__":
@@ -229,10 +288,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--export", metavar="DIRECTORY")
+    parser.add_argument("--advection-fixtures", metavar="DIRECTORY")
     parser.add_argument("--check-contract", action="store_true")
     args = parser.parse_args()
     if args.export:
-        export_reference(args.export, args.check_contract)
+        export_reference(args.export, args.check_contract, args.advection_fixtures)
+    elif args.advection_fixtures:
+        export_reference(Path(tempfile.mkdtemp(prefix="fluid3d-advection-reference-export-")),
+                         args.check_contract, args.advection_fixtures)
     elif args.check_contract:
         export_reference(Path(tempfile.mkdtemp(prefix="fluid3d-contract-check-")), True)
     else:

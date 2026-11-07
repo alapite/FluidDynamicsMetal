@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: 3D Teaching Foundation
 status: executing
-stopped_at: Completed Phase 07 Wave 1 (07-01, 07-05); next 07-02
-last_updated: "2026-11-07T07:47:14.644Z"
+stopped_at: Completed Phase 07 Wave 2 (07-02); next 07-03
+last_updated: "2026-11-07T08:47:34Z"
 last_activity: 2026-11-07
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 9
-  completed_plans: 2
-  percent: 22
+  completed_plans: 3
+  percent: 33
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 ## Current Position
 
 Phase: 07 (first-3d-fluid-vertical-slice) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
 Last activity: 2026-11-07
 
-Progress: [██░░░░░░░░] 22%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -74,7 +74,8 @@ None yet.
 - Tart's interrupted image download restarted at 0%; if the macOS 26 runtime check is reprioritized, use the resumable `curl -C -` command in `01-BASELINE.md`. A partial macOS 26.6.2 IPSW is retained under ignored `.build/`.
 - GSD researcher and roadmapper agent definitions are unavailable in this runtime; initial research and roadmap were produced inline.
 - Phase 7 UI-SPEC remains approved (five PASS, one non-blocking inherited-spacing FLAG). Nine executable plans / eight waves / 20 tasks pass inline plan review and structural/coverage checks: all seven owned requirements and D-01–17 covered. Pattern mapping and executable validation strategy are saved. No implementation, app build, numerical test, benchmark or human acceptance was performed during planning.
-- Phase 7 research observed that active Xcode 27.2 lacks its Metal Toolchain (`xcrun metal --version` failed), despite the historical Xcode 27.0 installation noted above. Recheck/install the active toolchain before fresh builds/GPU evidence; this does not block planning documents.
+- Active Xcode 27.2 initially lacked its Metal Toolchain; Metal Toolchain 27.2 was subsequently installed/rechecked and used for the 07-02 builds and production GPU evidence on 2026-11-07.
+- Phase 7 Plan 07-02 now has fresh production-metallib storage/ABI and advection evidence plus passing no-override Mac/iOS builds and existing regressions. This is a prerequisite only: pressure projection and user-facing integration remain ahead, and Phase 7 requirements stay pending.
 - Phase 3 inline code review `03-REVIEW.md` records an advisory resample-pipeline failure-path warning; successful Mac/iOS user interaction and current GPU tests do not exercise that negative path.
 
 ## Deferred Items
@@ -99,13 +100,14 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 | Phase 06 P01 | 33 min | 3 tasks | 3 files |
 | Phase 07 P01 | 40 min | 2 tasks | 4 files |
 | Phase 07 P05 | 21 min | 2 tasks | 5 files |
+| Phase 07 P02 | 60 min | 2 tasks | 9 files |
 
 ## Session Continuity
 
-Last session: 2026-11-07T07:47:14.632Z
-Stopped at: Completed Phase 07 Wave 1 (07-01, 07-05); next 07-02
-Resume file: .planning/phases/07-first-3d-fluid-vertical-slice/07-02-PLAN.md
+Last session: 2026-11-07T08:47:34Z
+Stopped at: Completed Phase 07 Wave 2 (07-02); next 07-03
+Resume file: .planning/phases/07-first-3d-fluid-vertical-slice/07-03-PLAN.md
 
 ## Operator Next Steps
 
-- Continue Phase 7 at 07-02, then follow the plan wave/dependency ordering; parallelization is disabled in project config even though 07-01/07-05 have independent source ownership. The numerical contract/independent CPU reference gate must pass before 3D kernels. Recheck/install the active Metal Toolchain before GPU builds/tests. Final human visual/interaction approval is a blocking execution checkpoint in 07-09, not already granted.
+- Continue Phase 7 at 07-03, then follow the plan wave/dependency ordering; parallelization is disabled. Keep the phase requirements pending until production behavior is verified end to end. Final human visual/interaction approval is a blocking execution checkpoint in 07-09, not already granted.
