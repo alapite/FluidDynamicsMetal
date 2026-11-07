@@ -1,0 +1,98 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-11-07T17:30:02.168Z",
+  "phase": 7,
+  "phase_name": "first-3d-fluid-vertical-slice",
+  "phase_dir": ".planning/phases/07-first-3d-fluid-vertical-slice",
+  "plan": 3,
+  "task": 2,
+  "total_tasks": 3,
+  "status": "paused",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "Implement compatible MAC operators and reduction diagnostics",
+      "status": "done",
+      "commit": null,
+      "verification": "python3 -m unittest Tests.Integration.test_fluid3d.Fluid3DTests.test_operators passed; implementation remains uncommitted in this worktree."
+    },
+    {
+      "id": 2,
+      "name": "Encode bounded GPU PCG with explicit failure status",
+      "status": "in_progress",
+      "progress": "Production PCG and explicit failure reporting are implemented. The production GPU test fails the manufactured_cosine true-residual/divergence acceptance at the unchanged 320-iteration cap. Opt-in GPU tracing and a diagnostic Float32 CPU replay were added; no acceptance threshold or solver recurrence behavior was changed during that diagnostic pass."
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 2,
+      "name": "Encode bounded GPU PCG with explicit failure status",
+      "status": "blocked",
+      "remaining": "Resolve the production GPU convergence failure without changing the preregistered cap or tolerances. Rebuild the Mac app after Metal changes, rerun test_projection, and verify every registered production family plus the three-in-flight status-slot check before accepting Task 2."
+    },
+    {
+      "id": 3,
+      "name": "Assemble production reset/step and finite-state soak",
+      "status": "not_started"
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Production GPU test_projection fails on manufactured_cosine at iteration 320: 8 true-residual restarts, GPU true residual 6.1839819e-7 and timestep-scaled residual 4.2215986e-5, both above the unchanged acceptance limits. The independent CPU recomputation from GPU pressure is 6.1560422e-7; the Float32 CPU replay also fails to converge.",
+      "type": "technical",
+      "workaround": "None. Diagnose and fix the production solve; do not relax the 320-iteration cap or registered residual/divergence thresholds, and do not substitute CPU-reference evidence for production GPU verification."
+    },
+    {
+      "description": "Only the first three production projection families ran before the fixture stopped at manufactured_cosine. Remaining families and the three-in-flight status-slot check are unverified.",
+      "type": "technical",
+      "workaround": "Rerun the complete focused production projection fixture after a fresh Mac build and require all families and the status-slot check to pass before Task 3."
+    }
+  ],
+  "human_actions_pending": [
+    {
+      "action": "Provide explicit visual/interaction approval at 07-09-02 after the verified app and evidence are ready.",
+      "context": "Phase 7 requires a human checkpoint; this is a future gate and must not be auto-approved or passed.",
+      "blocking": true,
+      "when": "07-09-02"
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "Preserve the preregistered 320-iteration cap and all projection tolerances.",
+      "rationale": "The contract fixes these before GPU acceptance; a convergence failure must remain visible rather than being made to pass by weakening acceptance.",
+      "phase": "07"
+    },
+    {
+      "decision": "CPU Double/Float32 results and replay traces are diagnostic evidence only; production GPU behavior is required for SIM-05 and VER-03 acceptance.",
+      "rationale": "The fixture must exercise the production encoder/metallib and independently validate its readback; CPU replay does not establish production behavior.",
+      "phase": "07"
+    },
+    {
+      "decision": "Task 3 remains gated until Task 2 passes the full production projection acceptance, including the in-flight status-slot check.",
+      "rationale": "The plan explicitly requires verified compatible projection before assembling production reset/step and soak behavior.",
+      "phase": "07"
+    },
+    {
+      "decision": "Keep the current solver, test, and diagnostic implementation changes uncommitted; the pause commit must contain only the two handoff files.",
+      "rationale": "The WIP commit is for resumability and must not turn the blocked implementation into an accepted or completed plan.",
+      "phase": "07"
+    },
+    {
+      "decision": "Stop at 07-09 for explicit visual/interaction approval.",
+      "rationale": "The approved phase plan includes a mandatory human review checkpoint that automation cannot satisfy.",
+      "phase": "07"
+    }
+  ],
+  "uncommitted_files": [
+    "FluidDynamicsMetal.xcodeproj/project.pbxproj",
+    "Sources/Shared/Shaders3D.metal",
+    "Sources/Shared/SimulationTypes3D.swift",
+    "Sources/Shared/PressureProjection3D.swift",
+    "Tests/Integration/fluid3d_reference.swift",
+    "Tests/Integration/test_fluid3d.py",
+    "Tests/Integration/test_fluid3d.swift",
+    "Tests/Integration/fluid3d_float32_pcg_diagnostic.swift"
+  ],
+  "next_action": "On resume, inspect the existing uncommitted changes and .build/fluid3d-evidence/projection.log, then continue diagnosing production PCG convergence. After any Metal source change, build the macOS app before rerunning python3 -m unittest Tests.Integration.test_fluid3d.Fluid3DTests.test_projection. Preserve the cap/tolerances and do not start Task 3 until the full production projection matrix and three-in-flight status-slot test pass.",
+  "context_notes": "Current worktree is branch worktree-agent-07-03 at base commit d60098d. Task 1 passed. Task 2 is blocked, not complete; Task 3 has not started and no 07-03-SUMMARY.md exists. The latest GPU/Float32 diagnostic contains 320 records each and 8 restarts each. Their candidate-check decisions first differ at iterations 212/213; both fail acceptance. Mac and iOS Simulator builds, test_operators, and git diff --check passed in the preceding diagnostic pass; test_projection remains a failing gate. .planning/STATE.md still says Ready to execute after 07-02, and .planning/state.json still says Phase 7 needs a plan; use this handoff, the active plan, and actual evidence rather than those stale progress fields. Existing Phase 7 summaries had no placeholder markers. No build/test process was running when paused."
+}
