@@ -1310,7 +1310,15 @@ private func writeExport(_ directory: URL, _ full: FullReference) throws -> [Str
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let grid = Grid(nx: 64, ny: 64, nz: 64, h: 1.0 / 64.0)
     var binaryPayloads: [[String: Any]] = []
-    for name in ["alternating_pressure", "manufactured_cosine", "mixed_frequency_asymmetric", "wall_edge_corner"] {
+    for name in [
+        "zero_rhs",
+        "constant_pressure",
+        "alternating_pressure",
+        "manufactured_cosine",
+        "mixed_frequency_asymmetric",
+        "wall_edge_corner",
+        "divergence_free",
+    ] {
         guard let projection = full.results[name] else { continue }
         let (arrays, values) = payloadArrays(name, grid, projection)
         let data = appendLittleEndian(values)
@@ -1395,6 +1403,7 @@ private func writeExport(_ directory: URL, _ full: FullReference) throws -> [Str
     ]
     let manifestData = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted])
     try manifestData.write(to: directory.appendingPathComponent("manifest.json"), options: .atomic)
+    try writeStepFixture(directory, grid: grid)
     return ["contractHash": expectedContractHash, "manifest": "manifest.json", "payloadCount": binaryPayloads.count,
              "manifestSHA256": sha256(manifestData), "directory": directory.path]
 }
@@ -1596,6 +1605,57 @@ private func emitJSON(_ object: [String: Any]) throws {
     let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     guard let text = String(data: data, encoding: .utf8) else { throw ReferenceError.failed("JSON encoding failed") }
     print(text)
+}
+
+/// Independent complete reset/advance reference. This uses only Double CPU
+/// operators/samplers and does not import any production or Metal implementation.
+private func writeStepFixture(_ directory: URL, grid: Grid) throws {
+    let dt = 1.0 / 60.0
+    var initial = makeMixedVelocity(grid)
+    // The fixture's actual input contract is Float32; use exactly those inputs
+    // while retaining independent Double arithmetic for all reference evolution.
+    initial.u = initial.u.map { Double(Float($0)) }
+    initial.v = initial.v.map { Double(Float($0)) }
+    initial.w = initial.w.map { Double(Float($0)) }
+    let dye = makeAffineDye(grid).map { Double(Float($0)) }
+    let reset = project(grid, initial, dt: dt)
+    guard reset.converged else { throw ReferenceError.failed("step fixture reset failed") }
+    let (transported, _) = advectFixture(
+        AdvectionFixtureInput(name: "one-step", grid: grid, velocity: reset.projected, dye: dye), dt: dt
+    )
+    let stepped = project(grid, transported, dt: dt)
+    guard stepped.converged else { throw ReferenceError.failed("step fixture projection failed") }
+    var steppedDye = Array(repeating: 0.0, count: grid.cellCount)
+    for k in 0..<grid.nz {
+        for j in 0..<grid.ny {
+            for i in 0..<grid.nx {
+                let p = Vector3(x: (Double(i) + 0.5) * grid.h, y: (Double(j) + 0.5) * grid.h,
+                                z: (Double(k) + 0.5) * grid.h)
+                steppedDye[grid.cell(i, j, k)] = advectCell(grid, dye, stepped.projected, p, dt: dt)
+            }
+        }
+    }
+    let uShape = [grid.nx + 1, grid.ny, grid.nz]
+    let vShape = [grid.nx, grid.ny + 1, grid.nz]
+    let wShape = [grid.nx, grid.ny, grid.nz + 1]
+    let fields: [(String, [Int], [Double])] = [
+        ("u_input", uShape, initial.u), ("v_input", vShape, initial.v), ("w_input", wShape, initial.w),
+        ("dye_input", grid.cellShape, dye),
+        ("u_reset", uShape, reset.projected.u), ("v_reset", vShape, reset.projected.v),
+        ("w_reset", wShape, reset.projected.w), ("dye_reset", grid.cellShape, dye),
+        ("u_step1", uShape, stepped.projected.u), ("v_step1", vShape, stepped.projected.v),
+        ("w_step1", wShape, stepped.projected.w), ("dye_step1", grid.cellShape, steppedDye),
+    ]
+    let data = appendLittleEndian(fields.map(\.2))
+    let filename = "reference-reset-step.f64le"
+    try data.write(to: directory.appendingPathComponent(filename), options: .atomic)
+    let manifest: [String: Any] = [
+        "file": filename, "byteCount": data.count, "sha256": sha256(data),
+        "contractHash": expectedContractHash, "finite": fields.allSatisfy { allFinite($0.2) },
+        "arrayOrder": fields.map { ["name": $0.0, "shape": $0.1] as [String: Any] },
+    ]
+    try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted])
+        .write(to: directory.appendingPathComponent("step-manifest.json"), options: .atomic)
 }
 
 @main
