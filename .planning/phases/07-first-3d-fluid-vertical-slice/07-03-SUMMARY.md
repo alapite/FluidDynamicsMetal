@@ -100,6 +100,7 @@ Negative tests reject zero, negative and NaN denominators, incompatible mean, Na
 - `python3 -m unittest discover -s Tests/Integration` — **PASS, 23 tests, 352.071 s**, including all production 3D fixtures, read-only-volume-status regression, CPU oracle and established 2D/renderer/educational regressions.
 - Separate settings/CPU-reference check — **PASS, 5 tests, 18.050 s**; quick reference 0.021 s, full64 CPU feasibility 1.953 s.
 - `git diff --check` — **PASS**.
+- Pre-merge Mac state/HUD suite — **PASS, 34 tests, zero failures/skips**, confirmed with `xcresulttool get test-results summary`; result bundle `Test-FluidDynamicsMetalOSX-2026.11.07_18-38-08-+0000.xcresult`.
 - Post-merge Mac state/HUD build/test gate: **pending at summary creation**; orchestrator must record its actual result before updating wave completion.
 
 Evidence files are generated, intentionally ignored `.build/fluid3d-evidence/{operators,projection,reset-finite,storage-abi,advection-boundaries}.json`. They record commands, toolchain, source hashes, independent fixture hashes and production library hash.
