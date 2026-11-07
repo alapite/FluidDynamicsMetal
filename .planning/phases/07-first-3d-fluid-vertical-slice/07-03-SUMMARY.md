@@ -36,7 +36,7 @@ requirements-completed: []
 requirements-addressed: [SIM-05, VER-03]
 duration: 52min
 completed: 2026-11-07
-post_merge_gate: pending
+post_merge_gate: passed
 ---
 
 # Phase 7 Plan 07-03: Compatible Projection and Complete Evolution
@@ -101,13 +101,14 @@ Negative tests reject zero, negative and NaN denominators, incompatible mean, Na
 - Separate settings/CPU-reference check — **PASS, 5 tests, 18.050 s**; quick reference 0.021 s, full64 CPU feasibility 1.953 s.
 - `git diff --check` — **PASS**.
 - Pre-merge Mac state/HUD suite — **PASS, 34 tests, zero failures/skips**, confirmed with `xcresulttool get test-results summary`; result bundle `Test-FluidDynamicsMetalOSX-2026.11.07_18-38-08-+0000.xcresult`.
-- Post-merge Mac state/HUD build/test gate: **pending at summary creation**; orchestrator must record its actual result before updating wave completion.
+- Post-merge gate on `master`: fresh no-override Mac Debug build **PASS**; Mac state/HUD suite **PASS, 34 tests, zero failures/skips**, confirmed from `Test-FluidDynamicsMetalOSX-2026.11.07_18-41-38-+0000.xcresult` under primary DerivedData `FluidDynamicsMetal-azjwdezmeqzeuibhoxwuigioomfx`. The original 23-test integration run was pre-merge; all five passing GPU evidence records' production/test source hashes and complete amended contract hash were explicitly checked against merged files and matched exactly.
 
 Evidence files are generated, intentionally ignored `.build/fluid3d-evidence/{operators,projection,reset-finite,storage-abi,advection-boundaries}.json`. They record commands, toolchain, source hashes, independent fixture hashes and production library hash.
 
 - Original immutable contract-prefix SHA-256: `a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b`.
 - Complete amended contract SHA-256: `5fdc33b839d7f135a828ac9e6e3c3b4e7adba03d5341771ddbed4b13767951a8`.
 - Tested worktree metallib SHA-256: `19382fb355a0fb8ac66c240ff78ccb050d9ece6be26ab0545be9572a42fdff1d`.
+- Worktree JSON/log evidence was copied before cleanup to primary `.build/fluid3d-wave3-worktree-evidence-20261107T1835/`; original absolute paths inside records document where those runs occurred rather than claiming a second main-checkout GPU run.
 
 ## Task Commits
 
@@ -128,8 +129,8 @@ The inherited Task 1/2 source changes were entangled and uncommitted at recovery
 
 ## Requirement Status and Next Plan
 
-No Phase 7 requirement is marked complete here. `SIM-05` and `VER-03` have numerical prerequisites/evidence, but end-to-end evolving lesson, fixed slice and renderer/native integration remain ahead. Continue with **07-04, Wave 4** only after post-merge acceptance. Preserve explicit human visual/interaction approval at **07-09**. Actual macOS 26 runtime and physical-device multitouch remain **NOT TESTED**.
+No Phase 7 requirement is marked complete here. `SIM-05` and `VER-03` have numerical prerequisites/evidence, but end-to-end evolving lesson, fixed slice and renderer/native integration remain ahead. Post-merge acceptance passed; **07-04, Wave 4** is next. This invocation stops at the selected Wave 3, with five plans still incomplete; no phase-level verification/completion is claimed. Preserve explicit human visual/interaction approval at **07-09**. Actual macOS 26 runtime and physical-device multitouch remain **NOT TESTED**.
 
 ## Self-Check: PASSED
 
-All three plan tasks have actual production fixture evidence, both app builds and the full 23-test integration regression passed on the recorded sources, key artifacts exist, and implementation/test/contract commits are recorded above. This self-check is plan-scope/pre-merge; it does not substitute for the pending post-merge gate or claim phase completion.
+All three plan tasks have actual production fixture evidence, both app builds and the full 23-test integration regression passed on the recorded sources, key artifacts exist, and implementation/test/contract commits are recorded above. The merge commit is `a06bb5e`; the post-merge Mac build and all 34 state/HUD tests passed. This is plan/wave completion only, not phase completion, benchmark acceptance or human visual approval.

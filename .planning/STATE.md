@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: 3D Teaching Foundation
 status: executing
-stopped_at: Completed Phase 07 Wave 2 (07-02); next 07-03
-last_updated: "2026-11-07T08:47:34Z"
+stopped_at: Completed Phase 07 Wave 3 (07-03), merged and post-merge verified; next 07-04
+last_updated: "2026-11-07T18:43:26Z"
 last_activity: 2026-11-07
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 9
-  completed_plans: 3
-  percent: 33
+  completed_plans: 4
+  percent: 44
 ---
 
 # Project State
@@ -26,23 +26,23 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 ## Current Position
 
 Phase: 07 (first-3d-fluid-vertical-slice) — EXECUTING
-Plan: 3 of 9
-Status: Ready to execute
+Plan: 4 of 9 complete; next 07-04 (Wave 4)
+Status: Wave 3 complete; ready to execute Wave 4
 Last activity: 2026-11-07
 
-Progress: [███░░░░░░░] 33%
+Progress: [████░░░░░░] 44%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 14
+- Total plans completed: 18 (14 archived v1.0 + 4 current v1.1)
 - Average duration: N/A
 - Total execution time: 0 hours
 
-**By Phase:** Phase 1 plan 1/1 complete, macOS 26 runtime verification pending; Phase 2 plans 3/3 complete with follow-up interaction checks pending.
+**By Phase:** v1.0 implementation plans 14/14 archived; Phase 7 plans 4/9 complete. Historical macOS 26 and device-only verification remain deferred.
 
-**Recent Trend:** Mac build and interaction baseline documented; macOS 26 host check remains.
+**Recent Trend:** Compatible production 3D projection/reset/step verified, including 600-step finite soak and independent full-volume gates; fixed slice/recipe and user-facing integration remain ahead.
 
 ## Accumulated Context
 
@@ -59,6 +59,7 @@ Progress: [███░░░░░░░] 33%
 - Modernize both targets for macOS 26 / Apple Silicon and iOS 26; preserve the familiar fluid behavior.
 - Introduce native UI controls and tuning with reset-on-launch defaults.
 - Xcode 27 Device Hub two-finger touch simulation is unavailable ([developer forum report](https://developer.apple.com/forums/thread/846533)); retain device-only checks as NOT TESTED but do not gate later phases or milestone completion on them (user decision, 2026-09-25).
+- 2026-11-07: User approved compensated high/low Float32 pressure and a separately derived storage/evaluator identity-rounding bound while retaining strict Double ideal identity, both 1e-5 residual/divergence gates, 1000x reduction, cap 320 and fixture amplitudes. See the appended amendments in `docs/3d-numerical-contract.md`.
 
 ### Pending Todos
 
@@ -75,7 +76,8 @@ None yet.
 - GSD researcher and roadmapper agent definitions are unavailable in this runtime; initial research and roadmap were produced inline.
 - Phase 7 UI-SPEC remains approved (five PASS, one non-blocking inherited-spacing FLAG). Nine executable plans / eight waves / 20 tasks pass inline plan review and structural/coverage checks: all seven owned requirements and D-01–17 covered. Pattern mapping and executable validation strategy are saved. No implementation, app build, numerical test, benchmark or human acceptance was performed during planning.
 - Active Xcode 27.2 initially lacked its Metal Toolchain; Metal Toolchain 27.2 was subsequently installed/rechecked and used for the 07-02 builds and production GPU evidence on 2026-11-07.
-- Phase 7 Plan 07-02 now has fresh production-metallib storage/ABI and advection evidence plus passing no-override Mac/iOS builds and existing regressions. This is a prerequisite only: pressure projection and user-facing integration remain ahead, and Phase 7 requirements stay pending.
+- Phase 7 Plan 07-03 is merged into master and post-merge verified: all seven GPU projection families, independent readback gates, explicit failure/queued-session checks and the strengthened 600-step finite soak passed; 23 integration tests and both app builds passed, plus 34 Mac state/HUD tests before and after merge. All Phase 7 requirements remain pending until end-to-end lesson/UI verification.
+- The 64³ wall/edge/corner pressure stress case converged at 317/320 iterations, leaving only three iterations of cap margin. This is measured numerical evidence, not a performance or cross-device guarantee. No cap or primary acceptance threshold was relaxed.
 - Phase 3 inline code review `03-REVIEW.md` records an advisory resample-pipeline failure-path warning; successful Mac/iOS user interaction and current GPU tests do not exercise that negative path.
 
 ## Deferred Items
@@ -101,13 +103,14 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 | Phase 07 P01 | 40 min | 2 tasks | 4 files |
 | Phase 07 P05 | 21 min | 2 tasks | 5 files |
 | Phase 07 P02 | 60 min | 2 tasks | 9 files |
+| Phase 07 P03 | 60 min including closeout | 3 tasks | 11 implementation/test/contract files |
 
 ## Session Continuity
 
-Last session: 2026-11-07T08:47:34Z
-Stopped at: Completed Phase 07 Wave 2 (07-02); next 07-03
-Resume file: .planning/phases/07-first-3d-fluid-vertical-slice/07-03-PLAN.md
+Last session: 2026-11-07T18:43:26Z
+Stopped at: Completed Phase 07 Wave 3 (07-03); merged and post-merge verified; next 07-04
+Resume file: .planning/phases/07-first-3d-fluid-vertical-slice/07-04-PLAN.md
 
 ## Operator Next Steps
 
-- Continue Phase 7 at 07-03, then follow the plan wave/dependency ordering; parallelization is disabled. Keep the phase requirements pending until production behavior is verified end to end. Final human visual/interaction approval is a blocking execution checkpoint in 07-09, not already granted.
+- Wave filter `--wave 3` is complete; STOP before later waves. Next explicit command: `/gsd-execute-phase 7 --wave 4` (07-04 fixed amber XY slice and lesson-seed validation). Parallelization is disabled. Keep requirements pending; phase-level verification/completion is intentionally skipped while five plans remain. Explicit human visual/interaction approval at 07-09 is not already granted.
