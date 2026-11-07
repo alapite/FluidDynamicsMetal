@@ -131,6 +131,58 @@ python3 -m unittest Tests.Integration.test_fluid3d_reference.ReferenceContractTe
 
 ## Contract Integrity
 
+### Approved precision amendment — 2026-11-07
+
+The user explicitly approved investigating compensated high/low Float32 pressure
+storage after the production cosine projection failed and a diagnostic showed
+that even once-rounded analytic pressure exceeded the original residual gate.
+This amendment supersedes only the single-Float32 representation of `q`: store
+`q = qHigh + qLow` in two cell-centred `.r32Float` textures, with compensated
+updates and consistent paired operator/gradient evaluation. Both parts are
+initialized, normalized, finite-checked, and reconstructed in Double for
+independent readback validation. Other fields and reductions remain Float32.
+The original prefix and its hash remain an immutable historical preregistration;
+the complete contract document must also be hashed in production evidence.
+The 320 cap, all thresholds, fixture definitions/amplitudes, reference independence,
+and required actual-GPU acceptance are unchanged. Approval permits the experiment;
+it does not establish convergence or numerical acceptance.
+
+### Approved identity/storage-rounding amendment — 2026-11-07
+
+The user explicitly approved separating strict Double operator algebra from
+Float32 velocity-storage rounding. This supersedes the sentence requiring stored
+Float32 output to satisfy the Double identity tolerance without a rounding term.
+It does **not** change either `1e-5` projection gate, the `1000x` reduction gate,
+the 320 cap, fixture amplitudes, or the Double operator-identity limit.
+
+Before acceptance, reconstruct `qHigh+qLow` in Double and independently evaluate
+`vIdeal = vInput-Gq`. Check `D(vIdeal)+(b-Aq)/h²` with the original `1e-10`
+timestep-scaled infinity limit. Independently evaluate `D(vStored)` from every
+returned Float32 face and enforce both original projection/reduction gates.
+For each face, define `eps=2^-23`, `g=Gq`, and the absolute storage budget
+
+```
+eFace = 0.5*ulp(Float(vIdeal)) + 16*eps²*(abs(vInput)+abs(g))
+        + 8*epsDouble*(abs(vInput)+abs(g)+2*normInf(q)/h).
+```
+
+The first term bounds final round-to-nearest Float32 storage. The second is a
+conservative second-order allowance for the bounded compensated add/subtract
+sequence (each operation retains the first-order error in the low lane); the
+production inverse spacing is the exact power of two 64. The last term bounds
+the independent Double evaluator's reconstruction of two pressure parts, their
+face difference/scaling, and final subtraction; `epsDouble=2^-52`. This term is
+necessary under cancellation: reconstructing `qHigh+qLow` in Double is itself a
+rounded operation, not an exact real sum of arbitrarily separated exponents.
+Require each returned
+face to be within this budget of `vIdeal` before using it in an identity budget.
+At each cell require the stored identity error to be at most
+`1e-10 + dt/h * sum(eFace for its six incident faces)`. These constants come from
+Float32 representation and the operation sequence, not a fitted observed error.
+Report both ideal-Double and stored-output identity errors and the derived bound.
+The compact GPU diagnostic `2e-5` identity check is only the triangle-inequality
+consequence of the two `1e-5` gates, not a substitute for this independent check.
+
 The SHA-256 is computed over the exact UTF-8 bytes before the marker above, including the newline immediately preceding it. Results may be appended after the marker without changing the preregistered-contract hash. The reference driver pins the resulting digest and `--check-contract` fails if this prefix changes without an intentional review and test update.
 
 **Preregistered contract SHA-256:** `a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b`
