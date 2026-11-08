@@ -74,11 +74,18 @@ private struct Fluid3DChecks {
         let metal = MetalDevice(device: device, library: library)
         let fixture = arguments[2]
         guard fixture == "storage-abi" || fixture == "advection-boundaries"
+                || fixture == "slice-palette"
                 || fixture == "operators" || fixture == "projection" || fixture == "reset-finite" else {
             throw Fluid3DHarnessError.usage("unknown fixture selector: \(fixture)")
         }
         let result: [String: Any]
-        if fixture == "storage-abi" {
+        if fixture == "slice-palette" {
+            result = try sliceAndPalette(
+                device: device,
+                metal: metal,
+                referenceDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true)
+            )
+        } else if fixture == "storage-abi" {
             result = try storageAndABI(device: device, metal: metal)
         } else if fixture == "advection-boundaries" {
             result = try advectionAndBoundaries(
@@ -102,6 +109,373 @@ private struct Fluid3DChecks {
             )
         }
         try emit(result)
+    }
+
+    private struct SliceImage {
+        let width: Int
+        let height: Int
+        let pixels: [UInt8]
+    }
+
+    private struct EncodedSimulationSnapshot {
+        let fields: [(String, VolumeField3D, MTLBuffer)]
+        let workspace: MTLBuffer
+    }
+
+    private static func sliceAndPalette(
+        device: MTLDevice,
+        metal: MetalDevice,
+        referenceDirectory: URL
+    ) throws -> [String: Any] {
+        let visualization = try FieldVisualization3D(metal: metal)
+        let simulation = try FluidSimulation3D(metal: metal)
+        let evidenceDirectory = referenceDirectory.deletingLastPathComponent()
+            .appendingPathComponent("fluid3d-evidence", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: evidenceDirectory, withIntermediateDirectories: true
+        )
+        let originalConfiguration = simulation.configuration
+        var resetStatus: PressureProjection3D.StatusSlot!
+
+        try reset(metal: metal, simulation: simulation, dye: paletteAndOrientationDye()) {
+            resetStatus = $0
+        }
+        try require(resetStatus.diagnostics().converged, "Synthetic slice reset projection failed")
+        let paletteCapture = try verifyReadOnlyPresentation(
+            visualization: visualization,
+            simulation: simulation,
+            status: resetStatus,
+            sizes: [(96, 64)]
+        )
+        let landmarks = paletteCapture.images[0]
+        let xOffset = 16
+        let paletteSamples: [(String, Int, SIMD3<Int>)] = [
+            ("zero", 6, SIMD3<Int>(0, 0, 0)),
+            ("quarter", 17, SIMD3<Int>(119, 70, 18)),
+            ("middle", 28, SIMD3<Int>(237, 139, 35)),
+            ("three-quarters", 39, SIMD3<Int>(246, 190, 125)),
+            ("one", 50, SIMD3<Int>(255, 241, 214)),
+        ]
+        for (name, cellX, expected) in paletteSamples {
+            try assertRGB(
+                landmarks,
+                x: xOffset + cellX,
+                y: 63 - 8,
+                expected: expected,
+                label: "palette stop \(name)"
+            )
+        }
+        try assertRGB(landmarks, x: xOffset + 12, y: 63 - 12,
+                      expected: SIMD3<Int>(237, 139, 35), label: "lower-left landmark")
+        try assertRGB(landmarks, x: xOffset + 52, y: 63 - 52,
+                      expected: SIMD3<Int>(255, 241, 214), label: "upper-right landmark")
+        try assertRGB(landmarks, x: xOffset + 12, y: 63 - 52,
+                      expected: SIMD3<Int>(0, 0, 0), label: "opposite upper-left landmark")
+        try assertRGB(landmarks, x: xOffset + 52, y: 63 - 12,
+                      expected: SIMD3<Int>(0, 0, 0), label: "opposite lower-right landmark")
+        try assertRGB(landmarks, x: 4, y: 32, expected: SIMD3<Int>(0, 0, 0), label: "left letterbox")
+        try assertRGB(landmarks, x: 90, y: 32, expected: SIMD3<Int>(0, 0, 0), label: "right letterbox")
+        let palettePath = evidenceDirectory.appendingPathComponent("slice-palette-stops-orientation.ppm")
+        try writePPM(landmarks, to: palettePath)
+
+        try reset(metal: metal, simulation: simulation, dye: zRampDye()) {
+            resetStatus = $0
+        }
+        try require(resetStatus.diagnostics().converged, "Z-ramp reset projection failed")
+        let midpointCapture = try verifyReadOnlyPresentation(
+            visualization: visualization,
+            simulation: simulation,
+            status: resetStatus,
+            sizes: [(96, 64)]
+        )
+        try assertRGB(midpointCapture.images[0], x: 48, y: 32,
+                      expected: SIMD3<Int>(237, 139, 35), label: "equal Z=0.5 midpoint of planes 31/32")
+        let midpointPath = evidenceDirectory.appendingPathComponent("slice-palette-midpoint-z-31-32.ppm")
+        try writePPM(midpointCapture.images[0], to: midpointPath)
+
+        try reset(metal: metal, simulation: simulation, dye: constantDye(0.5)) {
+            resetStatus = $0
+        }
+        try require(resetStatus.diagnostics().converged, "Uniform palette-invariance reset failed")
+        let sizes = [(64, 64), (96, 64), (48, 48)]
+        let stepZeroCapture = try verifyReadOnlyPresentation(
+            visualization: visualization,
+            simulation: simulation,
+            status: resetStatus,
+            sizes: sizes
+        )
+        for image in stepZeroCapture.images {
+            try assertRGB(image, x: image.width / 2, y: image.height / 2,
+                          expected: SIMD3<Int>(237, 139, 35), label: "step-zero fixed palette/viewport")
+        }
+        let stepZeroPath = evidenceDirectory.appendingPathComponent("slice-palette-step-0.ppm")
+        try writePPM(stepZeroCapture.images[0], to: stepZeroPath)
+
+        var stepStatus: PressureProjection3D.StatusSlot!
+        try command(metal) { stepStatus = try simulation.encodeStep(command: $0) }
+        try require(stepStatus.diagnostics().failure == .none && stepStatus.diagnostics().converged,
+                    "Uniform one-step palette fixture failed projection")
+        let stepOneCapture = try verifyReadOnlyPresentation(
+            visualization: visualization,
+            simulation: simulation,
+            status: stepStatus,
+            sizes: sizes
+        )
+        for image in stepOneCapture.images {
+            try assertRGB(image, x: image.width / 2, y: image.height / 2,
+                          expected: SIMD3<Int>(237, 139, 35), label: "step-one fixed palette/viewport")
+        }
+        let stepOnePath = evidenceDirectory.appendingPathComponent("slice-palette-step-1.ppm")
+        try writePPM(stepOneCapture.images[1], to: stepOnePath)
+
+        try reset(metal: metal, simulation: simulation, dye: Array(repeating: 0, count: 64 * 64 * 64)) {
+            resetStatus = $0
+        }
+        try require(resetStatus.diagnostics().converged, "Clamped-palette fixture reset failed")
+        try command(metal) {
+            try simulation.dye.encodeUpload(
+                Array(repeating: 1.25, count: 64 * 64 * 64),
+                to: simulation.dye.ping,
+                command: $0
+            )
+        }
+        let clampedCapture = try verifyReadOnlyPresentation(
+            visualization: visualization,
+            simulation: simulation,
+            status: resetStatus,
+            sizes: [(64, 64)]
+        )
+        try assertRGB(clampedCapture.images[0], x: 32, y: 32,
+                      expected: SIMD3<Int>(255, 241, 214), label: "concentration clamps at the cream stop")
+        let clampPath = evidenceDirectory.appendingPathComponent("slice-palette-concentration-clamp.ppm")
+        try writePPM(clampedCapture.images[0], to: clampPath)
+
+        try require(simulation.configuration == originalConfiguration,
+                    "Presentation changed the fixed simulation grid/configuration")
+        let manifestURL = referenceDirectory.appendingPathComponent("manifest.json")
+        let manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as! [String: Any]
+        return [
+            "passed": true,
+            "fixture": "slice-palette",
+            "device": device.name,
+            "grid": [64, 64, 64],
+            "sampleWorldZ": 0.5,
+            "sampledPlanes": [31, 32],
+            "sampleWeights": [0.5, 0.5],
+            "orientation": ["x": "right", "y": "up"],
+            "destinationPixelFormat": "bgra8Unorm; encoded palette channels stored without an additional sRGB transform",
+            "paletteStops": [
+                ["concentration": 0.0, "rgb": [0, 0, 0]],
+                ["concentration": 0.5, "rgb": [237, 139, 35]],
+                ["concentration": 1.0, "rgb": [255, 241, 214]],
+            ],
+            "viewportSizes": sizes.map { [$0.0, $0.1] },
+            "paletteInvariantAtSteps": [0, 1],
+            "renderingReadOnly": true,
+            "resourceHashes": [paletteCapture.resourceHash, midpointCapture.resourceHash,
+                               stepZeroCapture.resourceHash, stepOneCapture.resourceHash,
+                               clampedCapture.resourceHash],
+            "captures": [palettePath.lastPathComponent, midpointPath.lastPathComponent,
+                         stepZeroPath.lastPathComponent, stepOnePath.lastPathComponent,
+                         clampPath.lastPathComponent],
+            "contractHash": manifest["contractHash"] ?? "unknown",
+            "finite": true,
+        ]
+    }
+
+    private static func reset(
+        metal: MetalDevice,
+        simulation: FluidSimulation3D,
+        dye: [Float],
+        status: (PressureProjection3D.StatusSlot) -> Void
+    ) throws {
+        var result: PressureProjection3D.StatusSlot!
+        let seed = Fluid3DInitialState(
+            u: Array(repeating: 0, count: simulation.u.width * simulation.u.height * simulation.u.depth),
+            v: Array(repeating: 0, count: simulation.v.width * simulation.v.height * simulation.v.depth),
+            w: Array(repeating: 0, count: simulation.w.width * simulation.w.height * simulation.w.depth),
+            dye: dye
+        )
+        try command(metal) { result = try simulation.encodeReset(command: $0, initialState: seed) }
+        status(result)
+    }
+
+    private static func constantDye(_ value: Float) -> [Float] {
+        Array(repeating: value, count: 64 * 64 * 64)
+    }
+
+    private static func paletteAndOrientationDye() -> [Float] {
+        let n = 64
+        var dye = Array(repeating: Float.zero, count: n * n * n)
+        let patches: [(Int, Int, Float)] = [
+            (6, 8, 0), (17, 8, 0.25), (28, 8, 0.5), (39, 8, 0.75), (50, 8, 1),
+            (12, 12, 0.5), (52, 52, 1),
+        ]
+        for k in 0..<n {
+            for (centerX, centerY, value) in patches {
+                for j in (centerY - 1)...(centerY + 1) {
+                    for i in (centerX - 1)...(centerX + 1) {
+                        dye[(k * n + j) * n + i] = value
+                    }
+                }
+            }
+        }
+        return dye
+    }
+
+    private static func zRampDye() -> [Float] {
+        let n = 64
+        var dye = Array(repeating: Float.zero, count: n * n * n)
+        for k in 0..<n {
+            let value = Float(k) / Float(n - 1)
+            let start = k * n * n
+            for index in start..<(start + n * n) { dye[index] = value }
+        }
+        return dye
+    }
+
+    private static func verifyReadOnlyPresentation(
+        visualization: FieldVisualization3D,
+        simulation: FluidSimulation3D,
+        status: PressureProjection3D.StatusSlot,
+        sizes: [(Int, Int)]
+    ) throws -> (images: [SliceImage], resourceHash: String) {
+        let configurationBefore = simulation.configuration
+        let command = simulation.metal.newCommandBuffer()
+        let statusBefore = status.diagnosticStateValues()
+        let before = try encodeSimulationSnapshot(simulation, command: command)
+        var destinations: [(Int, Int, MTLTexture)] = []
+        for (width, height) in sizes {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: FieldVisualization3D.destinationPixelFormat,
+                width: width,
+                height: height,
+                mipmapped: false
+            )
+            descriptor.storageMode = .shared
+            descriptor.usage = [.renderTarget]
+            guard let destination = simulation.metal.device.makeTexture(descriptor: descriptor) else {
+                throw Fluid3DHarnessError.library("Unable to allocate a synthetic slice render target")
+            }
+            destinations.append((width, height, destination))
+            try visualization.encodeSlice(
+                command: command,
+                simulation: simulation,
+                destination: destination,
+                viewport: MTLViewport(originX: 0, originY: 0, width: Double(width), height: Double(height), znear: 0, zfar: 1)
+            )
+        }
+        let after = try encodeSimulationSnapshot(simulation, command: command)
+        command.commit()
+        command.waitUntilCompleted()
+        try require(command.status == .completed, "Read-only slice presentation command failed")
+        try require(simulation.configuration == configurationBefore,
+                    "Slice presentation changed grid dimensions, spacing, or timestep")
+
+        let beforeHash = try hashSimulationSnapshot(before, status: statusBefore, configuration: configurationBefore)
+        let afterHash = try hashSimulationSnapshot(after, status: status.diagnosticStateValues(), configuration: simulation.configuration)
+        try require(beforeHash == afterHash,
+                    "Slice rendering mutated solver fields, scratch, reductions, status, or grid: \(beforeHash) != \(afterHash)")
+
+        let images = try destinations.map { width, height, texture -> SliceImage in
+            var pixels = Array(repeating: UInt8.zero, count: width * height * 4)
+            pixels.withUnsafeMutableBytes { bytes in
+                texture.getBytes(
+                    bytes.baseAddress!,
+                    bytesPerRow: width * 4,
+                    from: MTLRegionMake2D(0, 0, width, height),
+                    mipmapLevel: 0
+                )
+            }
+            return SliceImage(width: width, height: height, pixels: pixels)
+        }
+        return (images, beforeHash)
+    }
+
+    private static func encodeSimulationSnapshot(
+        _ simulation: FluidSimulation3D,
+        command: MTLCommandBuffer
+    ) throws -> EncodedSimulationSnapshot {
+        var fields: [(String, VolumeField3D, MTLBuffer)] = []
+        for (name, field) in simulation.diagnosticFields {
+            for (generation, texture) in [("ping", field.ping), ("pong", field.pong)] {
+                fields.append(("\(name)/\(generation)", field,
+                               try field.encodeReadback(from: texture, command: command)))
+            }
+        }
+        let workspace = simulation.projection.diagnosticReductionWorkspace
+        guard let workspaceReadback = simulation.metal.device.makeBuffer(
+            length: workspace.length, options: .storageModeShared
+        ), let blit = command.makeBlitCommandEncoder() else {
+            throw Fluid3DHarnessError.assertion("Could not stage complete solver-resource snapshot")
+        }
+        blit.copy(from: workspace, sourceOffset: 0, to: workspaceReadback,
+                  destinationOffset: 0, size: workspace.length)
+        blit.endEncoding()
+        return EncodedSimulationSnapshot(fields: fields, workspace: workspaceReadback)
+    }
+
+    private static func hashSimulationSnapshot(
+        _ snapshot: EncodedSimulationSnapshot,
+        status: [Float],
+        configuration: FluidSimulation3DConfiguration
+    ) throws -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        func feed(_ byte: UInt8) {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        func feedWord(_ input: UInt32) {
+            var word = input
+            for _ in 0..<4 {
+                feed(UInt8(truncatingIfNeeded: word))
+                word >>= 8
+            }
+        }
+        feedWord(UInt32(configuration.nx)); feedWord(UInt32(configuration.ny)); feedWord(UInt32(configuration.nz))
+        feedWord(configuration.h.bitPattern); feedWord(configuration.dt.bitPattern)
+        for (name, field, buffer) in snapshot.fields {
+            for byte in name.utf8 { feed(byte) }
+            feed(0)
+            let values = try field.decodeReadback(buffer)
+            feedWord(UInt32(values.count))
+            for value in values { feedWord(value.bitPattern) }
+        }
+        let workspaceBytes = snapshot.workspace.contents().assumingMemoryBound(to: UInt8.self)
+        feedWord(UInt32(snapshot.workspace.length))
+        for index in 0..<snapshot.workspace.length { feed(workspaceBytes[index]) }
+        for value in status { feedWord(value.bitPattern) }
+        return String(format: "%016llx", hash)
+    }
+
+    private static func assertRGB(
+        _ image: SliceImage,
+        x: Int,
+        y: Int,
+        expected: SIMD3<Int>,
+        label: String
+    ) throws {
+        try require(x >= 0 && x < image.width && y >= 0 && y < image.height,
+                    "\(label) sample (\(x),\(y)) is outside the render target")
+        let offset = (y * image.width + x) * 4
+        let actual = SIMD3<Int>(Int(image.pixels[offset + 2]), Int(image.pixels[offset + 1]), Int(image.pixels[offset]))
+        let withinQuantization = zip([actual.x, actual.y, actual.z], [expected.x, expected.y, expected.z])
+            .allSatisfy { abs($0.0 - $0.1) <= 1 }
+        try require(withinQuantization,
+                    "\(label) RGB mismatch at (\(x),\(y)): actual=\(actual), expected=\(expected) ±1 UNORM code")
+        try require(image.pixels[offset + 3] == 255, "\(label) alpha must remain opaque")
+    }
+
+    private static func writePPM(_ image: SliceImage, to url: URL) throws {
+        var output = Data("P6\n\(image.width) \(image.height)\n255\n".utf8)
+        output.reserveCapacity(output.count + image.width * image.height * 3)
+        for y in 0..<image.height {
+            for x in 0..<image.width {
+                let offset = (y * image.width + x) * 4
+                output.append(contentsOf: [image.pixels[offset + 2], image.pixels[offset + 1], image.pixels[offset]])
+            }
+        }
+        try output.write(to: url, options: .atomic)
     }
 
     private static func resetAndFinite(metal: MetalDevice, referenceDirectory: URL) throws -> [String: Any] {

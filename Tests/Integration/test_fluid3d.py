@@ -25,6 +25,7 @@ SWIFT_SOURCES = [
     "Sources/Shared/SimulationTypes3D.swift",
     "Sources/Shared/VolumeField3D.swift",
     "Sources/Shared/FluidSimulation3D.swift",
+    "Sources/Shared/FieldVisualization3D.swift",
     "Sources/Shared/PressureProjection3D.swift",
     "Tests/Integration/fluid3d_float32_pcg_diagnostic.swift",
     "Tests/Integration/test_fluid3d.swift",
@@ -76,6 +77,9 @@ class Fluid3DTests(unittest.TestCase):
 
     def test_reset_and_finite(self):
         self.run_production_fixture("reset-finite")
+
+    def test_slice_and_palette(self):
+        self.run_production_fixture("slice-palette")
 
     def run_production_fixture(self, fixture: str) -> None:
         evidence_dir = ROOT / ".build/fluid3d-evidence"
