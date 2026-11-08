@@ -74,11 +74,25 @@ private struct Fluid3DChecks {
         let metal = MetalDevice(device: device, library: library)
         let fixture = arguments[2]
         guard fixture == "storage-abi" || fixture == "advection-boundaries"
+                || fixture == "slice-palette"
+                || fixture == "evolution-visibility"
                 || fixture == "operators" || fixture == "projection" || fixture == "reset-finite" else {
             throw Fluid3DHarnessError.usage("unknown fixture selector: \(fixture)")
         }
         let result: [String: Any]
-        if fixture == "storage-abi" {
+        if fixture == "slice-palette" {
+            result = try sliceAndPalette(
+                device: device,
+                metal: metal,
+                referenceDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true)
+            )
+        } else if fixture == "evolution-visibility" {
+            result = try evolutionAndVisibility(
+                device: device,
+                metal: metal,
+                referenceDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true)
+            )
+        } else if fixture == "storage-abi" {
             result = try storageAndABI(device: device, metal: metal)
         } else if fixture == "advection-boundaries" {
             result = try advectionAndBoundaries(
@@ -102,6 +116,1202 @@ private struct Fluid3DChecks {
             )
         }
         try emit(result)
+    }
+
+    private struct SliceImage {
+        let width: Int
+        let height: Int
+        let pixels: [UInt8]
+    }
+
+    private struct EncodedSimulationSnapshot {
+        let fields: [(String, VolumeField3D, MTLBuffer)]
+        let workspace: MTLBuffer
+    }
+
+    private struct VelocitySnapshot {
+        let u: [Float]
+        let v: [Float]
+        let w: [Float]
+    }
+
+    private struct EvolutionObservation {
+        let step: Int
+        let fields: [String: [Float]]
+        let slice: [Float]
+        let image: SliceImage
+        let diagnostics: Fluid3DProjectionDiagnostics
+        let statusLanes: [Float]
+        let volumeStatistics: [String: Any]
+        let stateCapture: [String: Any]
+        let sliceCapture: String
+    }
+
+    private static func sliceAndPalette(
+        device: MTLDevice,
+        metal: MetalDevice,
+        referenceDirectory: URL
+    ) throws -> [String: Any] {
+        let visualization = try FieldVisualization3D(metal: metal)
+        let simulation = try FluidSimulation3D(metal: metal)
+        let evidenceDirectory = referenceDirectory.deletingLastPathComponent()
+            .appendingPathComponent("fluid3d-evidence", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: evidenceDirectory, withIntermediateDirectories: true
+        )
+        let originalConfiguration = simulation.configuration
+        var resetStatus: PressureProjection3D.StatusSlot!
+
+        try reset(metal: metal, simulation: simulation, dye: paletteAndOrientationDye()) {
+            resetStatus = $0
+        }
+        try require(resetStatus.diagnostics().converged, "Synthetic slice reset projection failed")
+        let paletteCapture = try verifyReadOnlyPresentation(
+            visualization: visualization,
+            simulation: simulation,
+            status: resetStatus,
+            sizes: [(96, 64)]
+        )
+        let landmarks = paletteCapture.images[0]
+        let xOffset = 16
+        let paletteSamples: [(String, Int, SIMD3<Int>)] = [
+            ("zero", 6, SIMD3<Int>(0, 0, 0)),
+            ("quarter", 17, SIMD3<Int>(119, 70, 18)),
+            ("middle", 28, SIMD3<Int>(237, 139, 35)),
+            ("three-quarters", 39, SIMD3<Int>(246, 190, 125)),
+            ("one", 50, SIMD3<Int>(255, 241, 214)),
+        ]
+        for (name, cellX, expected) in paletteSamples {
+            try assertRGB(
+                landmarks,
+                x: xOffset + cellX,
+                y: 63 - 8,
+                expected: expected,
+                label: "palette stop \(name)"
+            )
+        }
+        try assertRGB(landmarks, x: xOffset + 12, y: 63 - 12,
+                      expected: SIMD3<Int>(237, 139, 35), label: "lower-left landmark")
+        try assertRGB(landmarks, x: xOffset + 52, y: 63 - 52,
+                      expected: SIMD3<Int>(255, 241, 214), label: "upper-right landmark")
+        try assertRGB(landmarks, x: xOffset + 12, y: 63 - 52,
+                      expected: SIMD3<Int>(0, 0, 0), label: "opposite upper-left landmark")
+        try assertRGB(landmarks, x: xOffset + 52, y: 63 - 12,
+                      expected: SIMD3<Int>(0, 0, 0), label: "opposite lower-right landmark")
+        try assertRGB(landmarks, x: 4, y: 32, expected: SIMD3<Int>(0, 0, 0), label: "left letterbox")
+        try assertRGB(landmarks, x: 90, y: 32, expected: SIMD3<Int>(0, 0, 0), label: "right letterbox")
+        let palettePath = evidenceDirectory.appendingPathComponent("slice-palette-stops-orientation.ppm")
+        try writePPM(landmarks, to: palettePath)
+
+        try reset(metal: metal, simulation: simulation, dye: zRampDye()) {
+            resetStatus = $0
+        }
+        try require(resetStatus.diagnostics().converged, "Z-ramp reset projection failed")
+        let midpointCapture = try verifyReadOnlyPresentation(
+            visualization: visualization,
+            simulation: simulation,
+            status: resetStatus,
+            sizes: [(96, 64)]
+        )
+        try assertRGB(midpointCapture.images[0], x: 48, y: 32,
+                      expected: SIMD3<Int>(237, 139, 35), label: "equal Z=0.5 midpoint of planes 31/32")
+        let midpointPath = evidenceDirectory.appendingPathComponent("slice-palette-midpoint-z-31-32.ppm")
+        try writePPM(midpointCapture.images[0], to: midpointPath)
+
+        try reset(metal: metal, simulation: simulation, dye: constantDye(0.5)) {
+            resetStatus = $0
+        }
+        try require(resetStatus.diagnostics().converged, "Uniform palette-invariance reset failed")
+        let sizes = [(64, 64), (96, 64), (48, 48)]
+        let stepZeroCapture = try verifyReadOnlyPresentation(
+            visualization: visualization,
+            simulation: simulation,
+            status: resetStatus,
+            sizes: sizes
+        )
+        for image in stepZeroCapture.images {
+            try assertRGB(image, x: image.width / 2, y: image.height / 2,
+                          expected: SIMD3<Int>(237, 139, 35), label: "step-zero fixed palette/viewport")
+        }
+        let stepZeroPath = evidenceDirectory.appendingPathComponent("slice-palette-step-0.ppm")
+        try writePPM(stepZeroCapture.images[0], to: stepZeroPath)
+
+        var stepStatus: PressureProjection3D.StatusSlot!
+        try command(metal) { stepStatus = try simulation.encodeStep(command: $0) }
+        try require(stepStatus.diagnostics().failure == .none && stepStatus.diagnostics().converged,
+                    "Uniform one-step palette fixture failed projection")
+        let stepOneCapture = try verifyReadOnlyPresentation(
+            visualization: visualization,
+            simulation: simulation,
+            status: stepStatus,
+            sizes: sizes
+        )
+        for image in stepOneCapture.images {
+            try assertRGB(image, x: image.width / 2, y: image.height / 2,
+                          expected: SIMD3<Int>(237, 139, 35), label: "step-one fixed palette/viewport")
+        }
+        let stepOnePath = evidenceDirectory.appendingPathComponent("slice-palette-step-1.ppm")
+        try writePPM(stepOneCapture.images[1], to: stepOnePath)
+
+        try reset(metal: metal, simulation: simulation, dye: Array(repeating: 0, count: 64 * 64 * 64)) {
+            resetStatus = $0
+        }
+        try require(resetStatus.diagnostics().converged, "Clamped-palette fixture reset failed")
+        try command(metal) {
+            try simulation.dye.encodeUpload(
+                Array(repeating: 1.25, count: 64 * 64 * 64),
+                to: simulation.dye.ping,
+                command: $0
+            )
+        }
+        let clampedCapture = try verifyReadOnlyPresentation(
+            visualization: visualization,
+            simulation: simulation,
+            status: resetStatus,
+            sizes: [(64, 64)]
+        )
+        try assertRGB(clampedCapture.images[0], x: 32, y: 32,
+                      expected: SIMD3<Int>(255, 241, 214), label: "concentration clamps at the cream stop")
+        let clampPath = evidenceDirectory.appendingPathComponent("slice-palette-concentration-clamp.ppm")
+        try writePPM(clampedCapture.images[0], to: clampPath)
+
+        try require(simulation.configuration == originalConfiguration,
+                    "Presentation changed the fixed simulation grid/configuration")
+        let manifestURL = referenceDirectory.appendingPathComponent("manifest.json")
+        let manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as! [String: Any]
+        return [
+            "passed": true,
+            "fixture": "slice-palette",
+            "device": device.name,
+            "grid": [64, 64, 64],
+            "sampleWorldZ": 0.5,
+            "sampledPlanes": [31, 32],
+            "sampleWeights": [0.5, 0.5],
+            "orientation": ["x": "right", "y": "up"],
+            "destinationPixelFormat": "bgra8Unorm; encoded palette channels stored without an additional sRGB transform",
+            "paletteStops": [
+                ["concentration": 0.0, "rgb": [0, 0, 0]],
+                ["concentration": 0.5, "rgb": [237, 139, 35]],
+                ["concentration": 1.0, "rgb": [255, 241, 214]],
+            ],
+            "viewportSizes": sizes.map { [$0.0, $0.1] },
+            "paletteInvariantAtSteps": [0, 1],
+            "renderingReadOnly": true,
+            "resourceHashes": [paletteCapture.resourceHash, midpointCapture.resourceHash,
+                               stepZeroCapture.resourceHash, stepOneCapture.resourceHash,
+                               clampedCapture.resourceHash],
+            "captures": [palettePath.lastPathComponent, midpointPath.lastPathComponent,
+                         stepZeroPath.lastPathComponent, stepOnePath.lastPathComponent,
+                         clampPath.lastPathComponent],
+            "contractHash": manifest["contractHash"] ?? "unknown",
+            "finite": true,
+        ]
+    }
+
+    private static func evolutionAndVisibility(
+        device: MTLDevice,
+        metal: MetalDevice,
+        referenceDirectory: URL
+    ) throws -> [String: Any] {
+        let visualization = try FieldVisualization3D(metal: metal)
+        let simulation = try FluidSimulation3D(metal: metal)
+        let grid = simulation.configuration
+        try require(grid == .production, "Lesson recipe must use the fixed production 64-cubed grid")
+        let evidenceDirectory = referenceDirectory.deletingLastPathComponent()
+            .appendingPathComponent("fluid3d-evidence", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: evidenceDirectory, withIntermediateDirectories: true
+        )
+
+        var initialStatus: PressureProjection3D.StatusSlot!
+        try command(metal) { initialStatus = try simulation.encodeReset(command: $0) }
+        let initialDiagnostics = initialStatus.diagnostics()
+        try require(initialDiagnostics.failure == .none && initialDiagnostics.converged && !initialDiagnostics.capHit,
+                    "Default lesson reset did not pass the production projection gate: \(initialDiagnostics.failure)")
+        let initialFields = try scanSimulation(simulation)
+        let initialDye = initialFields["dye/ping"]!
+        let initialPeak = initialDye.max() ?? 0
+        try require(initialPeak >= 0.5,
+                    "Production reset recipe must start with a visible compact dye blob; peak=\(initialPeak)")
+
+        let supportCount = initialDye.filter { $0 >= 0.001 }.count
+        try require(supportCount > 0 && supportCount < initialDye.count / 10,
+                    "Step-zero dye support is not one compact seed: support=\(supportCount)")
+        let initialStats = volumeStatistics(initialDye, nx: grid.nx, ny: grid.ny, nz: grid.nz)
+        let initialCentroid = initialStats["centroid"] as! [Double]
+        try require(abs(initialCentroid[0] - 0.42) < 0.02
+                    && abs(initialCentroid[1] - 0.48) < 0.02
+                    && abs(initialCentroid[2] - 0.52) < 0.02,
+                    "Step-zero dye is not centred on the approved off-centre blob: \(initialCentroid)")
+        try require(connectedComponents(initialDye, nx: grid.nx, ny: grid.ny, nz: grid.nz,
+                                       threshold: 0.001) == 1,
+                    "Step-zero dye must contain exactly one compact connected blob")
+
+        var observations: [Int: EvolutionObservation] = [:]
+        let firstVelocity = velocitySnapshot(from: initialFields)
+        let initialSpeedMaximum = cellCenteredSpeedMaximum(firstVelocity, nx: grid.nx, ny: grid.ny, nz: grid.nz)
+        try require(initialSpeedMaximum.isFinite && initialSpeedMaximum > 0,
+                    "Reset recipe has no finite three-component transport velocity")
+        var probePaths = makeDyeSeededProbePaths(center: SIMD3<Double>(0.42, 0.48, 0.52))
+        let probeStarts = probePaths.map { $0[0] }
+        for start in probeStarts {
+            try require(sampleCellCentered(initialDye, nx: grid.nx, ny: grid.ny, nz: grid.nz,
+                                           position: start) >= 0.5,
+                        "Independent probe was not seeded inside visible dye")
+        }
+
+        let stepZeroImage = try captureSlice(
+            visualization: visualization,
+            simulation: simulation,
+            step: 0,
+            directory: evidenceDirectory
+        )
+        let stepZeroSlice = centralSlice(initialDye, nx: grid.nx, ny: grid.ny, nz: grid.nz)
+        try compareSliceImage(stepZeroImage, concentrations: stepZeroSlice)
+        let stepZeroState = try saveEvolutionState(
+            fields: initialFields,
+            status: initialStatus.diagnosticStateValues(),
+            step: 0,
+            directory: evidenceDirectory
+        )
+        observations[0] = EvolutionObservation(
+            step: 0,
+            fields: initialFields,
+            slice: stepZeroSlice,
+            image: stepZeroImage,
+            diagnostics: initialDiagnostics,
+            statusLanes: initialStatus.diagnosticStateValues(),
+            volumeStatistics: initialStats,
+            stateCapture: stepZeroState,
+            sliceCapture: "recipe-step-000.ppm"
+        )
+
+        var activeVelocity = firstVelocity
+        var maximumIterations = initialDiagnostics.iterations
+        var statusSummaries: [[String: Any]] = [[
+            "step": 0,
+            "iterations": initialDiagnostics.iterations,
+            "failure": initialDiagnostics.failure.description,
+            "converged": initialDiagnostics.converged,
+            "trueResidualDTInf": initialDiagnostics.trueResidualDTInf,
+            "projectedDivergenceDTInf": initialDiagnostics.projectedDivergenceDTInf,
+        ]]
+        let observationSteps: Set<Int> = [1, 24, 48, 72]
+        for step in 1...72 {
+            advanceProbePaths(&probePaths, with: activeVelocity, grid: grid)
+            let buffer = metal.newCommandBuffer()
+            let status = try simulation.encodeStep(command: buffer)
+            buffer.commit()
+            buffer.waitUntilCompleted()
+            try require(buffer.status == .completed,
+                        "Production advance \(step) command failed: \(String(describing: buffer.error))")
+            let diagnostics = status.diagnostics()
+            try require(diagnostics.failure == .none && diagnostics.converged && !diagnostics.capHit,
+                        "Production step \(step) failed projection acceptance: \(diagnostics.failure)")
+            try require(diagnostics.trueResidualDTInf <= 1e-5
+                        && diagnostics.projectedDivergenceDTInf <= 1e-5
+                        && diagnostics.identityDTError <= 2e-5
+                        && diagnostics.maximumWallNormalValue == 0,
+                        "Production step \(step) violated the preregistered pressure/wall gate: "
+                        + "residual=\(diagnostics.trueResidualDTInf), "
+                        + "divergence=\(diagnostics.projectedDivergenceDTInf), "
+                        + "identity=\(diagnostics.identityDTError) (GPU limit 2e-5), "
+                        + "wall=\(diagnostics.maximumWallNormalValue)")
+            maximumIterations = max(maximumIterations, diagnostics.iterations)
+            statusSummaries.append([
+                "step": step,
+                "iterations": diagnostics.iterations,
+                "failure": diagnostics.failure.description,
+                "converged": diagnostics.converged,
+                "trueResidualDTInf": diagnostics.trueResidualDTInf,
+                "projectedDivergenceDTInf": diagnostics.projectedDivergenceDTInf,
+                "identityDTError": diagnostics.identityDTError,
+                "maximumWallNormalValue": diagnostics.maximumWallNormalValue,
+            ])
+
+            if observationSteps.contains(step) {
+                let fields = try scanSimulation(simulation)
+                let dye = fields["dye/ping"]!
+                let image = try captureSlice(
+                    visualization: visualization,
+                    simulation: simulation,
+                    step: step,
+                    directory: evidenceDirectory
+                )
+                let slice = centralSlice(dye, nx: grid.nx, ny: grid.ny, nz: grid.nz)
+                try compareSliceImage(image, concentrations: slice)
+                let statistics = volumeStatistics(dye, nx: grid.nx, ny: grid.ny, nz: grid.nz)
+                let stateCapture = try saveEvolutionState(
+                    fields: fields,
+                    status: status.diagnosticStateValues(),
+                    step: step,
+                    directory: evidenceDirectory
+                )
+                observations[step] = EvolutionObservation(
+                    step: step,
+                    fields: fields,
+                    slice: slice,
+                    image: image,
+                    diagnostics: diagnostics,
+                    statusLanes: status.diagnosticStateValues(),
+                    volumeStatistics: statistics,
+                    stateCapture: stateCapture,
+                    sliceCapture: String(format: "recipe-step-%03d.ppm", step)
+                )
+                activeVelocity = velocitySnapshot(from: fields)
+            } else {
+                activeVelocity = try readActiveVelocity(simulation)
+            }
+        }
+
+        let stepZero = observations[0]!
+        let stepOne = observations[1]!
+        let step24 = observations[24]!
+        let step48 = observations[48]!
+        let step72 = observations[72]!
+        let peak0 = stepZero.slice.max() ?? 0
+        let peak24 = step24.slice.max() ?? 0
+        let peak48 = step48.slice.max() ?? 0
+        let visible24 = step24.slice.filter { $0 >= 0.02 }.count
+        let visible48 = step48.slice.filter { $0 >= 0.02 }.count
+        let sliceRMS48 = rmsDifference(stepZero.slice, step48.slice)
+        try require(peak0 >= 0.5, "Step-zero central slice peak is below 0.5: \(peak0)")
+        try require(peak24 >= 0.05 && visible24 >= 8,
+                    "Step-24 fixed slice misses preregistered visibility: peak=\(peak24), count=\(visible24)")
+        try require(peak48 >= 0.05 && visible48 >= 8,
+                    "Step-48 fixed slice misses preregistered visibility: peak=\(peak48), count=\(visible48)")
+        try require(sliceRMS48 >= 0.005,
+                    "Step-48 fixed slice did not change enough from step zero: RMS=\(sliceRMS48)")
+
+        let velocity72 = velocitySnapshot(from: step72.fields)
+        let velocityChanges = [
+            "u": maximumAbsoluteDifference(firstVelocity.u, velocity72.u),
+            "v": maximumAbsoluteDifference(firstVelocity.v, velocity72.v),
+            "w": maximumAbsoluteDifference(firstVelocity.w, velocity72.w),
+        ]
+        let velocityChangeRatios = velocityChanges.mapValues { $0 / initialSpeedMaximum }
+        for component in ["u", "v", "w"] {
+            try require(velocityChangeRatios[component, default: 0] >= 1e-4,
+                        "Production \(component) did not genuinely evolve: normalized change=\(velocityChangeRatios[component, default: 0])")
+        }
+        let depthVariation = maximumCellCenteredDepthVariation(velocity72, nx: grid.nx, ny: grid.ny, nz: grid.nz)
+        let depthVariationRatio = depthVariation / initialSpeedMaximum
+        try require(depthVariationRatio >= 1e-3,
+                    "Production velocity is too depth-independent: normalized variation=\(depthVariationRatio)")
+
+        let probeMetrics = probePaths.map { probeMetric(points: $0, grid: grid) }
+        let maximumProbeZTravelCells = probeMetrics.map { $0.zTravelCells }.max() ?? 0
+        let maximumProbePlaneRatio = probeMetrics.map { $0.planeRMSArcRatio }.max() ?? 0
+        try require(maximumProbeZTravelCells >= 0.5,
+                    "No dye-seeded production-field trajectory crossed half a cell in Z: \(maximumProbeZTravelCells) cells")
+
+        let referenceManifest = try JSONSerialization.jsonObject(
+            with: Data(contentsOf: referenceDirectory.appendingPathComponent("manifest.json"))
+        ) as! [String: Any]
+        guard let analyticTrajectory = referenceManifest["referenceTrajectory"] as? [String: Any],
+              let referencePlaneRatio = analyticTrajectory["plane_rms_arc_ratio"] as? Double,
+              let referenceZTravel = analyticTrajectory["centroid_z_displacement_cells"] as? Double,
+              analyticTrajectory["finite"] as? Bool == true else {
+            throw Fluid3DHarnessError.assertion("CPU reference omitted finite nonplanar trajectory evidence")
+        }
+        try require(referencePlaneRatio >= 0.01 && referenceZTravel >= 0.5,
+                    "Independent CPU nonplanar reference missed its preregistered threshold: \(analyticTrajectory)")
+
+        let asymmetricTransport = try runAsymmetricFullVolumeTransport(
+            metal: metal,
+            referenceDirectory: referenceDirectory
+        )
+        let recipe = [
+            "grid": [grid.nx, grid.ny, grid.nz],
+            "h": grid.h,
+            "dt": grid.dt,
+            "vectorPotential": "A=(0.7*f, f*sin^2(pi*y), 0.6*f*sin^2(pi*z)); f=sin^2(pi*x)sin^2(pi*y)sin^2(pi*z)",
+            "seedMaximumVectorSpeed": 0.12,
+            "blobCenter": [0.42, 0.48, 0.52],
+            "blobRadius": 0.12,
+            "blobPeak": 1.0,
+            "dyeDecayPerStep": 0.0,
+            "velocityReseedAfterReset": false,
+        ] as [String: Any]
+        return [
+            "passed": true,
+            "fixture": "evolution-visibility",
+            "device": device.name,
+            "os": ProcessInfo.processInfo.operatingSystemVersionString,
+            "recipe": recipe,
+            "step0Blob": [
+                "peak": initialPeak,
+                "supportAtLeast0_001": supportCount,
+                "connectedComponents": 1,
+                "centroid": initialCentroid,
+                "volumeStatistics": initialStats,
+                "resetVectorSpeedMaximum": initialSpeedMaximum,
+            ],
+            "observations": [stepZero, stepOne, step24, step48, step72].map { observation in
+                [
+                    "step": observation.step,
+                    "slicePeak": observation.slice.max() ?? 0,
+                    "sliceCountAtLeast0_02": observation.slice.filter { $0 >= 0.02 }.count,
+                    "sliceRMSFromStep0": rmsDifference(stepZero.slice, observation.slice),
+                    "volumeStatistics": observation.volumeStatistics,
+                    "projection": projectionSummary(observation.diagnostics),
+                    "statusLanes": observation.statusLanes,
+                    "stateCapture": observation.stateCapture,
+                    "sliceCapture": observation.sliceCapture,
+                ] as [String: Any]
+            },
+            "visibilityGates": [
+                "step0PeakMinimum": 0.5,
+                "step24PeakMinimum": 0.05,
+                "step24CountAtLeast0_02Minimum": 8,
+                "step48PeakMinimum": 0.05,
+                "step48CountAtLeast0_02Minimum": 8,
+                "step48RMSFromStep0Minimum": 0.005,
+                "observedStep48RMSFromStep0": sliceRMS48,
+            ],
+            "velocityChangeMaxAbsolute": velocityChanges,
+            "velocityChangeNormalizedByResetSpeed": velocityChangeRatios,
+            "depthVariationMaxAbsolute": depthVariation,
+            "depthVariationNormalizedByResetSpeed": depthVariationRatio,
+            "dyeSeededProbePaths": probeMetrics.map(\.json),
+            "maximumProbeZTravelCells": maximumProbeZTravelCells,
+            "maximumObservedProbePlaneRMSArcRatio": maximumProbePlaneRatio,
+            "analyticReferenceTrajectory": analyticTrajectory,
+            "minimumAnalyticReferencePlaneRMSArcRatio": 0.01,
+            "independentFullVolumeUnequalAxisTransport": asymmetricTransport,
+            "projectionStatuses": statusSummaries,
+            "maximumProjectionIterations": maximumIterations,
+            "finite": true,
+            "captures": [stepZero, stepOne, step24, step48, step72].flatMap {
+                [$0.sliceCapture, $0.stateCapture["file"] as! String]
+            },
+        ]
+    }
+
+    private static func reset(
+        metal: MetalDevice,
+        simulation: FluidSimulation3D,
+        dye: [Float],
+        status: (PressureProjection3D.StatusSlot) -> Void
+    ) throws {
+        var result: PressureProjection3D.StatusSlot!
+        let seed = Fluid3DInitialState(
+            u: Array(repeating: 0, count: simulation.u.width * simulation.u.height * simulation.u.depth),
+            v: Array(repeating: 0, count: simulation.v.width * simulation.v.height * simulation.v.depth),
+            w: Array(repeating: 0, count: simulation.w.width * simulation.w.height * simulation.w.depth),
+            dye: dye
+        )
+        try command(metal) { result = try simulation.encodeReset(command: $0, initialState: seed) }
+        status(result)
+    }
+
+    private static func constantDye(_ value: Float) -> [Float] {
+        Array(repeating: value, count: 64 * 64 * 64)
+    }
+
+    private static func paletteAndOrientationDye() -> [Float] {
+        let n = 64
+        var dye = Array(repeating: Float.zero, count: n * n * n)
+        let patches: [(Int, Int, Float)] = [
+            (6, 8, 0), (17, 8, 0.25), (28, 8, 0.5), (39, 8, 0.75), (50, 8, 1),
+            (12, 12, 0.5), (52, 52, 1),
+        ]
+        for k in 0..<n {
+            for (centerX, centerY, value) in patches {
+                for j in (centerY - 1)...(centerY + 1) {
+                    for i in (centerX - 1)...(centerX + 1) {
+                        dye[(k * n + j) * n + i] = value
+                    }
+                }
+            }
+        }
+        return dye
+    }
+
+    private static func zRampDye() -> [Float] {
+        let n = 64
+        var dye = Array(repeating: Float.zero, count: n * n * n)
+        for k in 0..<n {
+            let value = Float(k) / Float(n - 1)
+            let start = k * n * n
+            for index in start..<(start + n * n) { dye[index] = value }
+        }
+        return dye
+    }
+
+    private static func verifyReadOnlyPresentation(
+        visualization: FieldVisualization3D,
+        simulation: FluidSimulation3D,
+        status: PressureProjection3D.StatusSlot,
+        sizes: [(Int, Int)]
+    ) throws -> (images: [SliceImage], resourceHash: String) {
+        let configurationBefore = simulation.configuration
+        let command = simulation.metal.newCommandBuffer()
+        let statusBefore = status.diagnosticStateValues()
+        let before = try encodeSimulationSnapshot(simulation, command: command)
+        var destinations: [(Int, Int, MTLTexture)] = []
+        for (width, height) in sizes {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: FieldVisualization3D.destinationPixelFormat,
+                width: width,
+                height: height,
+                mipmapped: false
+            )
+            descriptor.storageMode = .shared
+            descriptor.usage = [.renderTarget]
+            guard let destination = simulation.metal.device.makeTexture(descriptor: descriptor) else {
+                throw Fluid3DHarnessError.library("Unable to allocate a synthetic slice render target")
+            }
+            destinations.append((width, height, destination))
+            try visualization.encodeSlice(
+                command: command,
+                simulation: simulation,
+                destination: destination,
+                viewport: MTLViewport(originX: 0, originY: 0, width: Double(width), height: Double(height), znear: 0, zfar: 1)
+            )
+        }
+        let after = try encodeSimulationSnapshot(simulation, command: command)
+        command.commit()
+        command.waitUntilCompleted()
+        try require(command.status == .completed, "Read-only slice presentation command failed")
+        try require(simulation.configuration == configurationBefore,
+                    "Slice presentation changed grid dimensions, spacing, or timestep")
+
+        let beforeHash = try hashSimulationSnapshot(before, status: statusBefore, configuration: configurationBefore)
+        let afterHash = try hashSimulationSnapshot(after, status: status.diagnosticStateValues(), configuration: simulation.configuration)
+        try require(beforeHash == afterHash,
+                    "Slice rendering mutated solver fields, scratch, reductions, status, or grid: \(beforeHash) != \(afterHash)")
+
+        let images = try destinations.map { width, height, texture -> SliceImage in
+            var pixels = Array(repeating: UInt8.zero, count: width * height * 4)
+            pixels.withUnsafeMutableBytes { bytes in
+                texture.getBytes(
+                    bytes.baseAddress!,
+                    bytesPerRow: width * 4,
+                    from: MTLRegionMake2D(0, 0, width, height),
+                    mipmapLevel: 0
+                )
+            }
+            return SliceImage(width: width, height: height, pixels: pixels)
+        }
+        return (images, beforeHash)
+    }
+
+    private static func encodeSimulationSnapshot(
+        _ simulation: FluidSimulation3D,
+        command: MTLCommandBuffer
+    ) throws -> EncodedSimulationSnapshot {
+        var fields: [(String, VolumeField3D, MTLBuffer)] = []
+        for (name, field) in simulation.diagnosticFields {
+            for (generation, texture) in [("ping", field.ping), ("pong", field.pong)] {
+                fields.append(("\(name)/\(generation)", field,
+                               try field.encodeReadback(from: texture, command: command)))
+            }
+        }
+        let workspace = simulation.projection.diagnosticReductionWorkspace
+        guard let workspaceReadback = simulation.metal.device.makeBuffer(
+            length: workspace.length, options: .storageModeShared
+        ), let blit = command.makeBlitCommandEncoder() else {
+            throw Fluid3DHarnessError.assertion("Could not stage complete solver-resource snapshot")
+        }
+        blit.copy(from: workspace, sourceOffset: 0, to: workspaceReadback,
+                  destinationOffset: 0, size: workspace.length)
+        blit.endEncoding()
+        return EncodedSimulationSnapshot(fields: fields, workspace: workspaceReadback)
+    }
+
+    private static func hashSimulationSnapshot(
+        _ snapshot: EncodedSimulationSnapshot,
+        status: [Float],
+        configuration: FluidSimulation3DConfiguration
+    ) throws -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        func feed(_ byte: UInt8) {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        func feedWord(_ input: UInt32) {
+            var word = input
+            for _ in 0..<4 {
+                feed(UInt8(truncatingIfNeeded: word))
+                word >>= 8
+            }
+        }
+        feedWord(UInt32(configuration.nx)); feedWord(UInt32(configuration.ny)); feedWord(UInt32(configuration.nz))
+        feedWord(configuration.h.bitPattern); feedWord(configuration.dt.bitPattern)
+        for (name, field, buffer) in snapshot.fields {
+            for byte in name.utf8 { feed(byte) }
+            feed(0)
+            let values = try field.decodeReadback(buffer)
+            feedWord(UInt32(values.count))
+            for value in values { feedWord(value.bitPattern) }
+        }
+        let workspaceBytes = snapshot.workspace.contents().assumingMemoryBound(to: UInt8.self)
+        feedWord(UInt32(snapshot.workspace.length))
+        for index in 0..<snapshot.workspace.length { feed(workspaceBytes[index]) }
+        for value in status { feedWord(value.bitPattern) }
+        return String(format: "%016llx", hash)
+    }
+
+    private static func assertRGB(
+        _ image: SliceImage,
+        x: Int,
+        y: Int,
+        expected: SIMD3<Int>,
+        label: String
+    ) throws {
+        try require(x >= 0 && x < image.width && y >= 0 && y < image.height,
+                    "\(label) sample (\(x),\(y)) is outside the render target")
+        let offset = (y * image.width + x) * 4
+        let actual = SIMD3<Int>(Int(image.pixels[offset + 2]), Int(image.pixels[offset + 1]), Int(image.pixels[offset]))
+        let withinQuantization = zip([actual.x, actual.y, actual.z], [expected.x, expected.y, expected.z])
+            .allSatisfy { abs($0.0 - $0.1) <= 1 }
+        try require(withinQuantization,
+                    "\(label) RGB mismatch at (\(x),\(y)): actual=\(actual), expected=\(expected) ±1 UNORM code")
+        try require(image.pixels[offset + 3] == 255, "\(label) alpha must remain opaque")
+    }
+
+    private static func writePPM(_ image: SliceImage, to url: URL) throws {
+        var output = Data("P6\n\(image.width) \(image.height)\n255\n".utf8)
+        output.reserveCapacity(output.count + image.width * image.height * 3)
+        for y in 0..<image.height {
+            for x in 0..<image.width {
+                let offset = (y * image.width + x) * 4
+                output.append(contentsOf: [image.pixels[offset + 2], image.pixels[offset + 1], image.pixels[offset]])
+            }
+        }
+        try output.write(to: url, options: .atomic)
+    }
+
+    private struct ProbeMetric {
+        let zTravelCells: Double
+        let planeRMSArcRatio: Double
+        let points: [[Double]]
+
+        var json: [String: Any] {
+            [
+                "zTravelCells": zTravelCells,
+                "planeRMSArcRatio": planeRMSArcRatio,
+                "points": points,
+            ]
+        }
+    }
+
+    private static func projectionSummary(_ value: Fluid3DProjectionDiagnostics) -> [String: Any] {
+        [
+            "iterations": value.iterations,
+            "failure": value.failure.description,
+            "converged": value.converged,
+            "capHit": value.capHit,
+            "inputDivergenceDTInf": value.inputDivergenceDTInf,
+            "projectedDivergenceDTInf": value.projectedDivergenceDTInf,
+            "trueResidualDTInf": value.trueResidualDTInf,
+            "identityDTError": value.identityDTError,
+            "maximumWallNormalValue": value.maximumWallNormalValue,
+        ]
+    }
+
+    private static func velocitySnapshot(from fields: [String: [Float]]) -> VelocitySnapshot {
+        VelocitySnapshot(u: fields["u/ping"]!, v: fields["v/ping"]!, w: fields["w/ping"]!)
+    }
+
+    private static func readActiveVelocity(_ simulation: FluidSimulation3D) throws -> VelocitySnapshot {
+        let command = simulation.metal.newCommandBuffer()
+        let uReadback = try simulation.u.encodeReadback(from: simulation.u.ping, command: command)
+        let vReadback = try simulation.v.encodeReadback(from: simulation.v.ping, command: command)
+        let wReadback = try simulation.w.encodeReadback(from: simulation.w.ping, command: command)
+        command.commit()
+        command.waitUntilCompleted()
+        try require(command.status == .completed, "Velocity probe readback failed")
+        return VelocitySnapshot(
+            u: try simulation.u.decodeReadback(uReadback),
+            v: try simulation.v.decodeReadback(vReadback),
+            w: try simulation.w.decodeReadback(wReadback)
+        )
+    }
+
+    private static func captureSlice(
+        visualization: FieldVisualization3D,
+        simulation: FluidSimulation3D,
+        step: Int,
+        directory: URL
+    ) throws -> SliceImage {
+        let size = 64
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: FieldVisualization3D.destinationPixelFormat,
+            width: size,
+            height: size,
+            mipmapped: false
+        )
+        descriptor.storageMode = .shared
+        descriptor.usage = [.renderTarget]
+        guard let destination = simulation.metal.device.makeTexture(descriptor: descriptor) else {
+            throw Fluid3DHarnessError.library("Unable to allocate a lesson slice capture")
+        }
+        let command = simulation.metal.newCommandBuffer()
+        try visualization.encodeSlice(
+            command: command,
+            simulation: simulation,
+            destination: destination,
+            viewport: MTLViewport(originX: 0, originY: 0, width: 64, height: 64, znear: 0, zfar: 1)
+        )
+        command.commit()
+        command.waitUntilCompleted()
+        try require(command.status == .completed, "Step-\(step) slice render failed")
+        var pixels = Array(repeating: UInt8.zero, count: size * size * 4)
+        pixels.withUnsafeMutableBytes { bytes in
+            destination.getBytes(
+                bytes.baseAddress!,
+                bytesPerRow: size * 4,
+                from: MTLRegionMake2D(0, 0, size, size),
+                mipmapLevel: 0
+            )
+        }
+        let image = SliceImage(width: size, height: size, pixels: pixels)
+        let filename = String(format: "recipe-step-%03d.ppm", step)
+        try writePPM(image, to: directory.appendingPathComponent(filename))
+        return image
+    }
+
+    private static func compareSliceImage(_ image: SliceImage, concentrations: [Float]) throws {
+        try require(image.width == 64 && image.height == 64 && concentrations.count == 64 * 64,
+                    "Production slice is not the fixed 64x64 central image")
+        for row in 0..<image.height {
+            for x in 0..<image.width {
+                let expectedColor = FieldVisualization3D.encodedColor(
+                    for: concentrations[row * image.width + x]
+                )
+                let pixel = (row * image.width + x) * 4
+                let actual = [Int(image.pixels[pixel + 2]), Int(image.pixels[pixel + 1]), Int(image.pixels[pixel])]
+                let expected = [expectedColor.x, expectedColor.y, expectedColor.z].map {
+                    Int(($0 * 255).rounded())
+                }
+                try require(zip(actual, expected).allSatisfy { abs($0.0 - $0.1) <= 1 },
+                            "Step slice differs from the CPU central-plane sample at (\(x),\(row))")
+                try require(image.pixels[pixel + 3] == 255, "Step slice alpha is not opaque")
+            }
+        }
+    }
+
+    private static func centralSlice(
+        _ dye: [Float], nx: Int, ny: Int, nz: Int
+    ) -> [Float] {
+        let lower = nz / 2 - 1
+        let upper = nz / 2
+        var values = Array(repeating: Float.zero, count: nx * ny)
+        for row in 0..<ny {
+            let y = ny - 1 - row
+            for x in 0..<nx {
+                let first = dye[(lower * ny + y) * nx + x]
+                let second = dye[(upper * ny + y) * nx + x]
+                values[row * nx + x] = (first + second) * 0.5
+            }
+        }
+        return values
+    }
+
+    private static func volumeStatistics(
+        _ dye: [Float], nx: Int, ny: Int, nz: Int
+    ) -> [String: Any] {
+        var mass = 0.0
+        var xMoment = 0.0
+        var yMoment = 0.0
+        var zMoment = 0.0
+        for k in 0..<nz {
+            for j in 0..<ny {
+                for i in 0..<nx {
+                    let value = Double(dye[(k * ny + j) * nx + i])
+                    mass += value
+                    xMoment += value * (Double(i) + 0.5) / Double(nx)
+                    yMoment += value * (Double(j) + 0.5) / Double(ny)
+                    zMoment += value * (Double(k) + 0.5) / Double(nz)
+                }
+            }
+        }
+        guard mass.isFinite, mass > 0 else {
+            return ["mass": mass, "centroid": [Double.nan, Double.nan, Double.nan],
+                    "spreadRMS": Double.nan, "finite": false]
+        }
+        let centroid = [xMoment / mass, yMoment / mass, zMoment / mass]
+        var variance = 0.0
+        for k in 0..<nz {
+            for j in 0..<ny {
+                for i in 0..<nx {
+                    let value = Double(dye[(k * ny + j) * nx + i])
+                    let dx = (Double(i) + 0.5) / Double(nx) - centroid[0]
+                    let dy = (Double(j) + 0.5) / Double(ny) - centroid[1]
+                    let dz = (Double(k) + 0.5) / Double(nz) - centroid[2]
+                    variance += value * (dx * dx + dy * dy + dz * dz)
+                }
+            }
+        }
+        let spread = sqrt(variance / mass)
+        return ["mass": mass, "centroid": centroid, "spreadRMS": spread,
+                "finite": centroid.allSatisfy(\.isFinite) && spread.isFinite]
+    }
+
+    private static func connectedComponents(
+        _ dye: [Float], nx: Int, ny: Int, nz: Int, threshold: Float
+    ) -> Int {
+        var visited = Array(repeating: false, count: dye.count)
+        var components = 0
+        var queue: [Int] = []
+        for start in dye.indices where dye[start] >= threshold && !visited[start] {
+            components += 1
+            visited[start] = true
+            queue.removeAll(keepingCapacity: true)
+            queue.append(start)
+            var cursor = 0
+            while cursor < queue.count {
+                let index = queue[cursor]
+                cursor += 1
+                let x = index % nx
+                let y = (index / nx) % ny
+                let z = index / (nx * ny)
+                let neighbours = [
+                    x > 0 ? index - 1 : -1,
+                    x + 1 < nx ? index + 1 : -1,
+                    y > 0 ? index - nx : -1,
+                    y + 1 < ny ? index + nx : -1,
+                    z > 0 ? index - nx * ny : -1,
+                    z + 1 < nz ? index + nx * ny : -1,
+                ]
+                for neighbour in neighbours where neighbour >= 0 {
+                    if !visited[neighbour] && dye[neighbour] >= threshold {
+                        visited[neighbour] = true
+                        queue.append(neighbour)
+                    }
+                }
+            }
+        }
+        return components
+    }
+
+    private static func cellCenteredVelocity(
+        _ velocity: VelocitySnapshot, nx: Int, ny: Int, nz: Int
+    ) -> [SIMD3<Float>] {
+        var result = Array(repeating: SIMD3<Float>.zero, count: nx * ny * nz)
+        for k in 0..<nz {
+            for j in 0..<ny {
+                for i in 0..<nx {
+                    let cell = (k * ny + j) * nx + i
+                    let u0 = (k * ny + j) * (nx + 1) + i
+                    let v0 = (k * (ny + 1) + j) * nx + i
+                    let w0 = (k * ny + j) * nx + i
+                    result[cell] = SIMD3<Float>(
+                        0.5 * (velocity.u[u0] + velocity.u[u0 + 1]),
+                        0.5 * (velocity.v[v0] + velocity.v[v0 + nx]),
+                        0.5 * (velocity.w[w0] + velocity.w[w0 + nx * ny])
+                    )
+                }
+            }
+        }
+        return result
+    }
+
+    private static func cellCenteredSpeedMaximum(
+        _ velocity: VelocitySnapshot, nx: Int, ny: Int, nz: Int
+    ) -> Double {
+        cellCenteredVelocity(velocity, nx: nx, ny: ny, nz: nz)
+            .map { sqrt(Double($0.x * $0.x + $0.y * $0.y + $0.z * $0.z)) }
+            .max() ?? 0
+    }
+
+    private static func maximumCellCenteredDepthVariation(
+        _ velocity: VelocitySnapshot, nx: Int, ny: Int, nz: Int
+    ) -> Double {
+        let centers = cellCenteredVelocity(velocity, nx: nx, ny: ny, nz: nz)
+        var maximum = 0.0
+        for j in 0..<ny {
+            for i in 0..<nx {
+                let first = centers[(j * nx) + i]
+                for k in 1..<nz {
+                    let value = centers[(k * ny + j) * nx + i]
+                    maximum = max(maximum,
+                                  Double(abs(value.x - first.x)),
+                                  Double(abs(value.y - first.y)),
+                                  Double(abs(value.z - first.z)))
+                }
+            }
+        }
+        return maximum
+    }
+
+    private static func maximumAbsoluteDifference(_ lhs: [Float], _ rhs: [Float]) -> Double {
+        guard lhs.count == rhs.count else { return .infinity }
+        return zip(lhs, rhs).reduce(0.0) { max($0, abs(Double($1.0 - $1.1))) }
+    }
+
+    private static func rmsDifference(_ lhs: [Float], _ rhs: [Float]) -> Double {
+        guard lhs.count == rhs.count, !lhs.isEmpty else { return .infinity }
+        let sum = zip(lhs, rhs).reduce(0.0) { partial, pair in
+            let difference = Double(pair.0 - pair.1)
+            return partial + difference * difference
+        }
+        return sqrt(sum / Double(lhs.count))
+    }
+
+    private static func makeDyeSeededProbePaths(center: SIMD3<Double>) -> [[SIMD3<Double>]] {
+        let offset = 0.04
+        return [
+            center,
+            center + SIMD3<Double>(offset, 0, 0),
+            center - SIMD3<Double>(offset, 0, 0),
+            center + SIMD3<Double>(0, offset, 0),
+            center - SIMD3<Double>(0, offset, 0),
+            center + SIMD3<Double>(0, 0, offset),
+            center - SIMD3<Double>(0, 0, offset),
+        ].map { [$0] }
+    }
+
+    private static func advanceProbePaths(_ paths: inout [[SIMD3<Double>]], with velocity: VelocitySnapshot,
+                                         grid: FluidSimulation3DConfiguration) {
+        for index in paths.indices {
+            let point = paths[index].last!
+            let first = sampleVelocity(velocity, nx: grid.nx, ny: grid.ny, nz: grid.nz, position: point)
+            let midpoint = point + first * (0.5 * Double(grid.dt))
+            let second = sampleVelocity(velocity, nx: grid.nx, ny: grid.ny, nz: grid.nz, position: midpoint)
+            let next = point + second * Double(grid.dt)
+            paths[index].append(next)
+        }
+    }
+
+    private static func sampleVelocity(
+        _ velocity: VelocitySnapshot, nx: Int, ny: Int, nz: Int, position: SIMD3<Double>
+    ) -> SIMD3<Double> {
+        let u = trilinear(velocity.u, width: nx + 1, height: ny, depth: nz,
+                          coordinate: SIMD3<Double>(position.x * Double(nx),
+                                                    position.y * Double(ny) - 0.5,
+                                                    position.z * Double(nz) - 0.5))
+        let v = trilinear(velocity.v, width: nx, height: ny + 1, depth: nz,
+                          coordinate: SIMD3<Double>(position.x * Double(nx) - 0.5,
+                                                    position.y * Double(ny),
+                                                    position.z * Double(nz) - 0.5))
+        let w = trilinear(velocity.w, width: nx, height: ny, depth: nz + 1,
+                          coordinate: SIMD3<Double>(position.x * Double(nx) - 0.5,
+                                                    position.y * Double(ny) - 0.5,
+                                                    position.z * Double(nz)))
+        return SIMD3<Double>(u, v, w)
+    }
+
+    private static func sampleCellCentered(
+        _ field: [Float], nx: Int, ny: Int, nz: Int, position: SIMD3<Double>
+    ) -> Double {
+        trilinear(field, width: nx, height: ny, depth: nz,
+                  coordinate: SIMD3<Double>(position.x * Double(nx) - 0.5,
+                                            position.y * Double(ny) - 0.5,
+                                            position.z * Double(nz) - 0.5))
+    }
+
+    private static func trilinear(
+        _ values: [Float], width: Int, height: Int, depth: Int, coordinate: SIMD3<Double>
+    ) -> Double {
+        let x = min(Double(width - 1), max(0, coordinate.x))
+        let y = min(Double(height - 1), max(0, coordinate.y))
+        let z = min(Double(depth - 1), max(0, coordinate.z))
+        let x0 = Int(floor(x)); let x1 = min(x0 + 1, width - 1); let fx = x - Double(x0)
+        let y0 = Int(floor(y)); let y1 = min(y0 + 1, height - 1); let fy = y - Double(y0)
+        let z0 = Int(floor(z)); let z1 = min(z0 + 1, depth - 1); let fz = z - Double(z0)
+        func at(_ i: Int, _ j: Int, _ k: Int) -> Double {
+            Double(values[(k * height + j) * width + i])
+        }
+        let c00 = at(x0, y0, z0) * (1 - fx) + at(x1, y0, z0) * fx
+        let c10 = at(x0, y1, z0) * (1 - fx) + at(x1, y1, z0) * fx
+        let c01 = at(x0, y0, z1) * (1 - fx) + at(x1, y0, z1) * fx
+        let c11 = at(x0, y1, z1) * (1 - fx) + at(x1, y1, z1) * fx
+        let c0 = c00 * (1 - fy) + c10 * fy
+        let c1 = c01 * (1 - fy) + c11 * fy
+        return c0 * (1 - fz) + c1 * fz
+    }
+
+    private static func probeMetric(
+        points: [SIMD3<Double>], grid: FluidSimulation3DConfiguration
+    ) -> ProbeMetric {
+        let first = points.first!
+        let last = points.last!
+        let zTravel = abs(last.z - first.z) / Double(grid.h)
+        var arcLength = 0.0
+        for index in 1..<points.count { arcLength += vectorLength(points[index] - points[index - 1]) }
+        let center = points.reduce(SIMD3<Double>.zero, +) / Double(points.count)
+        var covariance = Array(repeating: Array(repeating: 0.0, count: 3), count: 3)
+        for point in points {
+            let delta = point - center
+            for row in 0..<3 {
+                for column in 0..<3 { covariance[row][column] += delta[row] * delta[column] / Double(points.count) }
+            }
+        }
+        let planeRMS = sqrt(smallestEigenvalue(covariance))
+        return ProbeMetric(
+            zTravelCells: zTravel,
+            planeRMSArcRatio: arcLength > 0 ? planeRMS / arcLength : 0,
+            points: points.map { [$0.x, $0.y, $0.z] }
+        )
+    }
+
+    private static func vectorLength(_ value: SIMD3<Double>) -> Double {
+        sqrt(value.x * value.x + value.y * value.y + value.z * value.z)
+    }
+
+    private static func smallestEigenvalue(_ matrix: [[Double]]) -> Double {
+        var a = matrix
+        for _ in 0..<48 {
+            var p = 0
+            var q = 1
+            var largest = abs(a[0][1])
+            if abs(a[0][2]) > largest { p = 0; q = 2; largest = abs(a[0][2]) }
+            if abs(a[1][2]) > largest { p = 1; q = 2; largest = abs(a[1][2]) }
+            if largest < 1e-15 { break }
+            let angle = 0.5 * atan2(2 * a[p][q], a[q][q] - a[p][p])
+            let cosine = cos(angle)
+            let sine = sin(angle)
+            let app = cosine * cosine * a[p][p] - 2 * sine * cosine * a[p][q] + sine * sine * a[q][q]
+            let aqq = sine * sine * a[p][p] + 2 * sine * cosine * a[p][q] + cosine * cosine * a[q][q]
+            for row in 0..<3 where row != p && row != q {
+                let arp = cosine * a[row][p] - sine * a[row][q]
+                let arq = sine * a[row][p] + cosine * a[row][q]
+                a[row][p] = arp; a[p][row] = arp
+                a[row][q] = arq; a[q][row] = arq
+            }
+            a[p][p] = app
+            a[q][q] = aqq
+            a[p][q] = 0
+            a[q][p] = 0
+        }
+        return max(0, min(a[0][0], min(a[1][1], a[2][2])))
+    }
+
+    private static func saveEvolutionState(
+        fields: [String: [Float]], status: [Float], step: Int, directory: URL
+    ) throws -> [String: Any] {
+        let orderedFields = [
+            ("u", fields["u/ping"]!),
+            ("v", fields["v/ping"]!),
+            ("w", fields["w/ping"]!),
+            ("dye", fields["dye/ping"]!),
+            ("q-high", fields["q-high-low/ping"]!),
+            ("q-low", fields["q-high-low/pong"]!),
+        ]
+        var data = Data()
+        for (_, values) in orderedFields {
+            for value in values {
+                var bits = value.bitPattern.littleEndian
+                withUnsafeBytes(of: &bits) { data.append(contentsOf: $0) }
+            }
+        }
+        let filename = String(format: "recipe-state-step-%03d.f32le", step)
+        try data.write(to: directory.appendingPathComponent(filename), options: .atomic)
+        return [
+            "file": filename,
+            "byteCount": data.count,
+            "dtype": "float32-le",
+            "arrayOrder": "x-fastest; u, v, w, dye, q-high, q-low",
+            "shapes": [
+                "u": [65, 64, 64], "v": [64, 65, 64], "w": [64, 64, 65],
+                "dye": [64, 64, 64], "q-high": [64, 64, 64], "q-low": [64, 64, 64],
+            ],
+            "statusLanes": status,
+        ]
+    }
+
+    private static func runAsymmetricFullVolumeTransport(
+        metal: MetalDevice, referenceDirectory: URL
+    ) throws -> [String: Any] {
+        let manifest = try JSONSerialization.jsonObject(
+            with: Data(contentsOf: referenceDirectory.appendingPathComponent("manifest.json"))
+        ) as! [String: Any]
+        guard let payloads = manifest["binaryPayloads"] as? [[String: Any]],
+              let payload = payloads.first(where: { ($0["fixture"] as? String) == "full_volume_unequal_axis" }),
+              let referenceSummary = manifest["fullVolumeUnequalAxis"] as? [String: Any] else {
+            throw Fluid3DHarnessError.assertion("CPU reference omitted the full-volume unequal-axis fixture")
+        }
+        let reference = try loadProjectionPayload(payload, directory: referenceDirectory)
+        guard let u = reference["u_input"], let v = reference["v_input"], let w = reference["w_input"],
+              let initialDye = reference["dye_step0"] else {
+            throw Fluid3DHarnessError.assertion("Full-volume unequal-axis payload omitted an input array")
+        }
+        let simulation = try FluidSimulation3D(metal: metal)
+        let upload = metal.newCommandBuffer()
+        try simulation.u.encodeUpload(u.map(Float.init), to: simulation.u.ping, command: upload)
+        try simulation.v.encodeUpload(v.map(Float.init), to: simulation.v.ping, command: upload)
+        try simulation.w.encodeUpload(w.map(Float.init), to: simulation.w.ping, command: upload)
+        try simulation.dye.encodeUpload(initialDye.map(Float.init), to: simulation.dye.ping, command: upload)
+        upload.commit()
+        upload.waitUntilCompleted()
+        try require(upload.status == .completed, "Full-volume unequal-axis initial upload failed")
+
+        var observations: [Int: [String: Any]] = [:]
+        let startDye = try readActiveDye(simulation)
+        let startVelocity = try readActiveVelocity(simulation)
+        try require([startVelocity.u, startVelocity.v, startVelocity.w]
+            .allSatisfy({ $0.allSatisfy(\.isFinite) }),
+                    "Full-volume unequal-axis input velocity is nonfinite")
+        _ = try exactWallZeros(u: startVelocity.u, v: startVelocity.v, w: startVelocity.w,
+                               nx: 64, ny: 64, nz: 64, label: "full-volume start")
+        observations[0] = volumeStatistics(startDye, nx: 64, ny: 64, nz: 64).merging([
+            "velocityMaximumAbsolute": [
+                "u": startVelocity.u.map { abs(Double($0)) }.max() ?? 0,
+                "v": startVelocity.v.map { abs(Double($0)) }.max() ?? 0,
+                "w": startVelocity.w.map { abs(Double($0)) }.max() ?? 0,
+            ],
+            "velocityFinite": true,
+            "exactWallNormals": true,
+        ]) { _, newer in newer }
+        for step in 1...48 {
+            try command(metal) { try simulation.encodeAdvection(command: $0) }
+            if step == 24 || step == 48 {
+                let dye = try readActiveDye(simulation)
+                let velocity = try readActiveVelocity(simulation)
+                try require([velocity.u, velocity.v, velocity.w]
+                    .allSatisfy({ $0.allSatisfy(\.isFinite) }),
+                            "Full-volume unequal-axis velocity became nonfinite at step \(step)")
+                _ = try exactWallZeros(u: velocity.u, v: velocity.v, w: velocity.w,
+                                       nx: 64, ny: 64, nz: 64,
+                                       label: "full-volume step \(step)")
+                let stats = volumeStatistics(dye, nx: 64, ny: 64, nz: 64)
+                try require(stats["finite"] as? Bool == true,
+                            "Full-volume unequal-axis transport became nonfinite at step \(step)")
+                observations[step] = stats.merging([
+                    "velocityMaximumAbsolute": [
+                        "u": velocity.u.map { abs(Double($0)) }.max() ?? 0,
+                        "v": velocity.v.map { abs(Double($0)) }.max() ?? 0,
+                        "w": velocity.w.map { abs(Double($0)) }.max() ?? 0,
+                    ],
+                    "velocityFinite": true,
+                    "exactWallNormals": true,
+                ]) { _, newer in newer }
+            }
+        }
+        let end = observations[48]!
+        let startCentroid = observations[0]!["centroid"] as! [Double]
+        let endCentroid = end["centroid"] as! [Double]
+        let zDisplacementCells = abs(endCentroid[2] - startCentroid[2]) * 64
+        try require(zDisplacementCells >= 0.5,
+                    "Full-volume unequal-axis transport moved dye less than half a cell in Z: \(zDisplacementCells)")
+        let referenceVelocity = referenceSummary["velocity"] as! [Double]
+        try require(Set(referenceVelocity).count == 3 && referenceVelocity.allSatisfy { $0 != 0 },
+                    "Reference transport must exercise three unequal nonzero axes")
+        return [
+            "grid": [64, 64, 64],
+            "referenceVelocityXYZ": referenceVelocity,
+            "observations": [0, 24, 48].map { step in ["step": step, "statistics": observations[step]!] as [String: Any] },
+            "centroidZDisplacementCells": zDisplacementCells,
+            "minimumCentroidZDisplacementCells": 0.5,
+            "cpuReference": referenceSummary,
+            "finite": true,
+            "massConservationClaimed": false,
+        ]
+    }
+
+    private static func readActiveDye(_ simulation: FluidSimulation3D) throws -> [Float] {
+        let command = simulation.metal.newCommandBuffer()
+        let readback = try simulation.dye.encodeReadback(from: simulation.dye.ping, command: command)
+        command.commit()
+        command.waitUntilCompleted()
+        try require(command.status == .completed, "Full-volume dye readback failed")
+        let values = try simulation.dye.decodeReadback(readback)
+        try require(values.allSatisfy(\.isFinite) && values.allSatisfy { (0...1).contains($0) },
+                    "Full-volume unequal-axis dye became nonfinite or out of range")
+        return values
     }
 
     private static func resetAndFinite(metal: MetalDevice, referenceDirectory: URL) throws -> [String: Any] {

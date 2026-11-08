@@ -8,6 +8,79 @@ struct Fluid3DUniforms {
     uint4 output;
 };
 
+struct Fluid3DSliceVertex {
+    float2 position;
+    float2 worldXY;
+};
+
+struct Fluid3DSliceVertexOutput {
+    float4 position [[position]];
+    float2 worldXY [[user(locn0)]];
+};
+
+struct Fluid3DSlicePalette {
+    float4 black;
+    float4 amber;
+    float4 cream;
+    float4 stops;
+};
+
+vertex Fluid3DSliceVertexOutput fluid3DVertex(
+    const device Fluid3DSliceVertex *vertices [[buffer(0)]],
+    uint vertexID [[vertex_id]]) {
+    Fluid3DSliceVertexOutput output;
+    output.position = float4(vertices[vertexID].position, 0.0f, 1.0f);
+    output.worldXY = vertices[vertexID].worldXY;
+    return output;
+}
+
+inline float fluid3DSampleCentralXY(
+    texture3d<float, access::read> dye,
+    float2 worldXY) {
+    float3 extent = float3(float(dye.get_width()), float(dye.get_height()), float(dye.get_depth()));
+    float3 coordinate = clamp(float3(worldXY, 0.5f) * extent - 0.5f, 0.0f, extent - 1.0f);
+    int3 lower = int3(floor(coordinate));
+    int3 upper = min(lower + 1, int3(extent) - 1);
+    float3 fraction = coordinate - float3(lower);
+
+    float c000 = dye.read(uint3(lower.x, lower.y, lower.z)).x;
+    float c100 = dye.read(uint3(upper.x, lower.y, lower.z)).x;
+    float c010 = dye.read(uint3(lower.x, upper.y, lower.z)).x;
+    float c110 = dye.read(uint3(upper.x, upper.y, lower.z)).x;
+    float c001 = dye.read(uint3(lower.x, lower.y, upper.z)).x;
+    float c101 = dye.read(uint3(upper.x, lower.y, upper.z)).x;
+    float c011 = dye.read(uint3(lower.x, upper.y, upper.z)).x;
+    float c111 = dye.read(uint3(upper.x, upper.y, upper.z)).x;
+
+    float lowerPlane = mix(
+        mix(c000, c100, fraction.x),
+        mix(c010, c110, fraction.x),
+        fraction.y);
+    float upperPlane = mix(
+        mix(c001, c101, fraction.x),
+        mix(c011, c111, fraction.x),
+        fraction.y);
+    return mix(lowerPlane, upperPlane, fraction.z);
+}
+
+fragment float4 fluid3DFixedSlice(
+    Fluid3DSliceVertexOutput input [[stage_in]],
+    texture3d<float, access::read> dye [[texture(0)]],
+    constant Fluid3DSlicePalette &palette [[buffer(0)]]) {
+    float concentration = clamp(fluid3DSampleCentralXY(dye, input.worldXY), 0.0f, 1.0f);
+    float3 encodedRGB;
+    if (concentration <= palette.stops.y) {
+        float amount = (concentration - palette.stops.x) / (palette.stops.y - palette.stops.x);
+        encodedRGB = mix(palette.black.rgb, palette.amber.rgb, amount);
+    } else {
+        float amount = (concentration - palette.stops.y) / (palette.stops.z - palette.stops.y);
+        encodedRGB = mix(palette.amber.rgb, palette.cream.rgb, amount);
+    }
+    // The palette is already expressed in encoded channel values. The
+    // non-sRGB bgra8Unorm render target stores these values without another OETF.
+    return float4(encodedRGB, 1.0f);
+}
+
 kernel void fluid3DABIRoundTrip(
     constant Fluid3DUniforms &input [[buffer(0)]],
     device Fluid3DUniforms *output [[buffer(1)]],

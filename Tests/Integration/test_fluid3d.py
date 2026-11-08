@@ -24,7 +24,9 @@ SWIFT_SOURCES = [
     "Sources/Shared/MetalDevice.swift",
     "Sources/Shared/SimulationTypes3D.swift",
     "Sources/Shared/VolumeField3D.swift",
+    "Sources/Shared/ExperimentRecipes3D.swift",
     "Sources/Shared/FluidSimulation3D.swift",
+    "Sources/Shared/FieldVisualization3D.swift",
     "Sources/Shared/PressureProjection3D.swift",
     "Tests/Integration/fluid3d_float32_pcg_diagnostic.swift",
     "Tests/Integration/test_fluid3d.swift",
@@ -76,6 +78,12 @@ class Fluid3DTests(unittest.TestCase):
 
     def test_reset_and_finite(self):
         self.run_production_fixture("reset-finite")
+
+    def test_slice_and_palette(self):
+        self.run_production_fixture("slice-palette")
+
+    def test_evolution_and_visibility(self):
+        self.run_production_fixture("evolution-visibility")
 
     def run_production_fixture(self, fixture: str) -> None:
         evidence_dir = ROOT / ".build/fluid3d-evidence"
@@ -253,7 +261,7 @@ class Fluid3DTests(unittest.TestCase):
                 run_command,
                 capture_output=True,
                 text=True,
-                timeout=1800 if fixture == "reset-finite" else 600,
+                timeout=1800 if fixture in {"reset-finite", "evolution-visibility"} else 600,
                 env=dict(os.environ, MTL_DEBUG_LAYER="1"),
             )
             log_path.write_text(
@@ -313,6 +321,24 @@ class Fluid3DTests(unittest.TestCase):
             report_path.write_text(
                 json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
             )
+            if fixture == "evolution-visibility":
+                recipe_path = evidence_dir / "recipe.json"
+                recipe_path.write_text(
+                    json.dumps(
+                        {
+                            "schemaVersion": 1,
+                            "fixture": fixture,
+                            "referenceContractSHA256": manifest["contractHash"],
+                            "sourceSHA256": report["sourceSHA256"],
+                            "result": result,
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                print(f"RECIPE EVIDENCE: {recipe_path}")
             print(f"PASS: {fixture}; evidence: {report_path}")
 
 

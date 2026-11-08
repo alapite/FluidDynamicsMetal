@@ -36,6 +36,12 @@
 		D71500000000000000000001 /* PressureProjection3D.swift in macOS Sources */ = {isa = PBXBuildFile; fileRef = D71000000000000000000005 /* PressureProjection3D.swift */; };
 		D71500000000000000000002 /* PressureProjection3D.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = D71000000000000000000005 /* PressureProjection3D.swift */; };
 		D71500000000000000000003 /* PressureProjection3D.swift in state test Sources */ = {isa = PBXBuildFile; fileRef = D71000000000000000000005 /* PressureProjection3D.swift */; };
+		D71700000000000000000001 /* FieldVisualization3D.swift in macOS Sources */ = {isa = PBXBuildFile; fileRef = D71600000000000000000001 /* FieldVisualization3D.swift */; };
+		D71700000000000000000002 /* FieldVisualization3D.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = D71600000000000000000001 /* FieldVisualization3D.swift */; };
+		D71700000000000000000003 /* FieldVisualization3D.swift in state test Sources */ = {isa = PBXBuildFile; fileRef = D71600000000000000000001 /* FieldVisualization3D.swift */; };
+		D71800000000000000000001 /* ExperimentRecipes3D.swift in macOS Sources */ = {isa = PBXBuildFile; fileRef = D71800000000000000000004 /* ExperimentRecipes3D.swift */; };
+		D71800000000000000000002 /* ExperimentRecipes3D.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = D71800000000000000000004 /* ExperimentRecipes3D.swift */; };
+		D71800000000000000000003 /* ExperimentRecipes3D.swift in state test Sources */ = {isa = PBXBuildFile; fileRef = D71800000000000000000004 /* ExperimentRecipes3D.swift */; };
 		B40000000000000000000001 /* Mac HUDUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000003 /* Mac HUDUITests.swift */; };
 		B40000000000000000000002 /* iOS HUDUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000004 /* iOS HUDUITests.swift */; };
 		A30000000000000000000001 /* SimulationState.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000004 /* SimulationState.swift */; };
@@ -81,6 +87,8 @@
 		D71000000000000000000003 /* Shaders3D.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders3D.metal; sourceTree = "<group>"; };
 		D71000000000000000000004 /* FluidSimulation3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidSimulation3D.swift; sourceTree = "<group>"; };
 		D71000000000000000000005 /* PressureProjection3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PressureProjection3D.swift; sourceTree = "<group>"; };
+		D71600000000000000000001 /* FieldVisualization3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldVisualization3D.swift; sourceTree = "<group>"; };
+		D71800000000000000000004 /* ExperimentRecipes3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentRecipes3D.swift; sourceTree = "<group>"; };
 		C60000000000000000000004 /* Integration */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Integration; sourceTree = "<group>"; };
 		B40000000000000000000003 /* Mac HUDUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDUITests.swift; sourceTree = "<group>"; };
 		B40000000000000000000004 /* iOS HUDUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUDUITests.swift; sourceTree = "<group>"; };
@@ -197,6 +205,8 @@
 				D71000000000000000000002 /* VolumeField3D.swift */,
 				D71000000000000000000004 /* FluidSimulation3D.swift */,
 				D71000000000000000000005 /* PressureProjection3D.swift */,
+				D71600000000000000000001 /* FieldVisualization3D.swift */,
+				D71800000000000000000004 /* ExperimentRecipes3D.swift */,
 				75F3F0811F31AE8D00A3EC4A /* Shaders.metal */,
 				D71000000000000000000003 /* Shaders3D.metal */,
 			);
@@ -386,7 +396,7 @@
 /* Begin PBXSourcesBuildPhase section */
 		B4000000000000000000000D /* Mac UI Test Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B40000000000000000000001 /* Mac HUDUITests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 		B4000000000000000000000E /* iOS UI Test Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B40000000000000000000002 /* iOS HUDUITests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
-		A3000000000000000000000B /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (E100000000000000000000004 /* SimulationTypes.swift in Sources */, E100000000000000000001004 /* ExperimentRecipes.swift in Sources */, E100000000000000000002004 /* FluidSimulation.swift in Sources */, E100000000000000000003004 /* FieldVisualization.swift in Sources */, E100000000000000000004004 /* ParticleSystem.swift in Sources */, D71100000000000000000003 /* SimulationTypes3D.swift in state test Sources */, D71200000000000000000003 /* VolumeField3D.swift in state test Sources */, D71400000000000000000003 /* FluidSimulation3D.swift in state test Sources */, D71500000000000000000003 /* PressureProjection3D.swift in state test Sources */, A30000000000000000000003 /* SimulationState.swift in Test Sources */, A30000000000000000000012 /* Renderer.swift in Test Sources */, A30000000000000000000013 /* MetalDevice.swift in Test Sources */, A30000000000000000000014 /* RenderShader.swift in Test Sources */, A30000000000000000000015 /* Slab.swift in Test Sources */, A30000000000000000000005 /* SimulationStateTests.swift in Sources */, A30000000000000000000010 /* RendererContactTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A3000000000000000000000B /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (E100000000000000000000004 /* SimulationTypes.swift in Sources */, E100000000000000000001004 /* ExperimentRecipes.swift in Sources */, E100000000000000000002004 /* FluidSimulation.swift in Sources */, E100000000000000000003004 /* FieldVisualization.swift in Sources */, E100000000000000000004004 /* ParticleSystem.swift in Sources */, D71100000000000000000003 /* SimulationTypes3D.swift in state test Sources */, D71200000000000000000003 /* VolumeField3D.swift in state test Sources */, D71400000000000000000003 /* FluidSimulation3D.swift in state test Sources */, D71500000000000000000003 /* PressureProjection3D.swift in state test Sources */, D71700000000000000000003 /* FieldVisualization3D.swift in state test Sources */, D71800000000000000000003 /* ExperimentRecipes3D.swift in state test Sources */, A30000000000000000000003 /* SimulationState.swift in Test Sources */, A30000000000000000000012 /* Renderer.swift in Test Sources */, A30000000000000000000013 /* MetalDevice.swift in Test Sources */, A30000000000000000000014 /* RenderShader.swift in Test Sources */, A30000000000000000000015 /* Slab.swift in Test Sources */, A30000000000000000000005 /* SimulationStateTests.swift in Sources */, A30000000000000000000010 /* RendererContactTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 		75D5208E1FE5539E003525F9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -400,6 +410,8 @@
 				D71200000000000000000001 /* VolumeField3D.swift in macOS Sources */,
 				D71400000000000000000001 /* FluidSimulation3D.swift in macOS Sources */,
 				D71500000000000000000001 /* PressureProjection3D.swift in macOS Sources */,
+				D71700000000000000000001 /* FieldVisualization3D.swift in macOS Sources */,
+				D71800000000000000000001 /* ExperimentRecipes3D.swift in macOS Sources */,
 				75D520AA1FE553EA003525F9 /* MetalDevice.swift in Sources */,
 				75D520AD1FE553EA003525F9 /* Shaders.metal in Sources */,
 				D71300000000000000000001 /* Shaders3D.metal in macOS Sources */,
@@ -429,6 +441,8 @@
 				D71200000000000000000002 /* VolumeField3D.swift in iOS Sources */,
 				D71400000000000000000002 /* FluidSimulation3D.swift in iOS Sources */,
 				D71500000000000000000002 /* PressureProjection3D.swift in iOS Sources */,
+				D71700000000000000000002 /* FieldVisualization3D.swift in iOS Sources */,
+				D71800000000000000000002 /* ExperimentRecipes3D.swift in iOS Sources */,
 				75A202DD1F4818C30089F3A7 /* RenderViewController.swift in Sources */,
 				7594D43A1F4361F300E4AE27 /* Slab.swift in Sources */,
 				75F3F06C1F311D4A00A3EC4A /* AppDelegate.swift in Sources */,

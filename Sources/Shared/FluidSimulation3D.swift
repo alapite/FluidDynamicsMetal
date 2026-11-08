@@ -70,12 +70,7 @@ final class FluidSimulation3D {
         command: MTLCommandBuffer,
         initialState: Fluid3DInitialState? = nil
     ) throws -> PressureProjection3D.StatusSlot {
-        let seed = initialState ?? Fluid3DInitialState(
-            u: Array(repeating: 0, count: u.width * u.height * u.depth),
-            v: Array(repeating: 0, count: v.width * v.height * v.depth),
-            w: Array(repeating: 0, count: w.width * w.height * w.depth),
-            dye: Array(repeating: 0, count: dye.width * dye.height * dye.depth)
-        )
+        let seed = initialState ?? ExperimentRecipes3D.initialState(for: configuration)
         for (values, field) in [(seed.u, u), (seed.v, v), (seed.w, w), (seed.dye, dye)] {
             guard values.count == field.width * field.height * field.depth,
                   values.allSatisfy(\.isFinite) else {
