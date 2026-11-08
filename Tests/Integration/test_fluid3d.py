@@ -22,6 +22,15 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_HASH = "a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b"
 SWIFT_SOURCES = [
     "Sources/Shared/MetalDevice.swift",
+    "Sources/Shared/RenderShader.swift",
+    "Sources/Shared/Slab.swift",
+    "Sources/Shared/SimulationState.swift",
+    "Sources/Shared/SimulationTypes.swift",
+    "Sources/Shared/ExperimentRecipes.swift",
+    "Sources/Shared/FluidSimulation.swift",
+    "Sources/Shared/FieldVisualization.swift",
+    "Sources/Shared/ParticleSystem.swift",
+    "Sources/Shared/Renderer.swift",
     "Sources/Shared/SimulationTypes3D.swift",
     "Sources/Shared/VolumeField3D.swift",
     "Sources/Shared/ExperimentRecipes3D.swift",
