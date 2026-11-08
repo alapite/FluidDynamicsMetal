@@ -175,6 +175,91 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(app.popUpButtons["experimentSelector"].value as? String, "Free Play")
         XCTAssertFalse(app.buttons["transport.step"].isEnabled)
     }
+
+    func testThreeDGroupedNavigationAndTransport() throws {
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+
+        let selectorItems = selector.menuItems
+        let twoDHeading = selectorItems["2D"]
+        let threeDHeading = selectorItems["3D"]
+        XCTAssertTrue(twoDHeading.exists)
+        XCTAssertTrue(threeDHeading.exists)
+        XCTAssertFalse(twoDHeading.isEnabled)
+        XCTAssertFalse(threeDHeading.isEnabled)
+        let labels = selectorItems.allElementsBoundByIndex.map { $0.label }
+        let twoDIndex = try XCTUnwrap(labels.firstIndex(of: "2D"))
+        let threeDIndex = try XCTUnwrap(labels.firstIndex(of: "3D"))
+        XCTAssertEqual(Array(labels[(twoDIndex + 1)..<threeDIndex]), [
+            "Free Play", "Dye carried by a flow", "Two interacting vortices", "Stretching dye by stirring"
+        ])
+        XCTAssertEqual(labels.last, "3D Dye Advection")
+        selectorItems["3D Dye Advection"].click()
+
+        XCTAssertEqual(selector.value as? String, "3D Dye Advection")
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+        XCTAssertTrue(app.buttons["Run"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["transport.step"].isEnabled)
+
+        let simulationMenu = app.menuBars.menuItems["Simulation"]
+        simulationMenu.click()
+        let menuItems = app.menuItems
+        XCTAssertTrue(menuItems["2D"].exists)
+        XCTAssertFalse(menuItems["2D"].isEnabled)
+        XCTAssertTrue(menuItems["3D"].exists)
+        XCTAssertFalse(menuItems["3D"].isEnabled)
+        XCTAssertTrue(menuItems["3D Dye Advection"].exists)
+        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
+
+        for (key, title) in [
+            ("1", "Free Play"),
+            ("2", "Dye carried by a flow"),
+            ("3", "Two interacting vortices"),
+            ("4", "Stretching dye by stirring")
+        ] {
+            command(key)
+            XCTAssertEqual(selector.value as? String, title)
+            XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+        }
+
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+        XCTAssertEqual(selector.value as? String, "3D Dye Advection")
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+        XCTAssertTrue(app.buttons["Run"].exists)
+    }
+
+    func testThreeDInitializationFailureRestoresTwoD() throws {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["--fluid3d-test-failure=allocation"]
+        app.launch()
+
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+
+        let alert = app.alerts["Couldn’t open 3D Dye Advection"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 10))
+        XCTAssertEqual(selector.value as? String, "Free Play")
+        XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
+        XCTAssertTrue(app.windows["FluidDynamicsMetalOSX"].exists)
+        alert.buttons["Continue in 2D"].click()
+
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.4))
+        let end = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.6))
+        start.click(forDuration: 0.3, thenDragTo: end)
+        XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
+
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+        XCTAssertEqual(selector.value as? String, "3D Dye Advection")
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+    }
+
     func testLessonCompletion() {
         XCTAssertTrue(app.popUpButtons["experimentSelector"].waitForExistence(timeout: 10))
         command("2"); command("p")
