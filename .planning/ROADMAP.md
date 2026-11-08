@@ -52,7 +52,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 07-04-PLAN.md — Validate the fixed amber XY slice and readable genuine-3D seed/early window.
+- [x] 07-04-PLAN.md — Validate the fixed amber XY slice and readable genuine-3D seed/early window.
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -135,7 +135,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 7. First 3D Fluid Vertical Slice | 4/9 | In Progress | — |
+| 7. First 3D Fluid Vertical Slice | 5/9 | In Progress | — |
 | 8. Spatial Inspection | 0/TBD | Not started | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |

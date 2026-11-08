@@ -113,12 +113,11 @@ None. Inline review strengthened the unequal-axis fixture to check finite `u/v/w
 
 ## Verification
 
-- Fresh macOS app build: passed.
-- Fresh iOS Simulator app build: passed.
-- Focused `test_slice_and_palette`: passed; `test_evolution_and_visibility`: passed (49.061 s on the final Task 2 fixture).
+- Fresh macOS app build and iOS Simulator app build, rerun during inline review: passed.
+- Focused plan-gate rerun during inline review: `test_slice_and_palette` and `test_evolution_and_visibility` both passed (2 tests, 77.597 s total); the final Task 2 fixture had originally passed in 49.061 s.
 - `python3 -m unittest discover -s Tests/Integration`: 25 tests passed in 477.711 s, including full CPU-reference feasibility and production GPU fixtures.
 - macOS HUD suite: 9 tests passed; focused `FluidDynamicsMetalStateTests`: 25 tests passed.
-- iOS HUD suite: 11 tests passed on iPhone 17 Pro simulator (iOS 26.4) and 11 tests passed on iPad Pro 13-inch simulator (iOS 26.4).
+- iOS HUD suite: 11 tests passed on iPhone 17 Pro simulator (iOS 26.4) and 11 tests passed on the available iPad simulator (iOS 26.3). A separate run on the iPad Pro 13-inch M5 simulator (iOS 26.4) had 6 passed / 5 failed: each failure timed out at `HUDUITests.swift:137` with “Application must actually rotate before checking its layout”; the simulator logged device rotation but the app frame did not rotate. This unrelated simulator/test diagnostic is recorded without changing UI code.
 - Maximum projection iterations during the visibility fixture: 131; no convergence cap hit or nonfinite state was observed.
 
 ## Evidence and Remaining Review
@@ -131,8 +130,15 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-The numerical implementation, fixed palette/slice contract, and reproducible early-window captures are ready for the later evidence and human-review steps. This execution stopped after plan 07-04; it did not run later plans or update `.planning/STATE.md` or `.planning/ROADMAP.md`. Human confirmation that the captures read as one clear tumbling amber patch remains outstanding.
+The numerical implementation, fixed palette/slice contract, and reproducible early-window captures are ready for the later evidence and human-review steps. Plan 07-04 is recorded complete in `.planning/STATE.md` and `.planning/ROADMAP.md`; Wave 5 / plan 07-06 is next, with four plans still incomplete. No later plan or phase-level verification/completion was run. Phase 7 requirements remain pending. Human confirmation that the captures read as one clear tumbling amber patch remains outstanding.
 
 ---
 *Phase: 07-first-3d-fluid-vertical-slice*
 *Completed: 2026-11-08*
+
+## Self-Check: PASSED
+
+- Inline review checked the fixed midpoint/orientation/palette and read-only presentation against Task 1, and the reset-only compact seed, three-component evolution, visibility gates, and recorded transport metrics against Task 2.
+- Changed paths are limited to the 3D implementation, its project registration and integration fixtures, plus planning artifacts; the established 2D solver and Swift/Metal ABI remain unchanged.
+- Fresh inline-review reruns of both target builds and both plan-specific fixtures passed. The iPadOS 26.4 rotation diagnostic is disclosed above; the full iPad HUD suite passed on the available iOS 26.3 simulator, and no unrelated UI change was made.
+- Requirements remain pending; later plans, phase completion, and human visual approval remain gated.
