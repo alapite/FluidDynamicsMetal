@@ -405,6 +405,20 @@ private struct Fluid3DChecks {
                     && renderer.lastModeOutcome?.succeeded == false && renderer.state.stepCount == 0,
                     "A failed 3D solver completion must invalidate the session, avoid a successful step, and recover to 2D")
 
+        let staleView = MTKView(frame: .zero, device: device)
+        let staleRenderer = Renderer(metalView: staleView, metal: metal)
+        staleRenderer.selectMode(.dyeAdvection3D)
+        staleRenderer.requestSingleStep()
+        staleRenderer.draw(in: staleView)
+        staleRenderer.selectMode(.freePlay)
+        let committedTwoDOutcome = staleRenderer.lastModeOutcome
+        pumpRendererCallbacks()
+        try require(staleRenderer.state.mode == .freePlay && staleRenderer.state.stepCount == 0
+                    && staleRenderer.state.pendingSteps == 0
+                    && staleRenderer.lastModeOutcome == committedTwoDOutcome
+                    && staleRenderer.completed3DStepCount == 0,
+                    "A delayed 3D completion must not mutate the new 2D session or its mode outcome")
+
         return [
             "passed": true,
             "fixture": "renderer-steps-and-inactivity",
@@ -416,6 +430,7 @@ private struct Fluid3DChecks {
             "pausedAndRunningInactivityFrozen": true,
             "reactivationCatchUp": false,
             "solverFaultRecoveredToTwoD": true,
+            "staleCompletionIgnoredAfterModeTransition": true,
         ]
     }
 
