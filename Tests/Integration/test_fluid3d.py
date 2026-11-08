@@ -94,6 +94,9 @@ class Fluid3DTests(unittest.TestCase):
     def test_evolution_and_visibility(self):
         self.run_production_fixture("evolution-visibility")
 
+    def test_transitions_and_failures(self):
+        self.run_production_fixture("transitions-and-failures")
+
     def run_production_fixture(self, fixture: str) -> None:
         evidence_dir = ROOT / ".build/fluid3d-evidence"
         reference_dir = ROOT / ".build/fluid3d-reference"

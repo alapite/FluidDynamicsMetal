@@ -3,8 +3,7 @@ import Metal
 import simd
 
 /// Production 3D storage and transport, independent from the view-facing 2D
-/// renderer. Callers serialize mutation and keep the command buffer ordering.
-/// The complete evolution path remains unconnected to UI until later plans.
+/// solver. The renderer owns mode routing and serializes mutation/command order.
 @MainActor
 final class FluidSimulation3D {
     enum Generation {

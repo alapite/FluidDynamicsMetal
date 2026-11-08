@@ -189,6 +189,7 @@ struct SimulationState {
         guard canStep, !mode.isLesson || pendingSteps < Self.lessonSteps - stepCount else { return false }
         pendingSteps += 1; return true
     }
+    mutating func cancelPendingSteps() { pendingSteps = 0 }
     // Called once for each encoded step, independently of drawable availability.
     @discardableResult mutating func consumeStep() -> Bool {
         guard shouldAdvance || (canStep && pendingSteps > 0) else { return false }

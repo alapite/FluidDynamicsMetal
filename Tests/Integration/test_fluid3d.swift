@@ -1,5 +1,6 @@
 import Foundation
 import Metal
+import MetalKit
 import simd
 
 private enum Fluid3DHarnessError: Error, CustomStringConvertible {
@@ -76,11 +77,14 @@ private struct Fluid3DChecks {
         guard fixture == "storage-abi" || fixture == "advection-boundaries"
                 || fixture == "slice-palette"
                 || fixture == "evolution-visibility"
-                || fixture == "operators" || fixture == "projection" || fixture == "reset-finite" else {
+                || fixture == "operators" || fixture == "projection" || fixture == "reset-finite"
+                || fixture == "transitions-and-failures" else {
             throw Fluid3DHarnessError.usage("unknown fixture selector: \(fixture)")
         }
         let result: [String: Any]
-        if fixture == "slice-palette" {
+        if fixture == "transitions-and-failures" {
+            result = try rendererTransitionsAndFailures(device: device, metal: metal)
+        } else if fixture == "slice-palette" {
             result = try sliceAndPalette(
                 device: device,
                 metal: metal,
@@ -116,6 +120,167 @@ private struct Fluid3DChecks {
             )
         }
         try emit(result)
+    }
+
+    private static func rendererTransitionsAndFailures(
+        device: MTLDevice,
+        metal: MetalDevice
+    ) throws -> [String: Any] {
+        let view = MTKView(frame: CGRect(x: 0, y: 0, width: 64, height: 48), device: device)
+        let renderer = Renderer(metalView: view, metal: metal)
+        let originalTwoDSimulation = renderer.simulation!
+        renderer.setTuningPosition(0.85, for: .force)
+        renderer.selectField(.pressure)
+        let originalTuning = renderer.state.tuning
+        let originalOptions = DisplayOptions(arrows: true, particles: false, trails: true)
+        renderer.setDisplayOptions(originalOptions)
+
+        renderer.selectMode(.dyeAdvection3D)
+        let first3DSimulation = renderer.simulation3D
+        try require(renderer.simulation === originalTwoDSimulation,
+                    "3D entry must retain the committed 2D resources instead of reallocating them at the view size")
+        try require(first3DSimulation?.configuration == .production,
+                    "Successful entry must commit the fixed production 64-cubed simulation")
+        try require(renderer.state.mode == .dyeAdvection3D && renderer.state.userPaused
+                    && renderer.state.stepCount == 0 && renderer.state.pendingSteps == 0,
+                    "Successful 3D entry must publish a reset, paused session at step zero")
+        try require(renderer.lastModeOutcome?.succeeded == true
+                    && renderer.lastModeOutcome?.committedMode == .dyeAdvection3D,
+                    "Successful entry must publish its committed mode outcome")
+
+        view.frame = CGRect(x: 0, y: 0, width: 80, height: 64)
+        renderer.mtkView(view, drawableSizeWillChange: view.drawableSize)
+        try require(renderer.simulation === originalTwoDSimulation && renderer.simulation3D === first3DSimulation,
+                    "3D viewport changes must not replace either dimension's resources")
+
+        renderer.selectMode(.freePlay)
+        try require(renderer.state.mode == .freePlay && renderer.state.shouldAdvance
+                    && renderer.simulation3D == nil,
+                    "Returning to 2D Free Play must restore its running mode and retire 3D resources")
+        try require(renderer.simulation.width == Int(view.bounds.width)
+                    && renderer.simulation.height == Int(view.bounds.height),
+                    "Returning to Free Play must size the 2D simulation from the current view")
+        try require(renderer.state.tuning == originalTuning && renderer.state.field == .pressure
+                    && renderer.state.displayOptions == originalOptions,
+                    "Returning through 3D must retain Free Play preferences")
+        renderer.enqueueTap(at: SIMD2<Float>(40, 32), in: view)
+        renderer.draw(in: view)
+        try require(renderer.state.stepCount == 1,
+                    "A fresh 2D input/step must still execute after returning from 3D")
+
+        let twoDModes = [SimulationMode.freePlay] + ExperimentID.allCases.map { SimulationMode.experiment($0) }
+        for mode in twoDModes {
+            if !renderer.state.mode.is3D { renderer.selectMode(.dyeAdvection3D) }
+            try require(renderer.simulation3D?.configuration == .production,
+                        "Each 2D return case must start from a committed production 3D session")
+            renderer.selectMode(mode)
+            try require(renderer.state.mode == mode && renderer.simulation3D == nil,
+                        "3D-to-\(mode.title) transition must commit the requested 2D mode")
+            if let experiment = mode.experiment {
+                try require(renderer.simulation.width == ExperimentRecipes.gridSize
+                            && renderer.simulation.height == ExperimentRecipes.gridSize
+                            && renderer.state.userPaused
+                            && renderer.state.adjustment == experiment.defaultAdjustment
+                            && renderer.state.field == experiment.defaultField
+                            && renderer.state.displayOptions == .lesson,
+                            "3D-to-\(mode.title) must restore documented 2D lesson defaults")
+            }
+        }
+
+        var failureReports: [String] = []
+        for point in ["allocation", "pipeline", "reset", "wrong-grid"] {
+            let failureView = MTKView(frame: CGRect(x: 0, y: 0, width: 64, height: 48), device: device)
+            var failNext = true
+            func injectFailure(_ stage: String) throws {
+                guard failNext, point == stage else { return }
+                failNext = false
+                throw Fluid3DHarnessError.library("injected \(stage) failure")
+            }
+            let factory = Renderer3DSessionFactory(
+                makeSimulation: { factoryMetal in
+                    try injectFailure("allocation")
+                    if point == "wrong-grid", failNext {
+                        failNext = false
+                        let configuration = try FluidSimulation3DConfiguration.fixture(nx: 16, ny: 16, nz: 16)
+                        return try FluidSimulation3D(metal: factoryMetal, configuration: configuration)
+                    }
+                    return try FluidSimulation3D(metal: factoryMetal)
+                },
+                makeVisualization: { factoryMetal in
+                    try injectFailure("pipeline")
+                    return try FieldVisualization3D(metal: factoryMetal)
+                },
+                encodeReset: { simulation, command in
+                    if point == "reset", failNext {
+                        failNext = false
+                        let initialState = Fluid3DInitialState(
+                            u: Array(repeating: Float.greatestFiniteMagnitude, count: 65 * 64 * 64),
+                            v: Array(repeating: Float.greatestFiniteMagnitude, count: 64 * 65 * 64),
+                            w: Array(repeating: Float.greatestFiniteMagnitude, count: 64 * 64 * 65),
+                            dye: Array(repeating: 0, count: 64 * 64 * 64)
+                        )
+                        return try simulation.encodeReset(command: command, initialState: initialState)
+                    }
+                    return try simulation.encodeReset(command: command)
+                }
+            )
+            let failureRenderer = Renderer(metalView: failureView, metal: metal, threeDFactory: factory)
+            var observedOutcomes: [RendererModeOutcome] = []
+            failureRenderer.modeOutcomeDidChange = { observedOutcomes.append($0) }
+            let fallbackTwoD = failureRenderer.simulation!
+            failureRenderer.togglePause()
+            failureRenderer.requestSingleStep()
+            try require(failureRenderer.state.pendingSteps == 1,
+                        "Failure fixture must begin with a queued paused request")
+            failureRenderer.selectMode(.dyeAdvection3D)
+            try require(failureRenderer.state.mode == .freePlay && failureRenderer.simulation === fallbackTwoD
+                        && failureRenderer.state.pendingSteps == 0 && failureRenderer.simulation3D == nil,
+                        "Injected \(point) failure must preserve the committed 2D state/resources and cancel queued work")
+            let expectedFailureText: String
+            switch point {
+            case "reset": expectedFailureText = "3D initial reset projection"
+            case "wrong-grid": expectedFailureText = "fixed production grid"
+            default: expectedFailureText = "injected \(point) failure"
+            }
+            try require(failureRenderer.lastModeOutcome?.succeeded == false
+                        && failureRenderer.lastModeOutcome?.committedMode == .freePlay
+                        && failureRenderer.lastModeOutcome?.errorMessage?.contains(expectedFailureText) == true,
+                        "Injected \(point) failure must publish a typed failure with its diagnostic")
+
+            failureRenderer.selectMode(.dyeAdvection3D)
+            try require(failureRenderer.state.mode == .dyeAdvection3D
+                        && failureRenderer.simulation3D?.configuration == .production
+                        && failureRenderer.state.userPaused && failureRenderer.state.stepCount == 0,
+                        "Retry after injected \(point) failure must commit a reset 3D session")
+
+            failNext = true
+            failureRenderer.restartCurrentSimulation()
+            try require(failureRenderer.state.mode == .freePlay && failureRenderer.simulation3D == nil
+                        && failureRenderer.state.pendingSteps == 0
+                        && failureRenderer.lastModeOutcome?.succeeded == false,
+                        "Failed 3D restart after \(point) injection must recover to usable 2D")
+            failureRenderer.togglePause()
+            failureRenderer.enqueueTap(at: SIMD2<Float>(32, 24), in: failureView)
+            failureRenderer.draw(in: failureView)
+            try require(failureRenderer.state.stepCount == 1,
+                        "Semaphore and 2D stepping must remain live after \(point) rollback")
+            try require(observedOutcomes.count == 3
+                        && observedOutcomes[0].errorMessage != nil
+                        && observedOutcomes[1].succeeded
+                        && observedOutcomes[2].errorMessage != nil,
+                        "Mode outcome callback must report failure, retry success, and failed restart distinctly")
+            failureReports.append(point)
+        }
+
+        return [
+            "passed": true,
+            "fixture": "transitions-and-failures",
+            "device": device.name,
+            "retainedTwoDResources": true,
+            "threeDToTwoDModes": twoDModes.map(\.title),
+            "injectedFailures": failureReports,
+            "semaphoreRetryAndFallbackStep": true,
+        ]
     }
 
     private struct SliceImage {
