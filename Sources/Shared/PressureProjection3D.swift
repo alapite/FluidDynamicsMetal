@@ -40,7 +40,10 @@ final class PressureProjection3D {
     /// One GPU status allocation per queued projection. Keep a slot distinct
     /// until its command buffer completes; renderers can rotate three slots for
     /// three in-flight submissions without diagnostics being overwritten.
-    final class StatusSlot {
+    /// GPU writes complete before the renderer reads this immutable submission
+    /// result; the retained shared buffers are safe to inspect across that
+    /// completion boundary.
+    final class StatusSlot: @unchecked Sendable {
         fileprivate let buffer: MTLBuffer
         fileprivate let deviceRegistryID: UInt64
         fileprivate let pcgTraceBuffer: MTLBuffer?

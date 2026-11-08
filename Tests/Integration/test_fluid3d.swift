@@ -78,11 +78,13 @@ private struct Fluid3DChecks {
                 || fixture == "slice-palette"
                 || fixture == "evolution-visibility"
                 || fixture == "operators" || fixture == "projection" || fixture == "reset-finite"
-                || fixture == "transitions-and-failures" else {
+                || fixture == "transitions-and-failures" || fixture == "renderer-steps-and-inactivity" else {
             throw Fluid3DHarnessError.usage("unknown fixture selector: \(fixture)")
         }
         let result: [String: Any]
-        if fixture == "transitions-and-failures" {
+        if fixture == "renderer-steps-and-inactivity" {
+            result = try rendererStepsAndInactivity(device: device, metal: metal)
+        } else if fixture == "transitions-and-failures" {
             result = try rendererTransitionsAndFailures(device: device, metal: metal)
         } else if fixture == "slice-palette" {
             result = try sliceAndPalette(
@@ -281,6 +283,156 @@ private struct Fluid3DChecks {
             "injectedFailures": failureReports,
             "semaphoreRetryAndFallbackStep": true,
         ]
+    }
+
+    private static func rendererStepsAndInactivity(
+        device: MTLDevice,
+        metal: MetalDevice
+    ) throws -> [String: Any] {
+        let view = MTKView(frame: .zero, device: device)
+        let renderer = Renderer(metalView: view, metal: metal)
+        renderer.selectMode(.dyeAdvection3D)
+        guard let simulation = renderer.simulation3D else {
+            throw Fluid3DHarnessError.assertion("Renderer did not commit a 3D simulation for the scheduler fixture")
+        }
+        try require(view.currentDrawable == nil, "The scheduler fixture requires a nil drawable")
+        let reference = try FluidSimulation3D(metal: metal)
+        var referenceStatus: PressureProjection3D.StatusSlot!
+        try command(metal) { referenceStatus = try reference.encodeReset(command: $0) }
+        try require(referenceStatus.diagnostics().failure == .none && referenceStatus.diagnostics().converged,
+                    "Reference reset projection failed")
+
+        renderer.requestSingleStep()
+        renderer.draw(in: view)
+        try require(renderer.state.stepCount == 1 && renderer.state.pendingSteps == 0 && renderer.state.userPaused,
+                    "One accepted paused request must produce exactly one renderer step and remain paused")
+        try command(metal) { referenceStatus = try reference.encodeStep(command: $0) }
+        try require(referenceStatus.diagnostics().failure == .none && referenceStatus.diagnostics().converged,
+                    "Reference one-step projection failed")
+        let oneStepActual = try scanSimulation(simulation)
+        let oneStepReference = try scanSimulation(reference)
+        try requireMatchingFields(oneStepActual, oneStepReference, label: "renderer one-step reference")
+        pumpRendererCallbacks()
+        try require(renderer.encoded3DStepCount == 1 && renderer.completed3DStepCount == 1,
+                    "One accepted 3D step must have one successful encoding and completion")
+
+        let beforeRedraw = oneStepActual
+        renderer.draw(in: view)
+        renderer.draw(in: view)
+        renderer.selectField(.velocity)
+        renderer.setDisplayOptions(DisplayOptions(arrows: true, particles: true, trails: true))
+        renderer.nextSlab()
+        try require(renderer.state.stepCount == 1 && renderer.state.pendingSteps == 0
+                    && simulation.configuration == .production,
+                    "Redraw and field/panel refresh must not advance or replace 3D resources")
+        try requireMatchingFields(try scanSimulation(simulation), beforeRedraw,
+                                  label: "read-only redraw/resize/panel refresh")
+
+        for _ in 0..<30 { renderer.requestSingleStep() }
+        try require(renderer.state.pendingSteps == 30, "Rapid paused requests must remain individually queued")
+        for _ in 0..<30 { renderer.draw(in: view) }
+        for _ in 0..<30 {
+            try command(metal) { referenceStatus = try reference.encodeStep(command: $0) }
+            try require(referenceStatus.diagnostics().failure == .none && referenceStatus.diagnostics().converged,
+                        "Reference queued-step projection failed")
+        }
+        try require(renderer.state.stepCount == 31 && renderer.state.pendingSteps == 0 && renderer.state.userPaused,
+                    "Thirty queued requests after step one must encode exactly through logical step 31")
+        let step31Actual = try scanSimulation(simulation)
+        let step31Reference = try scanSimulation(reference)
+        try requireMatchingFields(step31Actual, step31Reference, label: "renderer 31-step reference")
+        pumpRendererCallbacks()
+        try require(renderer.encoded3DStepCount == 31 && renderer.completed3DStepCount == 31,
+                    "Thirty-one accepted requests must map to exactly 31 encoded and completed GPU steps")
+
+        view.bounds = CGRect(x: 0, y: 0, width: 80, height: 64)
+        renderer.lessonAvailableRect = CGRect(x: 0, y: 0, width: 21, height: 40)
+        renderer.mtkView(view, drawableSizeWillChange: CGSize(width: 160, height: 128))
+        try require(renderer.state.stepCount == 31 && simulation.configuration == .production,
+                    "3D resize/panel refresh must not advance or replace fixed-grid resources")
+        try requireMatchingFields(try scanSimulation(simulation), step31Actual,
+                                  label: "read-only resize/panel refresh")
+
+        for _ in 0..<4 { renderer.requestSingleStep() }
+        renderer.resignActive()
+        try require(renderer.state.inactive && renderer.state.pendingSteps == 0 && renderer.state.stepCount == 31,
+                    "Paused inactivity must cancel pending work without counting it")
+        renderer.draw(in: view)
+        renderer.becomeActive()
+        renderer.draw(in: view)
+        try require(renderer.state.userPaused && renderer.state.stepCount == 31,
+                    "Reactivation of a manually paused session must not synthesize an advance")
+        try requireMatchingFields(try scanSimulation(simulation), step31Actual,
+                                  label: "paused inactivity settled freeze")
+
+        renderer.togglePause()
+        renderer.draw(in: view)
+        try require(renderer.state.shouldAdvance && renderer.state.stepCount == 32,
+                    "A running renderer must advance on its next ordinary callback")
+        renderer.resignActive()
+        let runningFrozen = try scanSimulation(simulation)
+        try require(renderer.state.inactive && renderer.state.stepCount == 32,
+                    "Running inactivity must stop after already-submitted work settles")
+        renderer.becomeActive()
+        try require(renderer.state.shouldAdvance && renderer.state.stepCount == 32,
+                    "Reactivation must resume intent without a catch-up step")
+        try requireMatchingFields(try scanSimulation(simulation), runningFrozen,
+                                  label: "running inactivity reactivation freeze")
+
+        try command(metal) { command in
+            try simulation.u.encodeUpload(
+                Array(repeating: Float.greatestFiniteMagnitude, count: simulation.u.width * simulation.u.height * simulation.u.depth),
+                to: simulation.u.ping,
+                command: command
+            )
+            try simulation.v.encodeUpload(
+                Array(repeating: Float.greatestFiniteMagnitude, count: simulation.v.width * simulation.v.height * simulation.v.depth),
+                to: simulation.v.ping,
+                command: command
+            )
+            try simulation.w.encodeUpload(
+                Array(repeating: Float.greatestFiniteMagnitude, count: simulation.w.width * simulation.w.height * simulation.w.depth),
+                to: simulation.w.ping,
+                command: command
+            )
+        }
+        renderer.draw(in: view)
+        let completionFence = metal.newCommandBuffer()
+        completionFence.commit()
+        completionFence.waitUntilCompleted()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        try require(renderer.state.mode == .freePlay && renderer.simulation3D == nil
+                    && renderer.lastModeOutcome?.succeeded == false && renderer.state.stepCount == 0,
+                    "A failed 3D solver completion must invalidate the session, avoid a successful step, and recover to 2D")
+
+        return [
+            "passed": true,
+            "fixture": "renderer-steps-and-inactivity",
+            "device": device.name,
+            "nilDrawable": true,
+            "exactRendererSteps": [1, 31],
+            "referenceFieldsMatched": true,
+            "redrawAndResizeNoOp": true,
+            "pausedAndRunningInactivityFrozen": true,
+            "reactivationCatchUp": false,
+            "solverFaultRecoveredToTwoD": true,
+        ]
+    }
+
+    private static func pumpRendererCallbacks() {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+    }
+
+    private static func requireMatchingFields(
+        _ actual: [String: [Float]],
+        _ expected: [String: [Float]],
+        label: String
+    ) throws {
+        try require(Set(actual.keys) == Set(expected.keys), "\(label) has a different full-state field inventory")
+        for name in actual.keys.sorted() {
+            let difference = maximumAbsoluteDifference(actual[name]!, expected[name]!)
+            try require(difference <= 2e-6, "\(label) field \(name) differs by \(difference)")
+        }
     }
 
     private struct SliceImage {

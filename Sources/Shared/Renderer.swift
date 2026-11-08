@@ -1,3 +1,4 @@
+import Foundation
 import MetalKit
 
 @MainActor
@@ -32,6 +33,30 @@ private struct RendererModeFailure: LocalizedError {
     var errorDescription: String? { "\(stage): \(reason)" }
 }
 
+private struct Renderer3DStepCompletion: Sendable {
+    let generation: Int
+    let failureMessage: String?
+}
+
+private final class Renderer3DCompletionMailbox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var records: [Renderer3DStepCompletion] = []
+
+    func enqueue(_ completion: Renderer3DStepCompletion) {
+        lock.lock()
+        records.append(completion)
+        lock.unlock()
+    }
+
+    func takeAll() -> [Renderer3DStepCompletion] {
+        lock.lock()
+        defer { lock.unlock() }
+        let result = records
+        records.removeAll(keepingCapacity: true)
+        return result
+    }
+}
+
 @MainActor
 final class Renderer: NSObject, MTKViewDelegate {
     static let MaxBuffers = 3
@@ -44,6 +69,8 @@ final class Renderer: NSObject, MTKViewDelegate {
     private(set) var simulation3D: FluidSimulation3D?
     private(set) var visualization3D: FieldVisualization3D?
     private(set) var state = SimulationState()
+    private(set) var encoded3DStepCount = 0
+    private(set) var completed3DStepCount = 0
     var stateDidChange: (() -> Void)?
     private(set) var lastModeOutcome: RendererModeOutcome?
     var modeOutcomeDidChange: ((RendererModeOutcome) -> Void)?
@@ -58,6 +85,7 @@ final class Renderer: NSObject, MTKViewDelegate {
     private let visualization: FieldVisualization
     private let threeDFactory: Renderer3DSessionFactory
     private var twoDRecoveryState: SimulationState?
+    private let completionMailbox = Renderer3DCompletionMailbox()
 
     init(
         metalView: MTKView,
@@ -96,6 +124,8 @@ final class Renderer: NSObject, MTKViewDelegate {
         simulation3D = nil
         visualization3D = nil
         twoDRecoveryState = nil
+        encoded3DStepCount = 0
+        completed3DStepCount = 0
         publishModeOutcome(requested: mode, error: nil)
         stateDidChange?()
     }
@@ -133,7 +163,16 @@ final class Renderer: NSObject, MTKViewDelegate {
         sessionGeneration &+= 1
         stepDrainScheduled = false
     }
-    func resignActive() { state.resignActive(); clearInput(); updateScheduling(); stateDidChange?() }
+    func resignActive() {
+        state.resignActive()
+        clearInput()
+        if state.mode.is3D {
+            withAllBuffersDrained {}
+            processCompleted3DSteps()
+        }
+        updateScheduling()
+        stateDidChange?()
+    }
     func becomeActive() { state.becomeActive(); updateScheduling(); redrawIfPaused(); stateDidChange?() }
     private func updateScheduling() { metalView?.isPaused = !state.shouldAdvance }
     private func redrawIfPaused() {
@@ -239,6 +278,8 @@ final class Renderer: NSObject, MTKViewDelegate {
                 simulation3D = candidate
                 visualization3D = candidateVisualization
                 state = candidateState
+                encoded3DStepCount = 0
+                completed3DStepCount = 0
             } catch {
                 if wasAlready3D { restoreUsableTwoDState() }
                 state.cancelPendingSteps()
@@ -253,6 +294,7 @@ final class Renderer: NSObject, MTKViewDelegate {
 
     private func restoreUsableTwoDState() {
         guard let view = metalView else { return }
+        let wasInactive = state.inactive
         var recovered = twoDRecoveryState ?? SimulationState()
         recovered.beginReset()
         let width = recovered.mode.experiment == nil ? max(1, Int(view.bounds.width)) : ExperimentRecipes.gridSize
@@ -266,8 +308,11 @@ final class Renderer: NSObject, MTKViewDelegate {
         simulation3D = nil
         visualization3D = nil
         recovered.finishReset()
+        if wasInactive { recovered.resignActive() }
         state = recovered
         twoDRecoveryState = nil
+        encoded3DStepCount = 0
+        completed3DStepCount = 0
     }
 
     private func publishModeOutcome(requested: SimulationMode, error: String?) {
@@ -326,43 +371,115 @@ final class Renderer: NSObject, MTKViewDelegate {
               state.mode.is3D ? simulation3D != nil && visualization3D != nil : simulation != nil else { return }
         semaphore.wait()
         let command = metal.newCommandBuffer()
-        command.addCompletedHandler { [semaphore] _ in semaphore.signal() }
         let step = state.stepCount
-        if state.consumeStep() {
-            if state.mode.is3D {
+        var threeDStatus: PressureProjection3D.StatusSlot?
+        if state.mode.is3D {
+            let eligible = state.shouldAdvance || (state.canStep && state.pendingSteps > 0)
+            if eligible {
                 do {
                     guard let simulation3D else {
                         throw RendererModeFailure(stage: "3D advance", reason: "active 3D simulation is unavailable")
                     }
-                    _ = try simulation3D.encodeStep(command: command)
+                    threeDStatus = try simulation3D.encodeStep(command: command)
                 } catch {
+                    registerCommandCompletion(command, threeDStatus: nil, generation: sessionGeneration)
                     command.commit()
                     failActiveThreeDSession(error)
                     return
                 }
+                guard state.consumeStep() else {
+                    registerCommandCompletion(command, threeDStatus: threeDStatus, generation: sessionGeneration)
+                    command.commit()
+                    failActiveThreeDSession(RendererModeFailure(
+                        stage: "3D advance",
+                        reason: "simulation state rejected a step after its GPU commands were encoded"
+                    ))
+                    return
+                }
+                encoded3DStepCount += 1
             } else {
-                var contacts = touchContacts + pendingTapContacts; pendingTapContacts.removeAll()
-                if let mouse = mouseInput.contactForFrame() { contacts = [mouse] }
-                simulation.encodeStep(command: command, tuning: state.tuning, contacts: contacts, radius: touchRadius,
-                                      mode: state.mode, adjustment: state.adjustment, step: step)
+                clearInput()
             }
-        } else { clearInput() }
+        } else if state.consumeStep() {
+            var contacts = touchContacts + pendingTapContacts; pendingTapContacts.removeAll()
+            if let mouse = mouseInput.contactForFrame() { contacts = [mouse] }
+            simulation.encodeStep(command: command, tuning: state.tuning, contacts: contacts, radius: touchRadius,
+                                  mode: state.mode, adjustment: state.adjustment, step: step)
+        } else {
+            clearInput()
+        }
         if let drawable = view.currentDrawable {
             do {
                 try render(command: command, drawable: drawable, view: view)
                 command.present(drawable)
             } catch {
+                registerCommandCompletion(command, threeDStatus: threeDStatus, generation: sessionGeneration)
                 command.commit()
                 failActiveThreeDSession(error)
                 return
             }
         }
+        registerCommandCompletion(command, threeDStatus: threeDStatus, generation: sessionGeneration)
         command.commit()
         updateScheduling()
         // Live counters refresh at 10 Hz; paused steps/completion notify immediately.
         if state.stepCount != step && (!state.shouldAdvance || state.stepCount % 6 == 0) { stateDidChange?() }
     }
+
+    private func registerCommandCompletion(
+        _ command: MTLCommandBuffer,
+        threeDStatus: PressureProjection3D.StatusSlot?,
+        generation: Int
+    ) {
+        guard let threeDStatus else {
+            command.addCompletedHandler { [semaphore] _ in semaphore.signal() }
+            return
+        }
+        let mailbox = completionMailbox
+        command.addCompletedHandler { [weak self, semaphore] completedCommand in
+            let failureMessage = Self.stepCompletionFailure(command: completedCommand, status: threeDStatus)
+            mailbox.enqueue(Renderer3DStepCompletion(generation: generation, failureMessage: failureMessage))
+            semaphore.signal()
+            DispatchQueue.main.async { [weak self] in self?.processCompleted3DSteps() }
+        }
+    }
+
+    nonisolated private static func stepCompletionFailure(
+        command: MTLCommandBuffer,
+        status: PressureProjection3D.StatusSlot
+    ) -> String? {
+        guard command.status == .completed else {
+            return "3D step command failed: \(command.error.map(String.init(describing:)) ?? "command did not complete")"
+        }
+        let diagnostics = status.diagnostics()
+        guard diagnostics.failure == .none, diagnostics.converged, !diagnostics.capHit,
+              diagnostics.trueResidualDTInf.isFinite, diagnostics.trueResidualDTInf <= 1e-5,
+              diagnostics.projectedDivergenceDTInf.isFinite, diagnostics.projectedDivergenceDTInf <= 1e-5,
+              diagnostics.identityDTError.isFinite, diagnostics.identityDTError <= 2e-5,
+              diagnostics.maximumWallNormalValue == 0 else {
+            return "3D step projection failed: \(diagnostics.failure); converged=\(diagnostics.converged), "
+                + "capHit=\(diagnostics.capHit), residual=\(diagnostics.trueResidualDTInf), "
+                + "divergence=\(diagnostics.projectedDivergenceDTInf), identity=\(diagnostics.identityDTError), "
+                + "wall=\(diagnostics.maximumWallNormalValue)"
+        }
+        return nil
+    }
+
+    private func processCompleted3DSteps() {
+        for completion in completionMailbox.takeAll() where completion.generation == sessionGeneration {
+            if let failureMessage = completion.failureMessage {
+                failActiveThreeDSession(message: failureMessage)
+                return
+            }
+            completed3DStepCount += 1
+        }
+    }
+
     private func failActiveThreeDSession(_ error: Error) {
+        failActiveThreeDSession(message: Self.message(for: error))
+    }
+
+    private func failActiveThreeDSession(message: String) {
         let requested = state.mode
         cancelStepDrain()
         clearInput()
@@ -370,7 +487,7 @@ final class Renderer: NSObject, MTKViewDelegate {
         withAllBuffersDrained {
             restoreUsableTwoDState()
         }
-        publishModeOutcome(requested: requested, error: Self.message(for: error))
+        publishModeOutcome(requested: requested, error: message)
         updateScheduling()
         redrawIfPaused()
         stateDidChange?()
