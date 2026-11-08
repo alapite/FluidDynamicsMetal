@@ -46,7 +46,7 @@ patterns-established:
 requirements-completed: [SIM-04, SIM-05, SIM-06, LES-01, LES-02, LES-06, VER-03]
 
 # Metrics
-duration: approximately 1 hour (resumed execution; exact end minute not tracked)
+duration: approximately 1 hour 15 minutes (resumed execution; exact end minute not tracked)
 completed: 2026-11-08
 ---
 
@@ -56,9 +56,9 @@ completed: 2026-11-08
 
 ## Performance
 
-- **Duration:** Approximately 1 hour for the resumed execution segment; exact end minute was not tracked.
+- **Duration:** Approximately 1 hour 15 minutes for the resumed execution segment; exact end minute was not tracked.
 - **Started:** 2026-11-08T09:43:53Z (execution-start timestamp recorded in the prior state update).
-- **Completed:** 2026-11-08.
+- **Completed:** 2026-11-08 (approximately 10:58Z).
 - **Tasks:** 3 completed.
 - **Files modified:** 8 implementation/test files; this summary is an additional planning artifact.
 
@@ -75,6 +75,8 @@ completed: 2026-11-08
 2. **Task 2: Commit 3D mode only after successful preparation** — `1075ebe` (`feat(07-06): add transactional 3D renderer mode`).
 3. **Task 3: Prove exact renderer advancement and inactivity** — `3a3a834` (`feat(07-06): verify exact renderer 3D stepping`).
 
+**Supplemental inline-review regression:** delayed stale completion fencing — `42f8b1a` (`test(07-06): cover delayed stale completion`).
+
 ## Files Created/Modified
 
 - `Sources/Shared/Renderer.swift` — transactional mode routing, rollback, exact step scheduling, asynchronous completion mailbox/status handling, inactivity fencing, and generation-safe recovery.
@@ -87,12 +89,12 @@ completed: 2026-11-08
 ## Verification
 
 - Task 3 RED/GREEN: the stepping/inactivity regression first exposed the missing failed-solver-completion recovery; after implementation, the focused production fixture passed.
-- `python3 -m unittest Tests.Integration.test_fluid3d.Fluid3DTests.test_renderer_steps_and_inactivity` — **1 test passed**; Apple M3 Pro evidence recorded in `.build/fluid3d-evidence/renderer-steps-and-inactivity.json`.
+- `python3 -m unittest Tests.Integration.test_fluid3d.Fluid3DTests.test_renderer_steps_and_inactivity` — **1 test passed** in 52.544 seconds after adding a delayed stale-completion assertion; Apple M3 Pro evidence recorded in `.build/fluid3d-evidence/renderer-steps-and-inactivity.json`.
 - Fresh Mac Debug build — **passed**.
 - `xcodebuild test ... -only-testing:FluidDynamicsMetalStateTests` — **25 tests, 0 failures**.
 - Fresh iOS Simulator Debug build — **passed**.
-- `python3 -m unittest discover -s Tests/Integration` — **27 tests passed** in 565.133 seconds, including all 3D production fixtures and the existing 2D renderer/educational regressions.
-- `git diff --check` — passed before the Task 3 commit.
+- `python3 -m unittest discover -s Tests/Integration` — **27 tests passed** in 590.708 seconds on the final test sources, including all 3D production fixtures and the existing 2D renderer/educational regressions.
+- `git diff --check` — passed during the pre-merge inline review.
 
 The Mac test/build logs included non-failing Xcode diagnostics (App Intents metadata skipped and an IDE test-launch observer warning); no test or build failed.
 
@@ -109,6 +111,7 @@ None in scope. The completion-status slot received an explicit `@unchecked Senda
 ## Issues Encountered
 
 - The new failed-completion assertion initially demonstrated that an encoded step could otherwise be treated as successful before GPU solver status was observed. The renderer now latches completion faults and rolls back safely; focused and full integration runs passed afterward.
+- Inline review added a delayed-success-completion regression: switching to 2D while a 3D command is in flight leaves the new 2D mode outcome, state, and counters unchanged when the old callback is later processed.
 - Xcode emitted non-failing test-launch/App Intents diagnostics. They did not affect verification results.
 
 ## User Setup Required
