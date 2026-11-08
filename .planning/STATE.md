@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: 3D Teaching Foundation
 status: executing
-stopped_at: Completed Phase 07 Wave 4 (07-04); merged and post-merge verified; next 07-06
-last_updated: "2026-11-08T09:36:06Z"
-last_activity: 2026-11-08 -- Phase 07 Wave 4 (07-04) post-merge verification completed
+stopped_at: Completed Phase 07 Wave 5 (07-06); merged and post-merge verified; next 07-07
+last_updated: "2026-11-08T11:11:55Z"
+last_activity: 2026-11-08 -- Phase 07 Wave 5 (07-06) post-merge verification completed
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 9
-  completed_plans: 5
-  percent: 56
+  completed_plans: 6
+  percent: 67
 ---
 
 # Project State
@@ -26,23 +26,23 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 ## Current Position
 
 Phase: 07 (first-3d-fluid-vertical-slice) — EXECUTING
-Plan: 5 of 9 complete; next 07-06 (Wave 5)
-Status: Wave 4 complete; ready to execute Wave 5
-Last activity: 2026-11-08 -- Phase 07 Wave 4 (07-04) post-merge verification completed
+Plan: 6 of 9 complete; next 07-07 (Wave 6)
+Status: Wave 5 complete; ready to execute Wave 6
+Last activity: 2026-11-08 -- Phase 07 Wave 5 (07-06) post-merge verification completed
 
-Progress: [█████░░░░░] 56%
+Progress: [██████░░░░] 67%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 19 (14 archived v1.0 + 5 current v1.1)
+- Total plans completed: 20 (14 archived v1.0 + 6 current v1.1)
 - Average duration: N/A (historical plan durations not fully aggregated)
-- Total execution time: At least 3.8 hours across recorded v1.1 Phase 7 plans; archived v1.0 duration is excluded.
+- Total execution time: At least 5.2 hours across recorded v1.1 Phase 7 plans; archived v1.0 duration is excluded.
 
-**By Phase:** v1.0 implementation plans 14/14 archived; Phase 7 plans 5/9 complete. Historical macOS 26 and device-only verification remain deferred.
+**By Phase:** v1.0 implementation plans 14/14 archived; Phase 7 plans 6/9 complete. Historical macOS 26 and device-only verification remain deferred.
 
-**Recent Trend:** Compatible production 3D projection/reset/step and the fixed slice/recipe have passed numerical checks; renderer/native integration, end-to-end lesson verification, and human review remain ahead.
+**Recent Trend:** Compatible production 3D projection/reset/step, fixed-slice, and transactional renderer integration checks have passed; native UI integration, end-to-end lesson verification, and human review remain ahead.
 
 ## Accumulated Context
 
@@ -60,6 +60,7 @@ Progress: [█████░░░░░] 56%
 - Introduce native UI controls and tuning with reset-on-launch defaults.
 - Xcode 27 Device Hub two-finger touch simulation is unavailable ([developer forum report](https://developer.apple.com/forums/thread/846533)); retain device-only checks as NOT TESTED but do not gate later phases or milestone completion on them (user decision, 2026-09-25).
 - 2026-11-07: User approved compensated high/low Float32 pressure and a separately derived storage/evaluator identity-rounding bound while retaining strict Double ideal identity, both 1e-5 residual/divergence gates, 1000x reduction, cap 320 and fixture amplitudes. See the appended amendments in `docs/3d-numerical-contract.md`.
+- 2026-11-08: Phase 7 Plan 07-06 commits 3D renderer mode only after candidate reset/status validation; exact encode-before-consume steps use asynchronous completion diagnostics and generation-fenced recovery. The established 2D solver/ABI remains unchanged; phase requirements stay pending until end-to-end UI/lesson verification.
 
 ### Pending Todos
 
@@ -77,7 +78,8 @@ None yet.
 - Phase 7 UI-SPEC remains approved (five PASS, one non-blocking inherited-spacing FLAG). Nine executable plans / eight waves / 20 tasks pass inline plan review and structural/coverage checks: all seven owned requirements and D-01–17 covered. Pattern mapping and executable validation strategy are saved. No implementation, app build, numerical test, benchmark or human acceptance was performed during planning.
 - Active Xcode 27.2 initially lacked its Metal Toolchain; Metal Toolchain 27.2 was subsequently installed/rechecked and used for the 07-02 builds and production GPU evidence on 2026-11-07.
 - Phase 7 Plan 07-03 is merged into master and post-merge verified: all seven GPU projection families, independent readback gates, explicit failure/queued-session checks and the strengthened 600-step finite soak passed; 23 integration tests and both app builds passed, plus 34 Mac state/HUD tests before and after merge. All Phase 7 requirements remain pending until end-to-end lesson/UI verification.
-- Phase 7 Plan 07-04 is merged into master and post-merge verified: both app builds, all 25 integration regressions, 34 Mac state/HUD tests, the iPhone iOS 26.4 HUD suite (11/11), and the iPad iOS 26.3 HUD suite (11/11) passed. The iPad Pro 13-inch M5 / iOS 26.4 simulator run had 6/11 pass and five orientation-wait failures at `Tests/UI/iOS/HUDUITests.swift:137`; this unrelated simulator/test diagnostic is recorded, with no UI changes. Phase requirements remain pending; four plans remain, next 07-06 / Wave 5.
+- Phase 7 Plan 07-04 is merged into master and post-merge verified: both app builds, all 25 integration regressions, 34 Mac state/HUD tests, the iPhone iOS 26.4 HUD suite (11/11), and the iPad iOS 26.3 HUD suite (11/11) passed. The iPad Pro 13-inch M5 / iOS 26.4 simulator run had 6/11 pass and five orientation-wait failures at `Tests/UI/iOS/HUDUITests.swift:137`; this unrelated simulator/test diagnostic is recorded, with no UI changes. At that checkpoint four plans remained, next 07-06 / Wave 5.
+- Phase 7 Plan 07-06 is merged into master and post-merge verified: both no-override app builds passed, Mac state tests passed (25/25), and all 27 integration tests passed, including 3D renderer transition/step/inactivity fixtures and existing 2D renderer/educational regressions. Plans 07-07 through 07-09 remain; phase requirements remain pending.
 - The 64³ wall/edge/corner pressure stress case converged at 317/320 iterations, leaving only three iterations of cap margin. This is measured numerical evidence, not a performance or cross-device guarantee. No cap or primary acceptance threshold was relaxed.
 - Phase 3 inline code review `03-REVIEW.md` records an advisory resample-pipeline failure-path warning; successful Mac/iOS user interaction and current GPU tests do not exercise that negative path.
 
@@ -106,13 +108,14 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 | Phase 07 P02 | 60 min | 2 tasks | 9 files |
 | Phase 07 P03 | 60 min including closeout | 3 tasks | 11 implementation/test/contract files |
 | Phase 07 P04 | at least 46 min | 2 tasks | 7 implementation/test files |
+| Phase 07 P06 | approximately 90 min including post-merge verification | 3 tasks | 8 implementation/test files |
 
 ## Session Continuity
 
-Last session: 2026-11-08T09:36:06Z
-Stopped at: Completed Phase 07 Wave 4 (07-04); merged and post-merge verified; next 07-06
-Resume file: .planning/phases/07-first-3d-fluid-vertical-slice/07-06-PLAN.md
+Last session: 2026-11-08T11:11:55Z
+Stopped at: Completed Phase 07 Wave 5 (07-06); merged and post-merge verified; next 07-07
+Resume file: .planning/phases/07-first-3d-fluid-vertical-slice/07-07-PLAN.md
 
 ## Operator Next Steps
 
-- Wave filter `--wave 4` is complete; STOP before later waves. Next explicit command: `/gsd-execute-phase 7 --wave 5` (07-06 renderer routing, exact steps, inactivity, and 2D rollback). Parallelization is disabled. Keep requirements pending; phase-level verification/completion is intentionally skipped while four plans remain. Explicit human visual/interaction approval at 07-09 is not already granted.
+- Wave filter `--wave 5` is complete; STOP before Wave 6. The next plan is 07-07 (native grouped navigation, focus, and recovery UI). Keep phase requirements pending; phase-level verification/completion is intentionally skipped while three plans remain. Explicit human visual/interaction approval at 07-09 is not already granted.

@@ -46,7 +46,7 @@ patterns-established:
 requirements-completed: [SIM-04, SIM-05, SIM-06, LES-01, LES-02, LES-06, VER-03]
 
 # Metrics
-duration: approximately 1 hour 15 minutes (resumed execution; exact end minute not tracked)
+duration: approximately 1 hour 30 minutes (resumed execution through post-merge verification)
 completed: 2026-11-08
 ---
 
@@ -56,9 +56,9 @@ completed: 2026-11-08
 
 ## Performance
 
-- **Duration:** Approximately 1 hour 15 minutes for the resumed execution segment; exact end minute was not tracked.
+- **Duration:** Approximately 1 hour 30 minutes for the resumed execution through post-merge verification.
 - **Started:** 2026-11-08T09:43:53Z (execution-start timestamp recorded in the prior state update).
-- **Completed:** 2026-11-08 (approximately 10:58Z).
+- **Completed:** 2026-11-08T11:11:55Z.
 - **Tasks:** 3 completed.
 - **Files modified:** 8 implementation/test files; this summary is an additional planning artifact.
 
@@ -97,6 +97,15 @@ completed: 2026-11-08
 - `git diff --check` — passed during the pre-merge inline review.
 
 The Mac test/build logs included non-failing Xcode diagnostics (App Intents metadata skipped and an IDE test-launch observer warning); no test or build failed.
+
+## Post-merge verification
+
+On the merged `master` checkout:
+
+- Fresh no-override Mac Debug build — **passed**.
+- `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO -only-testing:FluidDynamicsMetalStateTests` — **25 tests, 0 failures**.
+- Fresh no-override iOS Simulator Debug build — **passed**; Xcode emitted the existing `UIRequiresFullScreen` deprecation warning and a generic-simulator destination metadata warning.
+- `python3 -m unittest discover -s Tests/Integration` — **27 tests passed** in 596.360 seconds. Production GPU evidence is under `.build/fluid3d-evidence/` in the primary checkout.
 
 ## Decisions Made
 

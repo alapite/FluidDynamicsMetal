@@ -56,7 +56,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 07-06-PLAN.md — Integrate transactional renderer routing, exact steps, inactivity and usable 2D rollback.
+- [x] 07-06-PLAN.md — Integrate transactional renderer routing, exact steps, inactivity and usable 2D rollback.
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -135,7 +135,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 7. First 3D Fluid Vertical Slice | 5/9 | In Progress | — |
+| 7. First 3D Fluid Vertical Slice | 6/9 | In Progress | — |
 | 8. Spatial Inspection | 0/TBD | Not started | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |
