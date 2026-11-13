@@ -1063,6 +1063,24 @@ private struct Fluid3DChecks {
             )
         }
 
+        var affineDye = [Float]()
+        affineDye.reserveCapacity(64 * 64 * 64)
+        for k in 0..<64 {
+            for j in 0..<64 {
+                for i in 0..<64 {
+                    let x = (Double(i) + 0.5) / 64.0
+                    let y = (Double(j) + 0.5) / 64.0
+                    let z = (Double(k) + 0.5) / 64.0
+                    affineDye.append(Float(0.1 + 0.2*x + 0.3*y + 0.4*z))
+                }
+            }
+        }
+        let affineUpload = metal.newCommandBuffer()
+        try simulation.dye.encodeUpload(affineDye, to: simulation.dye.ping, command: affineUpload)
+        affineUpload.commit()
+        affineUpload.waitUntilCompleted()
+        try require(affineUpload.status == .completed, "Could not restore affine dye before backside check")
+
         guard let backsideExpected = samples.first(where: {
             $0["plane"] as? String == "xy" && abs(($0["depth"] as? Double ?? -1) - 0.3) < 1e-12
         }),
@@ -1113,12 +1131,40 @@ private struct Fluid3DChecks {
             width: width,
             height: height
         )
+        var edgeOnPoints: [(Int, Int)] = []
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = (y * width + x) * 4
+                if edgeOnPixels[offset] != 0 || edgeOnPixels[offset + 1] != 0
+                    || edgeOnPixels[offset + 2] != 0 {
+                    edgeOnPoints.append((x, y))
+                }
+            }
+        }
+        let edgeOnBounds = independentlyProjectedBounds(
+            [
+                SIMD3<Double>(0, 0, 0.3),
+                SIMD3<Double>(1, 0, 0.3),
+                SIMD3<Double>(0, 1, 0.3),
+                SIMD3<Double>(1, 1, 0.3),
+            ],
+            camera: edgeOn.camera,
+            width: width,
+            height: height
+        )
+        let actualBounds = (
+            Double(edgeOnPoints.map(\.0).min() ?? 0),
+            Double(edgeOnPoints.map(\.0).max() ?? 0),
+            Double(edgeOnPoints.map(\.1).min() ?? 0),
+            Double(edgeOnPoints.map(\.1).max() ?? 0)
+        )
         try require(
-            stride(from: 0, to: edgeOnPixels.count, by: 4).allSatisfy {
-                edgeOnPixels[$0] == 0 && edgeOnPixels[$0 + 1] == 0
-                    && edgeOnPixels[$0 + 2] == 0
-            },
-            "An edge-on fixed XY plane must not billboard into a visible sheet"
+            !edgeOnPoints.isEmpty
+                && abs(actualBounds.0 - edgeOnBounds.0) <= 2
+                && abs(actualBounds.1 - edgeOnBounds.1) <= 2
+                && abs(actualBounds.2 - edgeOnBounds.2) <= 2
+                && abs(actualBounds.3 - edgeOnBounds.3) <= 2,
+            "Edge-on XY raster bounds \(actualBounds) must match independent fixed-plane projection \(edgeOnBounds), not a billboard"
         )
         return [
             "passed": true,
@@ -1244,20 +1290,70 @@ private struct Fluid3DChecks {
         width: Int,
         height: Int
     ) throws -> (Int, Int) {
-        let frame = try Camera3D.frame(
-            state: camera,
-            viewportSize: CGSize(width: width, height: height)
+        let point = independentlyProjectedPoint(
+            SIMD3<Double>(world[0], world[1], world[2]),
+            camera: camera,
+            width: width,
+            height: height
         )
-        let clip = frame.worldToClip * SIMD4<Float>(
-            Float(world[0]), Float(world[1]), Float(world[2]), 1
-        )
-        try require(clip.w.isFinite && clip.w > 0, "Independent sample projected behind the spatial camera")
-        let ndc = SIMD2<Float>(clip.x / clip.w, clip.y / clip.w)
-        let x = Int(floor((Double(ndc.x) + 1) * Double(width) * 0.5))
-        let y = Int(floor((1 - Double(ndc.y)) * Double(height) * 0.5))
+        let x = Int(floor(point.x))
+        let y = Int(floor(point.y))
         try require(x >= 0 && x < width && y >= 0 && y < height,
                     "Spatial sample projected outside the full-aspect output")
         return (x, y)
+    }
+
+    /// Independent scalar implementation of the preregistered camera formula;
+    /// it intentionally does not call Camera3D.frame or inspect its matrix.
+    private static func independentlyProjectedPoint(
+        _ world: SIMD3<Double>,
+        camera: CameraState3D,
+        width: Int,
+        height: Int
+    ) -> SIMD2<Double> {
+        let aspect = Double(width) / Double(height)
+        let halfFOV = Double.pi / 9
+        let radius = sqrt(3.0) / 2
+        let alpha = atan(tan(halfFOV) * min(1, aspect))
+        let fittedDistance = 1.10 * radius / sin(alpha)
+        let distance = max(radius + 0.10, fittedDistance / (camera.zoomPercent / 100))
+        let yaw = camera.yawDegrees * .pi / 180
+        let elevation = camera.elevationDegrees * .pi / 180
+        let offset = SIMD3<Double>(
+            sin(yaw) * cos(elevation),
+            sin(elevation),
+            -cos(yaw) * cos(elevation)
+        )
+        let eye = SIMD3<Double>(repeating: 0.5) + distance * offset
+        let forward = -offset
+        let right = simd_normalize(simd_cross(SIMD3<Double>(0, 1, 0), forward))
+        let up = simd_cross(forward, right)
+        let relative = world - eye
+        let viewDepth = simd_dot(relative, forward)
+        let scaleY = 1 / tan(halfFOV)
+        let ndcX = scaleY / aspect * simd_dot(relative, right) / viewDepth
+        let ndcY = scaleY * simd_dot(relative, up) / viewDepth
+        return SIMD2<Double>(
+            (ndcX + 1) * Double(width) * 0.5,
+            (1 - ndcY) * Double(height) * 0.5
+        )
+    }
+
+    private static func independentlyProjectedBounds(
+        _ world: [SIMD3<Double>],
+        camera: CameraState3D,
+        width: Int,
+        height: Int
+    ) -> (Double, Double, Double, Double) {
+        let points = world.map {
+            independentlyProjectedPoint($0, camera: camera, width: width, height: height)
+        }
+        return (
+            points.map(\.x).min() ?? 0,
+            points.map(\.x).max() ?? 0,
+            points.map(\.y).min() ?? 0,
+            points.map(\.y).max() ?? 0
+        )
     }
 
     private static func expectedSpatialPaletteRGB(_ concentration: Double) -> SIMD3<Int> {

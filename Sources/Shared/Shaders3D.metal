@@ -25,6 +25,19 @@ struct Fluid3DSlicePalette {
     float4 stops;
 };
 
+// Must match FieldVisualization3D.SpatialInspectionUniforms exactly:
+// worldToClip@0, slice@64, viewport@80, stride 96/alignment 16.
+struct Fluid3DInspectionUniforms {
+    float4x4 worldToClip;
+    float4 slice;
+    float4 viewport;
+};
+
+struct Fluid3DSpatialSliceOutput {
+    float4 position [[position]];
+    float3 worldPosition [[user(locn0)]];
+};
+
 vertex Fluid3DSliceVertexOutput fluid3DVertex(
     const device Fluid3DSliceVertex *vertices [[buffer(0)]],
     uint vertexID [[vertex_id]]) {
@@ -81,6 +94,68 @@ fragment float4 fluid3DFixedSlice(
     return float4(encodedRGB, 1.0f);
 }
 
+vertex Fluid3DSpatialSliceOutput fluid3DSpatialVertex(
+    uint vertexID [[vertex_id]],
+    constant Fluid3DInspectionUniforms &uniforms [[buffer(0)]]) {
+    float2 local = float2(float(vertexID & 1u), float((vertexID >> 1u) & 1u));
+    float3 worldPosition;
+    uint plane = uint(uniforms.slice.y + 0.5f);
+    if (plane == 0u) {
+        worldPosition = float3(local.x, local.y, uniforms.slice.x);
+    } else if (plane == 1u) {
+        worldPosition = float3(local.x, uniforms.slice.x, local.y);
+    } else {
+        worldPosition = float3(uniforms.slice.x, local.y, local.x);
+    }
+    Fluid3DSpatialSliceOutput output;
+    output.position = uniforms.worldToClip * float4(worldPosition, 1.0f);
+    output.worldPosition = worldPosition;
+    return output;
+}
+
+inline float fluid3DSampleSpatial(
+    texture3d<float, access::read> dye,
+    float3 worldPosition) {
+    float3 extent = float3(float(dye.get_width()), float(dye.get_height()), float(dye.get_depth()));
+    float3 coordinate = clamp(worldPosition * extent - 0.5f, 0.0f, extent - 1.0f);
+    int3 lower = int3(floor(coordinate));
+    int3 upper = min(lower + 1, int3(extent) - 1);
+    float3 fraction = coordinate - float3(lower);
+    float c000 = dye.read(uint3(lower.x, lower.y, lower.z)).x;
+    float c100 = dye.read(uint3(upper.x, lower.y, lower.z)).x;
+    float c010 = dye.read(uint3(lower.x, upper.y, lower.z)).x;
+    float c110 = dye.read(uint3(upper.x, upper.y, lower.z)).x;
+    float c001 = dye.read(uint3(lower.x, lower.y, upper.z)).x;
+    float c101 = dye.read(uint3(upper.x, lower.y, upper.z)).x;
+    float c011 = dye.read(uint3(lower.x, upper.y, upper.z)).x;
+    float c111 = dye.read(uint3(upper.x, upper.y, upper.z)).x;
+    float lowerPlane = mix(
+        mix(c000, c100, fraction.x),
+        mix(c010, c110, fraction.x),
+        fraction.y);
+    float upperPlane = mix(
+        mix(c001, c101, fraction.x),
+        mix(c011, c111, fraction.x),
+        fraction.y);
+    return mix(lowerPlane, upperPlane, fraction.z);
+}
+
+fragment float4 fluid3DSpatialSlice(
+    Fluid3DSpatialSliceOutput input [[stage_in]],
+    texture3d<float, access::read> dye [[texture(0)]],
+    constant Fluid3DSlicePalette &palette [[buffer(0)]]) {
+    float concentration = clamp(fluid3DSampleSpatial(dye, input.worldPosition), 0.0f, 1.0f);
+    float3 encodedRGB;
+    if (concentration <= palette.stops.y) {
+        float amount = (concentration - palette.stops.x) / (palette.stops.y - palette.stops.x);
+        encodedRGB = mix(palette.black.rgb, palette.amber.rgb, amount);
+    } else {
+        float amount = (concentration - palette.stops.y) / (palette.stops.z - palette.stops.y);
+        encodedRGB = mix(palette.amber.rgb, palette.cream.rgb, amount);
+    }
+    return float4(encodedRGB, 1.0f);
+}
+
 kernel void fluid3DABIRoundTrip(
     constant Fluid3DUniforms &input [[buffer(0)]],
     device Fluid3DUniforms *output [[buffer(1)]],
@@ -89,6 +164,15 @@ kernel void fluid3DABIRoundTrip(
         return;
     }
     output[0] = input;
+}
+
+kernel void fluid3DInspectionABIRoundTrip(
+    constant Fluid3DInspectionUniforms &input [[buffer(0)]],
+    device Fluid3DInspectionUniforms *output [[buffer(1)]],
+    uint threadIndex [[thread_position_in_grid]]) {
+    if (threadIndex == 0) {
+        output[0] = input;
+    }
 }
 
 kernel void fluid3DClear(
