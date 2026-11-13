@@ -38,7 +38,7 @@ private func reference(_ p: SIMD3<Double>, yaw: Double, elevation: Double, zoom:
         for plane in InspectionPlane3D.allCases {
             state.plane = plane
             check(state.depth == 0.3 && state.camera == camera && !state.showTracers, "plane preserves shared depth/camera")
-            let p = plane.worldPosition(s: 0.23, t: 0.67, depth: state.depth)
+            let p = plane.worldPosition(s: 0.23, t: 0.67, depth: Float(state.depth))
             let expected: SIMD3<Float> = plane == .xy ? [0.23,0.67,0.3] : plane == .xz ? [0.23,0.3,0.67] : [0.3,0.67,0.23]
             check(p == expected, "plane mapping")
         }
@@ -69,7 +69,8 @@ private func reference(_ p: SIMD3<Double>, yaw: Double, elevation: Double, zoom:
         state.camera.setZoomPercent(-1000); check(state.camera.zoomPercent == 50, "zoom low")
         state.camera.setZoomPercent(1000); check(state.camera.zoomPercent == 150, "zoom high")
         let validState = state
-        for size: CGSize in [.zero, CGSize(width: -1,height: 2), CGSize(width: .nan,height: 2), CGSize(width: .infinity,height: 2), CGSize(width: 1,height: .infinity), CGSize(width: Double.leastNonzeroMagnitude,height: Double.greatestFiniteMagnitude)] {
+        let invalidSizes: [CGSize] = [CGSize(width: 0,height: 0), CGSize(width: -1,height: 2), CGSize(width: CGFloat.nan,height: 2), CGSize(width: CGFloat.infinity,height: 2), CGSize(width: 1,height: CGFloat.infinity), CGSize(width: Double.leastNonzeroMagnitude,height: Double.greatestFiniteMagnitude)]
+        for size in invalidSizes {
             do { _ = try Camera3D.frame(state: state.camera, viewportSize: size); fatalError("invalid viewport accepted") }
             catch is Camera3DError { }
             check(state == validState, "viewport mutated state")
@@ -107,7 +108,10 @@ private func reference(_ p: SIMD3<Double>, yaw: Double, elevation: Double, zoom:
                             for (distance,expected) in [(frame.near,0.0),(frame.far,1.0)] {
                                 let world = frame.eye + frame.forward * Float(distance)
                                 let clip = frame.worldToClip * SIMD4<Float>(world,1)
-                                close(Double(clip.z/clip.w),expected,"Metal depth endpoint")
+                                // Float world-point construction and matrix cancellation
+                                // at near=0.05 amplify rounding by distance/near.
+                                let roundingBound = 32 * Double(Float.ulpOfOne) * frame.far / frame.near
+                                close(Double(clip.z/clip.w),expected,"Metal depth endpoint",tolerance: roundingBound)
                             }
                         }
                     }
