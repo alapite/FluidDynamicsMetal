@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Interactive educational Metal fluid simulation for Mac, iPhone, and iPad, built with Swift 6 language mode and Swift 6.2+ tooling. Users can explore Free Play and three deterministic 2D lessons through named fields, tracers, trails, tuning, and step-by-step playback. The next milestone adds a Mac-first true-3D teaching foundation; actual macOS 26 runtime and physical-device multitouch remain unverified follow-ups.
+Interactive educational Metal fluid simulation for Mac, iPhone, and iPad, built with Swift 6 language mode and Swift 6.2+ tooling. Users can explore Free Play and three deterministic 2D lessons through named fields, tracers, trails, tuning, and step-by-step playback. The active v1.1 milestone adds a Mac-first true-3D teaching foundation; Phase 7's plans are closed, but phase-level user-facing acceptance remains incomplete. Actual macOS 26 runtime and physical-device multitouch remain unverified follow-ups.
 
 ## Core Value
 
@@ -46,8 +46,8 @@ People can interact with a responsive, visually familiar fluid simulation on bot
 - The codebase has two storyboard-backed app targets and shared Swift/Metal sources compiled into both; see `.planning/codebase/ARCHITECTURE.md` and `.planning/codebase/STACK.md`.
 - Both targets now use Swift 6 language mode with Swift 6.2+ / Xcode 26+ tooling and deployment minimums of macOS 26 / iOS 26. App/shared sources live under `Sources/{macOS,iOS,Shared}`. Mac state tests, Mac/iOS HUD tests, and integration GPU harnesses are present; there is no Swift package.
 - The post-v1.0 educational release was delivered outside the archived GSD phases. Its implementation and verification documents under `docs/` describe the current baseline; historical v1.0 records retain their original outcomes.
-- The simulation runs a series of fragment-shader passes each frame, including 40 pressure iterations. Swift shader names and uniform-buffer layouts must continue to match their Metal counterparts.
-- `FluidSimulation` owns GPU evolution independently of the view; `FieldVisualization` and `ParticleSystem` handle presentation and tracers. The existing solver uses 2D RG16F ping/pong textures and fragment passes; the proposed 3D path uses compute kernels and volumetric fields.
+- The existing 2D simulation runs a series of fragment-shader passes each frame, including 40 pressure iterations. Swift shader names and uniform-buffer layouts must continue to match their Metal counterparts.
+- `FluidSimulation` owns 2D GPU evolution independently of the view; `FieldVisualization` and `ParticleSystem` handle its presentation and tracers. Phase 7 added production 3D compute kernels and fixed 64³ volumetric fields with a fixed-slice Mac presentation. Orbit-camera/movable-slice/tracer inspection, speed comparison, and volume rendering remain planned for Phases 8–10.
 - The 2026-10-13 educational release report records 1.11–1.54 ms mean GPU cost for 256-square lessons on an M3 Pro, depending on overlays. This is historical 2D evidence, not a forecast for 3D performance.
 
 ## Constraints
@@ -64,18 +64,18 @@ People can interact with a responsive, visually familiar fluid simulation on bot
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Modernize both macOS and iOS apps | Both existing apps remain part of the product | Phase 2 both-scheme Debug builds and iPhone/iPad simulator interactions verified; Mac macOS 26 runtime deferred. |
-| Use macOS 26 / Apple Silicon and iOS 26 baselines | Prioritize current-platform APIs over backward compatibility | Both targets build without deployment overrides using Swift 5. |
+| Use macOS 26 / Apple Silicon and iOS 26 baselines | Prioritize current-platform APIs over backward compatibility | Both targets use Swift 6 language mode (`SWIFT_VERSION = 6.0`) and build without deployment overrides using Swift 6.2+ tooling. |
 | Redesign the UI around native controls and parameter tuning | Make the simulation approachable without source edits | Phase 4 named field selection and pause controls and Phase 5 live tuning approved on Mac/iPhone/iPad. |
 | Preserve solver behavior during modernization | Maintain the existing experience as a reference point | User-approved original-looking defaults on available Mac/iPhone/iPad hosts in v1.0; macOS 26 runtime NOT TESTED. |
 | Preserve fields across canvas changes and separate manual pause from lifecycle inactivity | Avoid reset, catch-up, or stale-input impulses | Phase 3 Mac and iOS simulator checks passed; two-finger gestures still need a physical device. |
 | Treat Xcode 27 Device Hub multitouch limits as verification debt, not a release gate | Two-finger taps/pans cannot be reproduced through the former Option-key simulator mechanism; developers cannot fix the tooling | User confirmed on 2026-09-25 that NOT TESTED physical-device cases do not block later phases or milestone completion; [forum discussion](https://developer.apple.com/forums/thread/846533). |
 | Defer new Phase 6 controls and further accessibility work | Finish current-platform compatibility this milestone without adding features | CTRL-05/06/07 move to v2; Phase 6 covers VER-02 and preserves the existing HUD and interactions. |
 | Close v1.0 with macOS 26 runtime deferred | Prioritize other work rather than hold the milestone for an unavailable runtime host | User decision on 2026-09-25; archive PLAT-01 as NOT TESTED, keep Phase 1 UAT open for later. |
-| Deliver v1.1 as a Mac-first 3D teaching foundation | Validate real 3D dynamics, inspection, and performance before expanding lesson/platform scope | User approved 2026-11-06; implementation pending. |
-| Start with one 64³ dye-advection lesson and slices/tracers before volume rendering | Establish a testable, inspectable vertical slice early | User approved 2026-11-06; implementation pending. |
+| Deliver v1.1 as a Mac-first 3D teaching foundation | Validate real 3D dynamics, inspection, and performance before expanding lesson/platform scope | User approved 2026-11-06; Phase 7 plan execution is closed, while phase-level user-facing acceptance remains incomplete and Phases 8–10 have not started. |
+| Start with one 64³ dye-advection lesson and slices/tracers before volume rendering | Establish a testable, inspectable vertical slice early | User approved 2026-11-06; Phase 7 delivered the solver, fixed slice, and native Mac controls; manual acceptance remains pending. |
 | Keep inspection focused on dye slices, camera, passive tracers, and a selectable volume view | Make depth understandable within a bounded foundation milestone | User approved 2026-11-06; other fields and trails deferred. |
 | Reuse the existing 600-step lesson contract | Keep comparison and transport behaviour familiar | User approved 2026-11-06; three initial speeds, restart-on-adjustment, paused entry/restart. |
-| Require 30 fps at 64³ / 1280×720 on a named reference Mac | Establish a measured usable baseline before pursuing higher quality | User approved 2026-11-06; measurements pending. |
+| Require 30 fps at 64³ / 1280×720 on a named reference Mac | Establish a measured usable baseline before pursuing higher quality | User approved 2026-11-06; Phase 7 recorded an early offscreen solver/slice GPU baseline, but displayed frame pacing is NOT MEASURED and integrated 30-fps qualification remains pending for Phase 10. |
 
 ## Current State
 
@@ -92,7 +92,7 @@ v1.0 is archived with 14/14 implementation plans complete and 11/12 v1 requireme
 - Basic transparent dye-volume rendering after the slice/tracer foundation.
 - GPU correctness, repeatability, presentation-independence, and performance evidence.
 
-The user approved 23 requirements in `.planning/REQUIREMENTS.md` and the four-phase roadmap (phases 7–10) on 2026-11-06. Phase 7 is ready for discussion and planning. Deferred macOS 26 runtime and device-only multitouch checks remain tracked follow-ups rather than newly asserted compatibility claims.
+The user approved 23 requirements in `.planning/REQUIREMENTS.md` and the four-phase roadmap (phases 7–10) on 2026-11-06. Phase 7 closed its nine plans across eight waves on 2026-11-13. Its solver/fixed-slice path, native Mac controls, production-kernel evidence, and early solver/slice timings are documented, but phase-level user-facing acceptance remains incomplete: SIM-04, SIM-05, SIM-06, LES-01, LES-02, and LES-06 await manual acceptance; VER-03 is complete from automated production-kernel evidence. Plan 07-09 closed documentation only—the manual visual/accessibility/interaction review was not performed. Displayed frame pacing remains NOT MEASURED; actual macOS 26 runtime and physical-device multitouch remain NOT TESTED. Phases 8–10 have not started.
 
 ## Evolution
 

@@ -15,7 +15,7 @@ The post-v1.0 educational release (`07703e2`, documented 2026-10-13) established
 
 ## Phases
 
-- [ ] **Phase 7: First 3D Fluid Vertical Slice** — Select and step a real 3D fluid on Mac through a basic slice, backed by numerical checks.
+- [ ] **Phase 7: First 3D Fluid Vertical Slice** — All 9/9 plans are closed; phase-level user-facing acceptance remains incomplete, with six requirements pending manual acceptance.
 - [ ] **Phase 8: Spatial Inspection** — Explore depth using camera controls, movable slices, and passive tracers without changing the experiment.
 - [ ] **Phase 9: Repeatable 3D Advection Lesson** — Compare initial speeds through an explained, restartable 600-step lesson.
 - [ ] **Phase 10: Volume View and Measured Release Quality** — View the dye volume and meet the measured performance and regression contract.
@@ -60,15 +60,17 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 07-07-PLAN.md — Expose native grouped navigation, panel/copy/legend, focus and recovery UI.
+- [x] 07-07-PLAN.md — Expose native grouped navigation, panel/copy/legend, focus and recovery UI.
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 07-08-PLAN.md — Record fresh numerical/regression evidence, early performance baseline and scoped usage.
+- [x] 07-08-PLAN.md — Record fresh numerical/regression evidence, early performance baseline and scoped usage.
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 07-09-PLAN.md — Prepare the verified app and complete an explicit human visual/interaction checkpoint.
+- [x] 07-09-PLAN.md — Record the documentation closeout under user direction; keep the human visual/accessibility/interaction review explicitly pending.
+
+**Execution status (2026-11-13):** All nine plans are closed across eight waves. Plan 07-09 closed the documentation work, but the human visual/accessibility/native-interaction review was **not performed**; its checklist remains unchecked and this is not a human-review PASS. SIM-04, SIM-05, SIM-06, LES-01, LES-02, and LES-06 remain pending manual acceptance; VER-03 is complete from automated production-kernel evidence. Actual macOS 26 runtime and physical-device multitouch remain **NOT TESTED**; displayed frame pacing remains **NOT MEASURED**.
 
 **Cross-cutting constraints:**
 
@@ -135,7 +137,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 7. First 3D Fluid Vertical Slice | 6/9 | In Progress | — |
+| 7. First 3D Fluid Vertical Slice | 9/9 | Plans closed; acceptance incomplete | — (plans closed 2026-11-13) |
 | 8. Spatial Inspection | 0/TBD | Not started | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |
@@ -145,7 +147,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 - 23/23 approved v1.1 requirements map to exactly one phase: Phase 7 (7), Phase 8 (5), Phase 9 (7), Phase 10 (4).
 - Dependency order is sequential; every phase delivers an observable capability. Numerical checks accompany the solver; presentation-independence and repeatability checks accompany the relevant features.
 - Inline review checked approved scope, current-code integration, requirement ownership, 2–5 observable success criteria per phase, and numerical/performance research findings. This is an inline review, not independent-agent verification.
-- Phase 7 has nine executable plans with inline checking, all seven owned requirements and D-01–17 mapped. Execution starts with independent numerical references and state-capability work; no implementation or runtime acceptance is implied by planning completion.
+- Phase 7 has nine executable plans across eight waves, with all seven owned requirements and D-01–17 mapped. Execution closed all nine plans on 2026-11-13; plan closeout does not imply phase acceptance. The six user-facing requirements remain pending manual acceptance, while VER-03 is complete from automated production-kernel evidence.
 
 ## Deferred Verification
 
