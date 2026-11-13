@@ -908,6 +908,12 @@ private struct Fluid3DChecks {
         let pixels: [UInt8]
     }
 
+    private struct InspectionUniformsRoundTrip: BitwiseCopyable {
+        var worldToClip: simd_float4x4
+        var slice: SIMD4<Float>
+        var viewport: SIMD4<Float>
+    }
+
     private struct EncodedSimulationSnapshot {
         let fields: [(String, VolumeField3D, MTLBuffer)]
         let workspace: MTLBuffer
@@ -945,9 +951,12 @@ private struct Fluid3DChecks {
                     == "7f793d4ecfff13e7138a96e354f7597a9da9db88853c657d47a23ae09955e0c7",
                     "Spatial expectations must use the pinned independent inspection contract")
         try require(expectedHash == actualHash, "Independent spatial expectation payload hash mismatch")
+        try require((manifest["midpointPlanes"] as? [Int]) == [31, 32],
+                    "Independent midpoint expectation must name depth planes 31 and 32")
         guard let samples = manifest["slices"] as? [[String: Any]], samples.count == 12 else {
             throw Fluid3DHarnessError.assertion("Independent spatial fixture must contain twelve plane/depth expectations")
         }
+        try verifySpatialABIRoundTrip(device: device, metal: metal)
 
         let visualization = try FieldVisualization3D(metal: metal)
         let simulation = try FluidSimulation3D(metal: metal)
@@ -965,22 +974,21 @@ private struct Fluid3DChecks {
             throw Fluid3DHarnessError.library("Could not allocate the spatial-slice regression destination")
         }
 
-        let fields: [(String, (Double, Double, Double) -> Double, Double)] = [
-            ("affine", { x, y, z in 0.1 + 0.2*x + 0.3*y + 0.4*z }, 1),
-            ("landmarks", { x, y, z in (7*x + 19*y + 43*z) / 70 }, 70),
+        let fields: [(String, (Double, Double, Double) -> Double)] = [
+            ("affine", { x, y, z in 0.1 + 0.2*x + 0.3*y + 0.4*z }),
+            ("landmarks", { x, y, z in (7*x + 19*y + 43*z) / 70 }),
         ]
         var checkedSamples = 0
-        for (fieldName, valueAt, _) in fields {
+        for (fieldName, valueAt) in fields {
             var field = [Float]()
             field.reserveCapacity(64 * 64 * 64)
             for k in 0..<64 {
                 for j in 0..<64 {
                     for i in 0..<64 {
-                        field.append(Float(valueAt(
-                            (Double(i) + 0.5) / 64,
-                            (Double(j) + 0.5) / 64,
-                            (Double(k) + 0.5) / 64
-                        )))
+                        let x = (Double(i) + 0.5) / 64.0
+                        let y = (Double(j) + 0.5) / 64.0
+                        let z = (Double(k) + 0.5) / 64.0
+                        field.append(Float(valueAt(x, y, z)))
                     }
                 }
             }
@@ -990,6 +998,7 @@ private struct Fluid3DChecks {
             upload.waitUntilCompleted()
             try require(upload.status == .completed, "Could not upload \(fieldName) spatial fixture")
 
+            let beforePresentation = try scanSimulation(simulation)
             for plane in InspectionPlane3D.allCases {
                 let planeName = ["xy", "xz", "yz"][plane.rawValue]
                 for depth in [0.0, 0.3, 0.5, 1.0] {
@@ -1018,47 +1027,21 @@ private struct Fluid3DChecks {
                         inspection.camera.setElevationDegrees(0)
                     }
 
-                    let command = metal.newCommandBuffer()
-                    try visualization.encodeInspection(
-                        command: command,
+                    let pixels = try renderSpatialImage(
+                        metal: metal,
+                        visualization: visualization,
                         simulation: simulation,
                         destination: destination,
-                        viewport: MTLViewport(
-                            originX: 0, originY: 0,
-                            width: Double(width), height: Double(height),
-                            znear: 0, zfar: 1
-                        ),
                         inspection: inspection,
-                        pointScale: 1,
-                        increaseContrast: false
+                        width: width,
+                        height: height
                     )
-                    command.commit()
-                    command.waitUntilCompleted()
-                    try require(command.status == .completed,
-                                "Spatial \(planeName) depth \(depth) render failed: \(String(describing: command.error))")
-
-                    let camera = try Camera3D.frame(
-                        state: inspection.camera,
-                        viewportSize: CGSize(width: width, height: height)
+                    let (x, y) = try projectedSpatialPixel(
+                        world: world,
+                        camera: inspection.camera,
+                        width: width,
+                        height: height
                     )
-                    let clip = camera.worldToClip * SIMD4<Float>(
-                        Float(world[0]), Float(world[1]), Float(world[2]), 1
-                    )
-                    try require(clip.w.isFinite && clip.w > 0, "Independent sample projected behind the spatial camera")
-                    let ndc = SIMD2<Float>(clip.x / clip.w, clip.y / clip.w)
-                    let x = Int(floor((Double(ndc.x) + 1) * Double(width) * 0.5))
-                    let y = Int(floor((1 - Double(ndc.y)) * Double(height) * 0.5))
-                    try require(x >= 0 && x < width && y >= 0 && y < height,
-                                "Spatial \(planeName) sample projected outside the full-aspect output")
-                    var pixels = [UInt8](repeating: 0, count: width * height * 4)
-                    pixels.withUnsafeMutableBytes { bytes in
-                        destination.getBytes(
-                            bytes.baseAddress!,
-                            bytesPerRow: width * 4,
-                            from: MTLRegionMake2D(0, 0, width, height),
-                            mipmapLevel: 0
-                        )
-                    }
                     let expectedRGB = expectedSpatialPaletteRGB(
                         fieldName == "affine" ? expectedValue : expectedValue / 70
                     )
@@ -1073,7 +1056,70 @@ private struct Fluid3DChecks {
                     checkedSamples += 1
                 }
             }
+            let afterPresentation = try scanSimulation(simulation)
+            try require(
+                afterPresentation == beforePresentation,
+                "\(fieldName) spatial sampling mutated simulation textures"
+            )
         }
+
+        guard let backsideExpected = samples.first(where: {
+            $0["plane"] as? String == "xy" && abs(($0["depth"] as? Double ?? -1) - 0.3) < 1e-12
+        }),
+        let backsideWorld = backsideExpected["world"] as? [Double],
+        let backsideValue = backsideExpected["value"] as? Double else {
+            throw Fluid3DHarnessError.assertion("Independent backside landmark expectation is missing")
+        }
+        var backside = InspectionState3D()
+        backside.plane = .xy
+        backside.setDepth(0.3)
+        backside.camera.setYawDegrees(180)
+        backside.camera.setElevationDegrees(0)
+        let backsidePixels = try renderSpatialImage(
+            metal: metal,
+            visualization: visualization,
+            simulation: simulation,
+            destination: destination,
+            inspection: backside,
+            width: width,
+            height: height
+        )
+        let (backX, backY) = try projectedSpatialPixel(
+            world: backsideWorld,
+            camera: backside.camera,
+            width: width,
+            height: height
+        )
+        try assertSpatialRGB(
+            backsidePixels,
+            width: width,
+            x: backX,
+            y: backY,
+            expected: expectedSpatialPaletteRGB(backsideValue),
+            label: "backside XY geometry"
+        )
+
+        var edgeOn = InspectionState3D()
+        edgeOn.plane = .xy
+        edgeOn.setDepth(0.3)
+        edgeOn.camera.setYawDegrees(90)
+        edgeOn.camera.setElevationDegrees(0)
+        let edgeOnPixels = try renderSpatialImage(
+            metal: metal,
+            visualization: visualization,
+            simulation: simulation,
+            destination: destination,
+            inspection: edgeOn,
+            width: width,
+            height: height
+        )
+        try require(
+            stride(from: 0, to: edgeOnPixels.count, by: 4).allSatisfy {
+                edgeOnPixels[$0] == 0 && edgeOnPixels[$0 + 1] == 0
+                    && edgeOnPixels[$0 + 2] == 0
+            },
+            "An edge-on fixed XY plane must not billboard into a visible sheet"
+        )
         return [
             "passed": true,
             "fixture": "spatial-slices",
@@ -1081,9 +1127,137 @@ private struct Fluid3DChecks {
             "planes": ["xy", "xz", "yz"],
             "depths": [0, 0.3, 0.5, 1],
             "checkedAsymmetricSamples": checkedSamples,
+            "backsideGeometry": true,
+            "edgeOnRemainsThin": true,
+            "simulationTexturesUnchanged": true,
+            "abiRoundTrip": true,
             "independentPayloadSHA256": actualHash,
             "legacyFixedSliceRetained": true,
         ]
+    }
+
+    private static func verifySpatialABIRoundTrip(device: MTLDevice, metal: MetalDevice) throws {
+        try require(MemoryLayout<InspectionUniformsRoundTrip>.offset(of: \.worldToClip) == 0,
+                    "Spatial worldToClip ABI offset must be zero")
+        try require(MemoryLayout<InspectionUniformsRoundTrip>.offset(of: \.slice) == 64,
+                    "Spatial slice ABI offset must be 64")
+        try require(MemoryLayout<InspectionUniformsRoundTrip>.offset(of: \.viewport) == 80,
+                    "Spatial viewport ABI offset must be 80")
+        try require(MemoryLayout<InspectionUniformsRoundTrip>.size == 96
+                    && MemoryLayout<InspectionUniformsRoundTrip>.stride == 96
+                    && MemoryLayout<InspectionUniformsRoundTrip>.alignment == 16,
+                    "Spatial inspection ABI must be 96 bytes with 16-byte alignment")
+
+        let input = InspectionUniformsRoundTrip(
+            worldToClip: simd_float4x4(columns: (
+                SIMD4<Float>(0.125, 1.25, 2.5, 3.75),
+                SIMD4<Float>(4.125, 5.25, 6.5, 7.75),
+                SIMD4<Float>(8.125, 9.25, 10.5, 11.75),
+                SIMD4<Float>(12.125, 13.25, 14.5, 15.75)
+            )),
+            slice: SIMD4<Float>(0.3125, 2, 0.0625, -0.125),
+            viewport: SIMD4<Float>(1280, 720, 2, 0.25)
+        )
+        guard let function = metal.defaultLibrary.makeFunction(name: "fluid3DInspectionABIRoundTrip"),
+              let output = device.makeBuffer(
+                length: MemoryLayout<InspectionUniformsRoundTrip>.stride,
+                options: .storageModeShared
+              ) else {
+            throw Fluid3DHarnessError.library("Spatial inspection ABI round-trip resources are unavailable")
+        }
+        let pipeline = try device.makeComputePipelineState(function: function)
+        let command = metal.newCommandBuffer()
+        guard let encoder = command.makeComputeCommandEncoder() else {
+            throw Fluid3DHarnessError.commandBuffer("Could not create spatial ABI round-trip encoder")
+        }
+        var constants = input
+        encoder.setComputePipelineState(pipeline)
+        encoder.setBytes(&constants, length: MemoryLayout<InspectionUniformsRoundTrip>.stride, index: 0)
+        encoder.setBuffer(output, offset: 0, index: 1)
+        encoder.dispatchThreads(
+            MTLSize(width: 1, height: 1, depth: 1),
+            threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1)
+        )
+        encoder.endEncoding()
+        command.commit()
+        command.waitUntilCompleted()
+        try require(command.status == .completed, "Spatial ABI GPU round-trip command failed")
+        let returned = output.contents().assumingMemoryBound(to: InspectionUniformsRoundTrip.self).pointee
+        for column in 0..<4 {
+            for row in 0..<4 {
+                try require(
+                    returned.worldToClip[column][row].bitPattern == input.worldToClip[column][row].bitPattern,
+                    "Spatial inspection ABI GPU round-trip changed matrix lane [\(column),\(row)]"
+                )
+            }
+        }
+        for lane in 0..<4 {
+            try require(returned.slice[lane].bitPattern == input.slice[lane].bitPattern,
+                        "Spatial inspection ABI GPU round-trip changed slice lane \(lane)")
+            try require(returned.viewport[lane].bitPattern == input.viewport[lane].bitPattern,
+                        "Spatial inspection ABI GPU round-trip changed viewport lane \(lane)")
+        }
+    }
+
+    private static func renderSpatialImage(
+        metal: MetalDevice,
+        visualization: FieldVisualization3D,
+        simulation: FluidSimulation3D,
+        destination: MTLTexture,
+        inspection: InspectionState3D,
+        width: Int,
+        height: Int
+    ) throws -> [UInt8] {
+        let command = metal.newCommandBuffer()
+        try visualization.encodeInspection(
+            command: command,
+            simulation: simulation,
+            destination: destination,
+            viewport: MTLViewport(
+                originX: 0, originY: 0,
+                width: Double(width), height: Double(height),
+                znear: 0, zfar: 1
+            ),
+            inspection: inspection,
+            pointScale: 1,
+            increaseContrast: false
+        )
+        command.commit()
+        command.waitUntilCompleted()
+        try require(command.status == .completed,
+                    "Spatial render failed: \(String(describing: command.error))")
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        pixels.withUnsafeMutableBytes { bytes in
+            destination.getBytes(
+                bytes.baseAddress!,
+                bytesPerRow: width * 4,
+                from: MTLRegionMake2D(0, 0, width, height),
+                mipmapLevel: 0
+            )
+        }
+        return pixels
+    }
+
+    private static func projectedSpatialPixel(
+        world: [Double],
+        camera: CameraState3D,
+        width: Int,
+        height: Int
+    ) throws -> (Int, Int) {
+        let frame = try Camera3D.frame(
+            state: camera,
+            viewportSize: CGSize(width: width, height: height)
+        )
+        let clip = frame.worldToClip * SIMD4<Float>(
+            Float(world[0]), Float(world[1]), Float(world[2]), 1
+        )
+        try require(clip.w.isFinite && clip.w > 0, "Independent sample projected behind the spatial camera")
+        let ndc = SIMD2<Float>(clip.x / clip.w, clip.y / clip.w)
+        let x = Int(floor((Double(ndc.x) + 1) * Double(width) * 0.5))
+        let y = Int(floor((1 - Double(ndc.y)) * Double(height) * 0.5))
+        try require(x >= 0 && x < width && y >= 0 && y < height,
+                    "Spatial sample projected outside the full-aspect output")
+        return (x, y)
     }
 
     private static func expectedSpatialPaletteRGB(_ concentration: Double) -> SIMD3<Int> {
