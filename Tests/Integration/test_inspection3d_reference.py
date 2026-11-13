@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / "docs/3d-inspection-contract.md"
 SOURCE = ROOT / "Tests/Integration/inspection3d_reference.swift"
 BUILD = ROOT / ".build/inspection3d-reference"
-CONTRACT_HASH = "PENDING"
+CONTRACT_HASH = "7f793d4ecfff13e7138a96e354f7597a9da9db88853c657d47a23ae09955e0c7"
 PHASE7_HASH = "5fdc33b839d7f135a828ac9e6e3c3b4e7adba03d5341771ddbed4b13767951a8"
 
 
