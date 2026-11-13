@@ -46,7 +46,7 @@ Plans:
 
 - [x] 07-02-PLAN.md — Verify production 3D storage, ABI, all-axis advection and boundary sampling.
 
-**Wave 3** *(blocked on Wave 2 completion)*
+**Wave 3** *(ready after Wave 2 completion)*
 
 - [x] 07-03-PLAN.md — Complete compatible GPU projection and production reset/step with finite-state checks.
 
@@ -102,7 +102,7 @@ Plans:
 
 **Wave 2** *(ready after 08-01 / Wave 1 completion)*
 
-- [ ] 08-02-PLAN.md — Verify two-sided spatial sheets, subdued cube and depth-equipped rendering.
+- [x] 08-02-PLAN.md — Verify two-sided spatial sheets, subdued cube and depth-equipped rendering.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -138,7 +138,7 @@ Plans:
 
 **Planning status (2026-11-13):** Existing research/UI-SPEC reused; pattern mapping and 17-task executable validation contract created. All five owned requirements and 21 context decisions pass structural/coverage checks and distinct inline plan review after one revision. See `08-PLAN-CHECK.md`. Final human review remains a blocking execution checkpoint. No Phase 8 implementation/build/test/human acceptance is claimed by planning.
 
-**Execution status (2026-11-13):** 08-01 / Wave 1 complete, **1/9** plans closed; next **08-02 / Wave 2**. Preregistered independent oracle and production pure camera/state tests pass with actual RED/GREEN, both no-override app builds pass, selected Mac state tests pass 25/25. See `08-01-SUMMARY.md`. Foundation results do not complete INS-01/02/03/04 or CTRL-08; production GPU/UI/complete-state evidence and actual human review remain pending. No other wave executed.
+**Execution status (2026-11-13):** 08-01 / Wave 1 and 08-02 / Wave 2 complete, **2/9** plans closed; next **08-03 / Wave 3**. The independent foundation oracle and camera/state tests pass; Plan 08-02's production spatial fixture verifies 24 asymmetric plane/depth samples, projected cube edges, read-only simulation resources, input guards, and bounded depth/pipeline reuse. Both no-override app builds, the legacy slice/palette fixture, and evidence-schema checks pass. See `08-01-SUMMARY.md` and `08-02-SUMMARY.md`. No Phase 08 user-facing requirement is complete; renderer/UI integration, complete-state evidence, and human acceptance remain pending. No later wave executed.
 
 **UI hint**: yes
 
@@ -184,7 +184,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 7. First 3D Fluid Vertical Slice | 9/9 | Plans closed; acceptance incomplete | — (plans closed 2026-11-13) |
-| 8. Spatial Inspection | 1/9 | In Progress — next 08-02 / Wave 2 | — |
+| 8. Spatial Inspection | 2/9 | In Progress — next 08-03 / Wave 3 | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |
 
