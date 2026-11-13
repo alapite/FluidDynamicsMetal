@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: 3D Teaching Foundation
-status: ready_to_execute
-stopped_at: Phase 8 planned and inline plan review passed
-last_updated: "2026-11-13T19:12:10.272Z"
-last_activity: 2026-11-13 -- Phase 8 planning complete
+status: executing
+stopped_at: Completed 08-01-PLAN.md; next 08-02 / Wave 2
+last_updated: "2026-11-13T19:30:45.374Z"
+last_activity: 2026-11-13
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 18
-  completed_plans: 9
-  percent: 50
+  completed_plans: 10
+  percent: 56
 ---
 
 # Project State
@@ -25,18 +25,18 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 
 ## Current Position
 
-Phase: 08 (spatial-inspection) — PLANNED; IMPLEMENTATION NOT STARTED
-Plan: 0 of 9 complete; next 08-01 / Wave 1
-Status: Ready to execute
-Last activity: 2026-11-13 -- Phase 8 planning complete
+Phase: 08 (spatial-inspection) — IN PROGRESS; foundation delivered
+Plan: 1 of 9 complete; next 08-02 / Wave 2
+Status: Ready to execute next plan; Phase 8 acceptance pending
+Last activity: 2026-11-13
 
-Progress: [█████░░░░░] 50% of currently planned v1.1 plans closed (9/18); Phase 8 is 0/9. Phase 7 user-facing acceptance remains incomplete, so no v1.1 phase is marked fully accepted here.
+Progress: [██████░░░░] 56% of currently planned v1.1 plans closed (10/18); Phase 8 is 1/9. No v1.1 phase is marked fully accepted; Phase 7 manual acceptance remains incomplete.
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 23 (14 archived v1.0 + 9 current v1.1)
+- Total plans completed: 24 (14 archived v1.0 + 10 current v1.1)
 - Average duration: N/A (historical plan durations not fully aggregated)
 - Total execution time: At least 5.2 hours across recorded v1.1 Phase 7 plans; archived v1.0 duration is excluded.
 
@@ -61,6 +61,7 @@ Progress: [█████░░░░░] 50% of currently planned v1.1 plans c
 - Xcode 27 Device Hub two-finger touch simulation is unavailable ([developer forum report](https://developer.apple.com/forums/thread/846533)); retain device-only checks as NOT TESTED but do not gate later phases or milestone completion on them (user decision, 2026-09-25).
 - 2026-11-07: User approved compensated high/low Float32 pressure and a separately derived storage/evaluator identity-rounding bound while retaining strict Double ideal identity, both 1e-5 residual/divergence gates, 1000x reduction, cap 320 and fixture amplitudes. See the appended amendments in `docs/3d-numerical-contract.md`.
 - 2026-11-08: Phase 7 Plan 07-06 commits 3D renderer mode only after candidate reset/status validation; exact encode-before-consume steps use asynchronous completion diagnostics and generation-fenced recovery. The established 2D solver/ABI remains unchanged; phase requirements stay pending until end-to-end UI/lesson verification.
+- 2026-11-13: 08-01 pins inspection contract SHA-256 `7f793d4ecfff13e7138a96e354f7597a9da9db88853c657d47a23ae09955e0c7`; pure validated values/matrices own no evolution resources. Explicit initializers seal validation; slider yaw clamps while gesture yaw wraps. No requirements completed from foundation tests.
 
 ### Pending Todos
 
@@ -68,6 +69,7 @@ Progress: [█████░░░░░] 50% of currently planned v1.1 plans c
 
 ### Blockers/Concerns
 
+- 08-01 closed: actual RED/GREEN for both tasks; independent Double oracle and 2,880 production projection checks pass, both no-override app builds pass, selected Mac state tests 25/25 and existing schema/read-only guards pass. Final focused four-test command took 2.955 s including compilation. Distinct inline review strengthened nonconstant RK2/wall cases and malformed-output checks. No new GPU/UI/HUD/full integration or human acceptance is claimed. Next 08-02 / Wave 2; 08-09 remains blocking. Sequential current-checkout execution used the user-approved `workflow.use_worktrees=false`.
 - Phase 8 has nine executable plans / nine sequential waves / seventeen tasks. Distinct inline plan review passed after correcting early standalone-source dependencies and active-failure Free Play recovery/copy. All five owned requirements and D-01–21 are covered; schema/structure/XML/dependency/decision checks passed. See `08-PLAN-CHECK.md`. No Phase 8 implementation, app build/test, GPU evidence, measured feedback latency or human acceptance was performed during planning. Plan 08-09 is a blocking future human-review checkpoint; no prior no-issues assumption auto-approves it.
 - Phase 6 VER-02 is verified on the available macOS 27 host and iOS 26.4 simulators. The user approved closing v1.0 on 2026-09-25 while deferring actual macOS 26 runtime launch/drag beyond this milestone; PLAT-01 remains NOT TESTED and unverified.
 - Phase 6 iPhone and iPad HUD UI-test runs timed out without results; they remain NOT TESTED for this run. The user approved the separate manual checklist on the three prepared targets.
@@ -113,14 +115,15 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 | Phase 07 P03 | 60 min including closeout | 3 tasks | 11 implementation/test/contract files |
 | Phase 07 P04 | at least 46 min | 2 tasks | 7 implementation/test files |
 | Phase 07 P06 | approximately 90 min including post-merge verification | 3 tasks | 8 implementation/test files |
+| Phase 08 P01 | approximately 15 min | 2 tasks | 8 files |
 
 ## Session Continuity
 
-Last session: 2026-11-13T19:12:10.272Z
-Stopped at: Phase 8 planned and inline plan review passed
-Resume file: .planning/phases/08-spatial-inspection/08-01-PLAN.md
+Last session: 2026-11-13T19:30:45.367Z
+Stopped at: Completed 08-01-PLAN.md; next 08-02 / Wave 2
+Resume file: .planning/phases/08-spatial-inspection/08-02-PLAN.md
 
 ## Operator Next Steps
 
-- Run `/gsd-execute-phase 8` to begin 08-01. Plans, reused research/approved UI-SPEC, pattern map, updated validation strategy and inline checker report are in `.planning/phases/08-spatial-inspection/`. Review plans or use `/gsd-review --phase 8 --all` for optional external peer review first. Auto-advance remains off; no implementation was started by plan-phase.
+- Run `/gsd-execute-phase 8` to continue with 08-02 / Wave 2. Read `08-01-SUMMARY.md` for foundation API, pinned contract and fresh commands/limits. Only 1/9 plans is complete; no other wave ran. Auto-advance remains off; all Phase 8 requirements remain pending.
 - No remaining Phase 7 plans. When convenient, the user may complete the unchecked manual-review checklist in `docs/3d-phase7-verification.md`; record only actual observations. Do not treat the user-directed no-issues assumption as visual/interaction approval. Keep the six user-facing requirements pending; actual macOS 26 runtime and physical-device checks remain NOT TESTED, and displayed frame pacing remains NOT MEASURED.

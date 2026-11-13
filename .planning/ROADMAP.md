@@ -98,9 +98,9 @@ Planning focus: define grid locations, units, time-step/order, interpolation, bo
 Plans:
 **Wave 1**
 
-- [ ] 08-01-PLAN.md — Preregister inspection/oracle expectations and test pure camera/slice values.
+- [x] 08-01-PLAN.md — Preregister inspection/oracle expectations and test pure camera/slice values.
 
-**Wave 2** *(blocked on Wave 1 completion)*
+**Wave 2** *(ready after 08-01 / Wave 1 completion)*
 
 - [ ] 08-02-PLAN.md — Verify two-sided spatial sheets, subdued cube and depth-equipped rendering.
 
@@ -137,6 +137,8 @@ Plans:
 - The established 2D solver and its Swift/Metal ABI remain unchanged.
 
 **Planning status (2026-11-13):** Existing research/UI-SPEC reused; pattern mapping and 17-task executable validation contract created. All five owned requirements and 21 context decisions pass structural/coverage checks and distinct inline plan review after one revision. See `08-PLAN-CHECK.md`. Final human review remains a blocking execution checkpoint. No Phase 8 implementation/build/test/human acceptance is claimed by planning.
+
+**Execution status (2026-11-13):** 08-01 / Wave 1 complete, **1/9** plans closed; next **08-02 / Wave 2**. Preregistered independent oracle and production pure camera/state tests pass with actual RED/GREEN, both no-override app builds pass, selected Mac state tests pass 25/25. See `08-01-SUMMARY.md`. Foundation results do not complete INS-01/02/03/04 or CTRL-08; production GPU/UI/complete-state evidence and actual human review remain pending. No other wave executed.
 
 **UI hint**: yes
 
@@ -182,7 +184,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 7. First 3D Fluid Vertical Slice | 9/9 | Plans closed; acceptance incomplete | — (plans closed 2026-11-13) |
-| 8. Spatial Inspection | 0/9 | Planned — ready to execute | — |
+| 8. Spatial Inspection | 1/9 | In Progress — next 08-02 / Wave 2 | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |
 
