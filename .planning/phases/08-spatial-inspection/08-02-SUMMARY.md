@@ -97,7 +97,12 @@ The task commits are separate. The Task 2 code and its regression coverage were 
 - **Verification:** The diagnostic assertion failed before the wording change and passed in the final spatial fixture.
 - **Committed in:** `e362a04`.
 
-**Total deviations:** 2 review hardenings (one coverage gap, one diagnostic defect). **Impact:** Both remain within Plan 08-02’s validation and error-reporting scope; no acceptance threshold or feature scope changed.
+**3. [Process deviation - TDD evidence unverified] Task 2 RED phase cannot be substantiated**
+- **Found during:** Wave 2 closeout audit.
+- **Issue:** Task 2 is marked `tdd="true"`, but its production implementation and regression coverage were committed together in `e362a04`. The execution record contains no pre-implementation RED command/result, and the executor could not confirm that the new tests were observed failing before implementation.
+- **Disposition:** Record the RED phase as unverified. Do not infer test-first evidence from the final passing tests or invent a failure result. This is a process-evidence gap; the focused final tests and builds pass, and no production defect was found by those checks.
+
+**Total deviations:** 2 review hardenings (one coverage gap, one diagnostic defect) and 1 TDD evidence gap. **Impact:** The review hardenings remain within Plan 08-02’s validation and error-reporting scope; the TDD ordering for Task 2 remains unverified. No acceptance threshold or feature scope changed.
 
 ## Issues Encountered
 
@@ -138,4 +143,4 @@ git diff --check
 
 ## Self-Check: PASSED
 
-Both plan tasks, acceptance criteria, fresh app builds, production spatial and legacy fixtures, and the inline review were checked against the actual final files and command output. The pinned inspection contract remains unchanged; all new GPU images and spatial hashes are kept separate from historical benchmark evidence. No Phase 08 user-facing requirement is marked complete.
+Both plan tasks, acceptance criteria, fresh app builds, production spatial and legacy fixtures, and the inline review were checked against the actual final files and command output. Task 2's TDD RED ordering could not be substantiated and is recorded above rather than treated as verified. The pinned inspection contract remains unchanged; all new GPU images and spatial hashes are kept separate from historical benchmark evidence. No Phase 08 user-facing requirement is marked complete.
