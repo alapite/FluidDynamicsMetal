@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 import struct
 import subprocess
+import tempfile
 import time
 import unittest
 
@@ -52,6 +53,21 @@ class InspectionReferenceTests(unittest.TestCase):
         original = (BUILD / "manifest.json").read_bytes(), (BUILD / "expectations.f64le").read_bytes()
         self.assertEqual(run().returncode, 0)
         self.assertEqual(original, ((BUILD / "manifest.json").read_bytes(), (BUILD / "expectations.f64le").read_bytes()))
+        with tempfile.TemporaryDirectory(dir=BUILD, prefix="negative-") as temporary:
+            negative = Path(temporary)
+            with self.assertRaises(FileNotFoundError):
+                validate_export(negative, CONTRACT_HASH)
+            (negative / "manifest.json").write_text("not-json")
+            with self.assertRaises(json.JSONDecodeError):
+                validate_export(negative, CONTRACT_HASH)
+            (negative / "manifest.json").write_bytes(original[0])
+            (negative / "expectations.f64le").write_bytes(original[1][:-8])
+            with self.assertRaisesRegex(ValueError, "length"):
+                validate_export(negative, CONTRACT_HASH)
+            changed = bytearray(original[1]); changed[0] ^= 1
+            (negative / "expectations.f64le").write_bytes(changed)
+            with self.assertRaisesRegex(ValueError, "hash"):
+                validate_export(negative, CONTRACT_HASH)
         expected = [v for k in range(8) for j in range(8) for i in range(8) for v in ((i+.5)/8, (j+.5)/8, (k+.5)/8, 1.)]
         self.assertEqual(seeds, expected)
         self.assertEqual(len(manifest["slices"]), 12)

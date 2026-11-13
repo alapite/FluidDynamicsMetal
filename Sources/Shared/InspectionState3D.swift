@@ -18,6 +18,9 @@ struct CameraState3D: Equatable {
     private(set) var elevationDegrees: Double = 18
     private(set) var zoomPercent: Double = 100
 
+    // Suppress the synthesized memberwise initializer: all edits must validate.
+    init() {}
+
     /// Native slider endpoints clamp; +180 must not jump to the other endpoint.
     mutating func setYawDegrees(_ value: Double) {
         guard value.isFinite else { return }
@@ -49,6 +52,8 @@ struct InspectionState3D: Equatable {
     private(set) var depth: Double = 0.5
     var showTracers = true
     var camera = CameraState3D()
+
+    init() {}
 
     mutating func setDepth(_ value: Double) {
         guard value.isFinite else { return }
