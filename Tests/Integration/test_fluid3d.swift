@@ -108,6 +108,7 @@ private struct Fluid3DChecks {
         guard fixture == "storage-abi" || fixture == "advection-boundaries"
                 || fixture == "benchmark"
                 || fixture == "slice-palette"
+                || fixture == "spatial-slices"
                 || fixture == "evolution-visibility"
                 || fixture == "operators" || fixture == "projection" || fixture == "reset-finite"
                 || fixture == "transitions-and-failures" || fixture == "renderer-steps-and-inactivity" else {
@@ -122,6 +123,12 @@ private struct Fluid3DChecks {
             result = try rendererTransitionsAndFailures(device: device, metal: metal)
         } else if fixture == "slice-palette" {
             result = try sliceAndPalette(
+                device: device,
+                metal: metal,
+                referenceDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true)
+            )
+        } else if fixture == "spatial-slices" {
+            result = try spatialSlices(
                 device: device,
                 metal: metal,
                 referenceDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true)
@@ -922,6 +929,189 @@ private struct Fluid3DChecks {
         let volumeStatistics: [String: Any]
         let stateCapture: [String: Any]
         let sliceCapture: String
+    }
+
+    private static func spatialSlices(
+        device: MTLDevice,
+        metal: MetalDevice,
+        referenceDirectory: URL
+    ) throws -> [String: Any] {
+        let manifestData = try Data(contentsOf: referenceDirectory.appendingPathComponent("manifest.json"))
+        let manifest = try JSONSerialization.jsonObject(with: manifestData) as! [String: Any]
+        let expectedBinary = try Data(contentsOf: referenceDirectory.appendingPathComponent("expectations.f64le"))
+        let expectedHash = manifest["sha256"] as? String
+        let actualHash = SHA256.hash(data: expectedBinary).map { String(format: "%02x", $0) }.joined()
+        try require(manifest["contractHash"] as? String
+                    == "7f793d4ecfff13e7138a96e354f7597a9da9db88853c657d47a23ae09955e0c7",
+                    "Spatial expectations must use the pinned independent inspection contract")
+        try require(expectedHash == actualHash, "Independent spatial expectation payload hash mismatch")
+        guard let samples = manifest["slices"] as? [[String: Any]], samples.count == 12 else {
+            throw Fluid3DHarnessError.assertion("Independent spatial fixture must contain twelve plane/depth expectations")
+        }
+
+        let visualization = try FieldVisualization3D(metal: metal)
+        let simulation = try FluidSimulation3D(metal: metal)
+        let width = 512
+        let height = 512
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: FieldVisualization3D.destinationPixelFormat,
+            width: width,
+            height: height,
+            mipmapped: false
+        )
+        descriptor.storageMode = .shared
+        descriptor.usage = [.renderTarget]
+        guard let destination = device.makeTexture(descriptor: descriptor) else {
+            throw Fluid3DHarnessError.library("Could not allocate the spatial-slice regression destination")
+        }
+
+        let fields: [(String, (Double, Double, Double) -> Double, Double)] = [
+            ("affine", { x, y, z in 0.1 + 0.2*x + 0.3*y + 0.4*z }, 1),
+            ("landmarks", { x, y, z in (7*x + 19*y + 43*z) / 70 }, 70),
+        ]
+        var checkedSamples = 0
+        for (fieldName, valueAt, _) in fields {
+            var field = [Float]()
+            field.reserveCapacity(64 * 64 * 64)
+            for k in 0..<64 {
+                for j in 0..<64 {
+                    for i in 0..<64 {
+                        field.append(Float(valueAt(
+                            (Double(i) + 0.5) / 64,
+                            (Double(j) + 0.5) / 64,
+                            (Double(k) + 0.5) / 64
+                        )))
+                    }
+                }
+            }
+            let upload = metal.newCommandBuffer()
+            try simulation.dye.encodeUpload(field, to: simulation.dye.ping, command: upload)
+            upload.commit()
+            upload.waitUntilCompleted()
+            try require(upload.status == .completed, "Could not upload \(fieldName) spatial fixture")
+
+            for plane in InspectionPlane3D.allCases {
+                let planeName = ["xy", "xz", "yz"][plane.rawValue]
+                for depth in [0.0, 0.3, 0.5, 1.0] {
+                    guard let expected = samples.first(where: {
+                        $0["plane"] as? String == planeName
+                            && abs(($0["depth"] as? Double ?? -1) - depth) < 1e-12
+                    }),
+                    let world = expected["world"] as? [Double],
+                    world.count == 3,
+                    let expectedValue = expected[fieldName == "affine" ? "value" : "landmark"] as? Double else {
+                        throw Fluid3DHarnessError.assertion("Missing independent \(planeName) depth \(depth) \(fieldName) expectation")
+                    }
+
+                    var inspection = InspectionState3D()
+                    inspection.plane = plane
+                    inspection.setDepth(depth)
+                    switch plane {
+                    case .xy:
+                        inspection.camera.setYawDegrees(0)
+                        inspection.camera.setElevationDegrees(0)
+                    case .xz:
+                        inspection.camera.setYawDegrees(0)
+                        inspection.camera.setElevationDegrees(75)
+                    case .yz:
+                        inspection.camera.setYawDegrees(90)
+                        inspection.camera.setElevationDegrees(0)
+                    }
+
+                    let command = metal.newCommandBuffer()
+                    try visualization.encodeInspection(
+                        command: command,
+                        simulation: simulation,
+                        destination: destination,
+                        viewport: MTLViewport(
+                            originX: 0, originY: 0,
+                            width: Double(width), height: Double(height),
+                            znear: 0, zfar: 1
+                        ),
+                        inspection: inspection,
+                        pointScale: 1,
+                        increaseContrast: false
+                    )
+                    command.commit()
+                    command.waitUntilCompleted()
+                    try require(command.status == .completed,
+                                "Spatial \(planeName) depth \(depth) render failed: \(String(describing: command.error))")
+
+                    let camera = try Camera3D.frame(
+                        state: inspection.camera,
+                        viewportSize: CGSize(width: width, height: height)
+                    )
+                    let clip = camera.worldToClip * SIMD4<Float>(
+                        Float(world[0]), Float(world[1]), Float(world[2]), 1
+                    )
+                    try require(clip.w.isFinite && clip.w > 0, "Independent sample projected behind the spatial camera")
+                    let ndc = SIMD2<Float>(clip.x / clip.w, clip.y / clip.w)
+                    let x = Int(floor((Double(ndc.x) + 1) * Double(width) * 0.5))
+                    let y = Int(floor((1 - Double(ndc.y)) * Double(height) * 0.5))
+                    try require(x >= 0 && x < width && y >= 0 && y < height,
+                                "Spatial \(planeName) sample projected outside the full-aspect output")
+                    var pixels = [UInt8](repeating: 0, count: width * height * 4)
+                    pixels.withUnsafeMutableBytes { bytes in
+                        destination.getBytes(
+                            bytes.baseAddress!,
+                            bytesPerRow: width * 4,
+                            from: MTLRegionMake2D(0, 0, width, height),
+                            mipmapLevel: 0
+                        )
+                    }
+                    let expectedRGB = expectedSpatialPaletteRGB(
+                        fieldName == "affine" ? expectedValue : expectedValue / 70
+                    )
+                    try assertSpatialRGB(
+                        pixels,
+                        width: width,
+                        x: x,
+                        y: y,
+                        expected: expectedRGB,
+                        label: "\(fieldName) \(planeName) depth \(depth)"
+                    )
+                    checkedSamples += 1
+                }
+            }
+        }
+        return [
+            "passed": true,
+            "fixture": "spatial-slices",
+            "device": device.name,
+            "planes": ["xy", "xz", "yz"],
+            "depths": [0, 0.3, 0.5, 1],
+            "checkedAsymmetricSamples": checkedSamples,
+            "independentPayloadSHA256": actualHash,
+            "legacyFixedSliceRetained": true,
+        ]
+    }
+
+    private static func expectedSpatialPaletteRGB(_ concentration: Double) -> SIMD3<Int> {
+        let value = min(1, max(0, concentration))
+        let amber = SIMD3<Double>(237, 139, 35)
+        let cream = SIMD3<Double>(255, 241, 214)
+        let color = value <= 0.5
+            ? amber * (value * 2)
+            : amber + (cream - amber) * ((value - 0.5) * 2)
+        return SIMD3<Int>(Int(color.x.rounded()), Int(color.y.rounded()), Int(color.z.rounded()))
+    }
+
+    private static func assertSpatialRGB(
+        _ pixels: [UInt8],
+        width: Int,
+        x: Int,
+        y: Int,
+        expected: SIMD3<Int>,
+        label: String
+    ) throws {
+        let offset = (y * width + x) * 4
+        let actual = SIMD3<Int>(Int(pixels[offset + 2]), Int(pixels[offset + 1]), Int(pixels[offset]))
+        try require(
+            abs(actual.x - expected.x) <= 1
+                && abs(actual.y - expected.y) <= 1
+                && abs(actual.z - expected.z) <= 1,
+            "\(label) expected RGB \(expected), got \(actual)"
+        )
     }
 
     private static func sliceAndPalette(

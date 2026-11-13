@@ -30,8 +30,9 @@ class RendererCorrectnessTests(unittest.TestCase):
         sources = [ROOT / "Sources/Shared" / name for name in
                    ["MetalDevice.swift", "RenderShader.swift", "Slab.swift",
                     "SimulationState.swift", "SimulationTypes.swift", "ExperimentRecipes.swift", "FluidSimulation.swift", "FieldVisualization.swift", "ParticleSystem.swift", "Renderer.swift",
-                    "SimulationTypes3D.swift", "VolumeField3D.swift", "FluidSimulation3D.swift",
-                    "PressureProjection3D.swift", "ExperimentRecipes3D.swift", "FieldVisualization3D.swift"]]
+                     "SimulationTypes3D.swift", "VolumeField3D.swift", "FluidSimulation3D.swift",
+                     "PressureProjection3D.swift", "ExperimentRecipes3D.swift", "FieldVisualization3D.swift",
+                     "InspectionState3D.swift", "Camera3D.swift"]]
         for executable, optimization in [(cls.executable, "-Onone"), (cls.optimized_executable, "-O")]:
             result = subprocess.run(
                 ["xcrun", "swiftc", "-swift-version", "6", "-parse-as-library", optimization,

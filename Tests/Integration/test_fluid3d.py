@@ -24,6 +24,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_HASH = "a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b"
+INSPECTION_CONTRACT_HASH = "7f793d4ecfff13e7138a96e354f7597a9da9db88853c657d47a23ae09955e0c7"
 SWIFT_SOURCES = [
     "Sources/Shared/MetalDevice.swift",
     "Sources/Shared/RenderShader.swift",
@@ -40,6 +41,8 @@ SWIFT_SOURCES = [
     "Sources/Shared/ExperimentRecipes3D.swift",
     "Sources/Shared/FluidSimulation3D.swift",
     "Sources/Shared/FieldVisualization3D.swift",
+    "Sources/Shared/InspectionState3D.swift",
+    "Sources/Shared/Camera3D.swift",
     "Sources/Shared/PressureProjection3D.swift",
     "Tests/Integration/fluid3d_float32_pcg_diagnostic.swift",
     "Tests/Integration/test_fluid3d.swift",
@@ -56,6 +59,7 @@ PRODUCTION_FIXTURES = (
     "operators",
     "projection",
     "reset-finite",
+    "spatial-slices",
     "slice-palette",
     "evolution-visibility",
     "transitions-and-failures",
@@ -866,6 +870,9 @@ class Fluid3DTests(unittest.TestCase):
     def test_slice_and_palette(self):
         self.run_production_fixture("slice-palette")
 
+    def test_spatial_slices(self):
+        self.run_production_fixture("spatial-slices")
+
     def test_evolution_and_visibility(self):
         self.run_production_fixture("evolution-visibility")
 
@@ -884,13 +891,22 @@ class Fluid3DTests(unittest.TestCase):
         missing = [str(ROOT / source) for source in HASHED_SOURCES if not (ROOT / source).is_file()]
         self.assertFalse(missing, "Missing required production/test sources:\n" + "\n".join(missing))
 
-        reference_command = [
-            sys.executable,
-            str(ROOT / "Tests/Integration/test_fluid3d_reference.py"),
-            "--export",
-            str(reference_dir),
-            "--check-contract",
-        ]
+        if fixture == "spatial-slices":
+            reference_dir = ROOT / ".build/inspection3d-reference"
+            reference_command = [
+                sys.executable,
+                "-m",
+                "unittest",
+                "Tests.Integration.test_inspection3d_reference",
+            ]
+        else:
+            reference_command = [
+                sys.executable,
+                str(ROOT / "Tests/Integration/test_fluid3d_reference.py"),
+                "--export",
+                str(reference_dir),
+                "--check-contract",
+            ]
         if fixture == "advection-boundaries":
             reference_command.extend(["--advection-fixtures", str(reference_dir)])
         reference_result = subprocess.run(
@@ -906,7 +922,10 @@ class Fluid3DTests(unittest.TestCase):
         manifest_path = reference_dir / "manifest.json"
         self.assertTrue(manifest_path.is_file(), "CPU reference export omitted manifest.json")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual(manifest.get("contractHash"), CONTRACT_HASH)
+        self.assertEqual(
+            manifest.get("contractHash"),
+            INSPECTION_CONTRACT_HASH if fixture == "spatial-slices" else CONTRACT_HASH,
+        )
         projection_fixtures = {
             "zero_rhs",
             "constant_pressure",
