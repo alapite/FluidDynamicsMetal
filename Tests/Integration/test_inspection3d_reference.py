@@ -76,6 +76,28 @@ class InspectionReferenceTests(unittest.TestCase):
                 for a in range(3):
                     self.assertAlmostEqual(item["positions"][1][a], .5 + item["velocity"][a]/60, places=12)
                     self.assertAlmostEqual(item["positions"][48][a], .5 + 48*item["velocity"][a]/60, places=12)
+        # Independent closed-form reconstruction of a constant interior MAC
+        # component: the one-cell normal boundary interval tapers to zero.
+        self.assertEqual(len(manifest["wallTrajectories"]), 26)
+        for item in manifest["wallTrajectories"]:
+            p = item["positions"][0]
+            for actual in item["positions"][1:]:
+                def sample(x, a):
+                    return item["velocity"][a] * min(1, 64*x[a], 64*(1-x[a]))
+                mid = [min(1,max(0,p[a]+sample(p,a)/120)) for a in range(3)]
+                p = [min(1,max(0,p[a]+sample(mid,a)/60)) for a in range(3)]
+                for a in range(3):
+                    self.assertAlmostEqual(actual[a], p[a], places=12)
+        p = [.31,.42,.57]
+        for actual in manifest["affineTrajectory"]:
+            def affine_velocity(x):
+                return [(a+1)*.01+.02*x[0]-.03*x[1]+.04*x[2] for a in range(3)]
+            first = affine_velocity(p)
+            mid = [p[a]+first[a]/120 for a in range(3)]
+            second = affine_velocity(mid)
+            p = [p[a]+second[a]/60 for a in range(3)]
+            for a in range(3):
+                self.assertAlmostEqual(actual[a], p[a], places=12)
         # Exercise actual rejection, not a declared boolean in a manifest.
         corrupt = BUILD / "corrupt-contract.md"
         corrupt.write_bytes(CONTRACT.read_bytes() + b"corrupt")

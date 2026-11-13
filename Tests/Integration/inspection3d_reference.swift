@@ -60,10 +60,10 @@ private func velocity(_ p: [Double], _ v: [Double], affineMAC: Bool = false) -> 
         }
     }
 }
-private func advance(_ p: [Double], _ v: [Double]) -> [Double] {
-    let first = velocity(p, v)
+private func advance(_ p: [Double], _ v: [Double], affineMAC: Bool = false) -> [Double] {
+    let first = velocity(p, v, affineMAC: affineMAC)
     let midpoint = clamp((0..<3).map { p[$0]+first[$0]/120 })
-    let second = velocity(midpoint, v)
+    let second = velocity(midpoint, v, affineMAC: affineMAC)
     return clamp((0..<3).map { p[$0]+second[$0]/60 })
 }
 
@@ -114,6 +114,21 @@ private func advance(_ p: [Double], _ v: [Double]) -> [Double] {
             trajectories.append(["name": name, "velocity": v, "positions": points])
         }
         var reflectionError = 0.0
+        var wallTrajectories: [[String: Any]] = []
+        for x in [0.001,0.5,0.999] { for y in [0.001,0.5,0.999] { for z in [0.001,0.5,0.999] {
+            if x == 0.5 && y == 0.5 && z == 0.5 { continue }
+            var point = [x,y,z]
+            let v = [0.9,-0.7,0.8]
+            var positions = [point]
+            for _ in 0..<48 { point = advance(point,v); positions.append(point) }
+            wallTrajectories.append(["velocity": v, "positions": positions])
+        } } }
+        var affinePoint = [0.31,0.42,0.57]
+        var affineTrajectory: [[Double]] = []
+        for _ in 0..<48 {
+            affinePoint = advance(affinePoint,[0,0,0],affineMAC: true)
+            affineTrajectory.append(affinePoint)
+        }
         var reflectionCases = 0
         for x in [-0.031,0.37,1.031] { for y in [-0.031,0.37,1.031] { for z in [-0.031,0.37,1.031] {
             let p = [x,y,z]
@@ -135,7 +150,8 @@ private func advance(_ p: [Double], _ v: [Double]) -> [Double] {
             "sha256": hash(binary), "slices": slices, "midpointPlanes": [31,32],
             "midpointError": midpointError, "trajectories": trajectories,
             "reflectionCases": reflectionCases, "reflectionError": reflectionError,
-            "affineMACError": affineError]
+            "affineMACError": affineError, "wallTrajectories": wallTrajectories,
+            "affineTrajectory": affineTrajectory]
         try binary.write(to: directory.appendingPathComponent("expectations.f64le"), options: .atomic)
         try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted])
             .write(to: directory.appendingPathComponent("manifest.json"), options: .atomic)
