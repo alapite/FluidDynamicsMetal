@@ -14,11 +14,11 @@ enum FieldVisualization3DError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidDestinationFormat(let format):
-            "3D slice destination must use bgra8Unorm, got \(format.rawValue)"
+            "3D visualization destination must use bgra8Unorm, got \(format.rawValue)"
         case .invalidSpatialDestination:
             "3D inspection destination must be a single-sample bgra8Unorm render target"
         case .invalidViewport:
-            "3D slice viewport must be finite, positive, and contained by the destination"
+            "3D viewport values or destination intersection are invalid"
         case .renderEncoderUnavailable:
             "Unable to create the 3D slice render encoder"
         case .spatialPipelineFunctionUnavailable(let name):
@@ -69,6 +69,20 @@ final class FieldVisualization3D {
         var viewport: SIMD4<Float>
     }
 
+    struct SpatialResourceAllocator {
+        var makePipeline: (MTLDevice, MTLRenderPipelineDescriptor) throws -> MTLRenderPipelineState
+        var makeDepthAttachment: (MTLDevice, MTLTextureDescriptor) -> MTLTexture?
+
+        @MainActor static let production = SpatialResourceAllocator(
+            makePipeline: { device, descriptor in
+                try device.makeRenderPipelineState(descriptor: descriptor)
+            },
+            makeDepthAttachment: { device, descriptor in
+                device.makeTexture(descriptor: descriptor)
+            }
+        )
+    }
+
     static let paletteStops: [PaletteStop] = [
         PaletteStop(concentration: 0, color: SIMD3<Float>(0, 0, 0)),
         PaletteStop(concentration: 0.5, color: SIMD3<Float>(Float(237) / 255, Float(139) / 255, Float(35) / 255)),
@@ -89,12 +103,20 @@ final class FieldVisualization3D {
     private let indices: MTLBuffer
     private let pipeline: MTLRenderPipelineState
     private let spatialPipeline: MTLRenderPipelineState
+    private let spatialGuidePipeline: MTLRenderPipelineState
     private let spatialDepthState: MTLDepthStencilState
+    private let spatialGuideDepthState: MTLDepthStencilState
     private let device: MTLDevice
+    private let resources: SpatialResourceAllocator
     private var depthAttachment: MTLTexture?
 
-    init(metal: MetalDevice) throws {
+    convenience init(metal: MetalDevice) throws {
+        try self.init(metal: metal, resources: .production)
+    }
+
+    init(metal: MetalDevice, resources: SpatialResourceAllocator) throws {
         device = metal.device
+        self.resources = resources
         vertices = metal.buffer(array: Self.vertices, storageMode: .storageModeShared)
         indices = metal.buffer(array: Self.indexData, storageMode: .storageModeShared)
         pipeline = try metal.createRenderPipeline(
@@ -102,11 +124,34 @@ final class FieldVisualization3D {
             fragmentFunctionName: "fluid3DFixedSlice",
             pixelFormat: Self.destinationPixelFormat
         )
-        spatialPipeline = try Self.makeSpatialPipeline(device: metal.device, library: metal.defaultLibrary)
+        spatialPipeline = try Self.makeSpatialPipeline(
+            device: metal.device,
+            library: metal.defaultLibrary,
+            vertexFunctionName: "fluid3DSpatialVertex",
+            fragmentFunctionName: "fluid3DSpatialSlice",
+            label: "3D spatial inspection sheet",
+            allocator: resources.makePipeline
+        )
+        spatialGuidePipeline = try Self.makeSpatialPipeline(
+            device: metal.device,
+            library: metal.defaultLibrary,
+            vertexFunctionName: "fluid3DSpatialGuideVertex",
+            fragmentFunctionName: "fluid3DSpatialGuide",
+            label: "3D spatial cube guide",
+            allocator: resources.makePipeline
+        )
         guard let depthState = Self.makeSpatialDepthState(device: metal.device) else {
             throw FieldVisualization3DError.spatialDepthStateUnavailable
         }
         spatialDepthState = depthState
+        guard let guideDepthState = Self.makeSpatialDepthState(
+            device: metal.device,
+            compare: .always,
+            writeEnabled: false
+        ) else {
+            throw FieldVisualization3DError.spatialDepthStateUnavailable
+        }
+        spatialGuideDepthState = guideDepthState
         Self.assertSpatialUniformLayout()
     }
 
@@ -295,6 +340,19 @@ final class FieldVisualization3D {
         )
         encoder.setFragmentBytes(&palette, length: MemoryLayout<PaletteUniforms>.stride, index: 0)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+
+        encoder.setRenderPipelineState(spatialGuidePipeline)
+        encoder.setDepthStencilState(spatialGuideDepthState)
+        var guideUniforms = uniforms
+        encoder.setVertexBytes(
+            &guideUniforms,
+            length: MemoryLayout<SpatialInspectionUniforms>.stride,
+            index: 0
+        )
+        let guideChannel = increaseContrast ? Float(166) / 255 : Float(102) / 255
+        var guideColor = SIMD4<Float>(guideChannel, guideChannel, guideChannel, 1)
+        encoder.setFragmentBytes(&guideColor, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 12 * 6)
         encoder.endEncoding()
 
         // Keep the selected generation alive when a resize replaces the cached
@@ -303,7 +361,6 @@ final class FieldVisualization3D {
         command.addCompletedHandler { _ in
             withExtendedLifetime(depthRetention) {}
         }
-        _ = increaseContrast
     }
 
     private func depthAttachment(width: Int, height: Int) throws -> MTLTexture {
@@ -322,7 +379,7 @@ final class FieldVisualization3D {
         )
         descriptor.storageMode = .private
         descriptor.usage = [.renderTarget]
-        guard let replacement = device.makeTexture(descriptor: descriptor) else {
+        guard let replacement = resources.makeDepthAttachment(device, descriptor) else {
             throw FieldVisualization3DError.depthAttachmentAllocationFailed(width: width, height: height)
         }
         replacement.label = "3D inspection depth \(width)x\(height)"
@@ -332,28 +389,36 @@ final class FieldVisualization3D {
 
     private static func makeSpatialPipeline(
         device: MTLDevice,
-        library: MTLLibrary
+        library: MTLLibrary,
+        vertexFunctionName: String,
+        fragmentFunctionName: String,
+        label: String,
+        allocator: (MTLDevice, MTLRenderPipelineDescriptor) throws -> MTLRenderPipelineState
     ) throws -> MTLRenderPipelineState {
-        guard let vertex = library.makeFunction(name: "fluid3DSpatialVertex") else {
-            throw FieldVisualization3DError.spatialPipelineFunctionUnavailable("fluid3DSpatialVertex")
+        guard let vertex = library.makeFunction(name: vertexFunctionName) else {
+            throw FieldVisualization3DError.spatialPipelineFunctionUnavailable(vertexFunctionName)
         }
-        guard let fragment = library.makeFunction(name: "fluid3DSpatialSlice") else {
-            throw FieldVisualization3DError.spatialPipelineFunctionUnavailable("fluid3DSpatialSlice")
+        guard let fragment = library.makeFunction(name: fragmentFunctionName) else {
+            throw FieldVisualization3DError.spatialPipelineFunctionUnavailable(fragmentFunctionName)
         }
         let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.label = "3D spatial inspection sheet"
+        descriptor.label = label
         descriptor.vertexFunction = vertex
         descriptor.fragmentFunction = fragment
         descriptor.colorAttachments[0].pixelFormat = Self.destinationPixelFormat
         descriptor.depthAttachmentPixelFormat = .depth32Float
         descriptor.rasterSampleCount = 1
-        return try device.makeRenderPipelineState(descriptor: descriptor)
+        return try allocator(device, descriptor)
     }
 
-    private static func makeSpatialDepthState(device: MTLDevice) -> MTLDepthStencilState? {
+    private static func makeSpatialDepthState(
+        device: MTLDevice,
+        compare: MTLCompareFunction = .lessEqual,
+        writeEnabled: Bool = true
+    ) -> MTLDepthStencilState? {
         let descriptor = MTLDepthStencilDescriptor()
-        descriptor.depthCompareFunction = .lessEqual
-        descriptor.isDepthWriteEnabled = true
+        descriptor.depthCompareFunction = compare
+        descriptor.isDepthWriteEnabled = writeEnabled
         return device.makeDepthStencilState(descriptor: descriptor)
     }
 

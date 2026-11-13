@@ -53,6 +53,11 @@ HASHED_SOURCES = SWIFT_SOURCES[:-1] + [
     "Tests/Integration/test_fluid3d.swift",
     "Tests/Integration/test_fluid3d.py",
 ]
+SPATIAL_HASHED_SOURCES = HASHED_SOURCES + [
+    "Tests/Integration/inspection3d_reference.swift",
+    "Tests/Integration/test_inspection3d_reference.py",
+    "docs/3d-inspection-contract.md",
+]
 PRODUCTION_FIXTURES = (
     "storage-abi",
     "advection-boundaries",
@@ -609,6 +614,30 @@ def _validate_fixture_metrics(fixture: str, report: dict) -> list[str]:
             errors.append("slice-palette read-only/finite result is missing")
         if result.get("sampledPlanes") != [31, 32] or result.get("sampleWeights") != [0.5, 0.5]:
             errors.append("slice-palette does not report the central 31/32 midpoint")
+    elif fixture == "spatial-slices":
+        if result.get("cubeEdgesChecked") != 12:
+            errors.append("spatial-slices must verify all 12 projected cube edges")
+        scale_ratio = result.get("cubeGuidePointScaleRatio")
+        if not isinstance(scale_ratio, (int, float)) or not 3.2 <= scale_ratio <= 4.8:
+            errors.append("spatial-slices guide-pixel coverage must scale with 1x/2x point size")
+        if result.get("cubeDepthAttachmentReuseAllocations") != 2:
+            errors.append("spatial-slices repeated-size checks must allocate one depth attachment per size")
+        if result.get("cubeSpatialPipelineAllocations") != 2:
+            errors.append("spatial-slices must reuse its sheet and guide pipelines across viewport changes")
+        for key in (
+            "checkedPipelineAllocationFailure",
+            "checkedDepthAllocationFailure",
+            "emptyDyeGuidesVisible",
+            "cameraMatrixChanged",
+            "cameraChangesProjectedImage",
+            "resizePreservesInspectionState",
+            "resizePreservesBothSimulationGenerations",
+            "invalidDestinationFormatRejected",
+            "invalidViewportRejected",
+            "zeroExtentDeferredWithoutDepthAllocation",
+        ):
+            if result.get(key) is not True:
+                errors.append(f"spatial-slices is missing required regression evidence: {key}")
     return errors
 
 
@@ -660,7 +689,16 @@ def validate_evidence_bundle(evidence_dir: Path, *, quick: bool) -> list[str]:
             continue
         if report.get("schemaVersion") != 1 or report.get("fixture") != fixture:
             errors.append(f"{report_path.name} has an unsupported schema or fixture identity")
-        if report.get("sourceSHA256") != current_sources:
+        fixture_sources = current_sources
+        if fixture == "spatial-slices":
+            fixture_sources = {}
+            for source in SPATIAL_HASHED_SOURCES:
+                path = ROOT / source
+                if not path.is_file():
+                    errors.append(f"missing spatial hashed source: {source}")
+                    continue
+                fixture_sources[source] = sha256(path)
+        if report.get("sourceSHA256") != fixture_sources:
             errors.append(f"{report_path.name} source hashes are stale")
         if metallib_hash and report.get("metallibSHA256") != metallib_hash:
             errors.append(f"{report_path.name} metallib hash is stale")
@@ -671,8 +709,13 @@ def validate_evidence_bundle(evidence_dir: Path, *, quick: bool) -> list[str]:
             errors.extend(_validate_fixture_metrics(fixture, report))
         result = report.get("result")
         if isinstance(result, dict):
+            capture_directory = (
+                ROOT / ".build/inspection3d-evidence"
+                if fixture == "spatial-slices"
+                else evidence_dir
+            )
             for capture in result.get("captures", []):
-                if not isinstance(capture, str) or not (evidence_dir / capture).is_file():
+                if not isinstance(capture, str) or not (capture_directory / capture).is_file():
                     errors.append(f"{report_path.name} references a missing capture: {capture}")
 
     matrix_path = evidence_dir / "regression-matrix.json"
@@ -852,6 +895,43 @@ class Fluid3DTests(unittest.TestCase):
     def test_evidence_hashes_python_driver(self):
         self.assertIn("Tests/Integration/test_fluid3d.py", HASHED_SOURCES)
 
+    def test_spatial_source_inventory_is_separate_from_historical_fixture_inventory(self):
+        self.assertEqual(SPATIAL_HASHED_SOURCES[:len(HASHED_SOURCES)], HASHED_SOURCES)
+        self.assertIn("Tests/Integration/inspection3d_reference.swift", SPATIAL_HASHED_SOURCES)
+        self.assertIn("Tests/Integration/test_inspection3d_reference.py", SPATIAL_HASHED_SOURCES)
+        self.assertIn("docs/3d-inspection-contract.md", SPATIAL_HASHED_SOURCES)
+        self.assertNotIn("Tests/Integration/inspection3d_reference.swift", HASHED_SOURCES)
+
+    def test_spatial_fixture_evidence_requires_cube_resource_and_camera_checks(self):
+        report = {
+            "result": {
+                "passed": True,
+                "fixture": "spatial-slices",
+                "cubeEdgesChecked": 12,
+                "cubeGuidePointScaleRatio": 4.0,
+                "cubeDepthAttachmentReuseAllocations": 2,
+                "cubeSpatialPipelineAllocations": 2,
+                "checkedPipelineAllocationFailure": True,
+                "checkedDepthAllocationFailure": True,
+                "emptyDyeGuidesVisible": True,
+                "cameraMatrixChanged": True,
+                "cameraChangesProjectedImage": True,
+                "resizePreservesInspectionState": True,
+                "resizePreservesBothSimulationGenerations": True,
+                "invalidDestinationFormatRejected": True,
+                "invalidViewportRejected": True,
+                "zeroExtentDeferredWithoutDepthAllocation": True,
+            }
+        }
+        self.assertEqual(_validate_fixture_metrics("spatial-slices", report), [])
+        self.assertTrue(
+            validate_benchmark_manifest(report),
+            "A spatial fixture report must not be valid solver/slice benchmark evidence",
+        )
+        report["result"]["cubeEdgesChecked"] = 11
+        errors = _validate_fixture_metrics("spatial-slices", report)
+        self.assertIn("spatial-slices must verify all 12 projected cube edges", errors)
+
     def test_storage_and_abi(self):
         self.run_production_fixture("storage-abi")
 
@@ -888,7 +968,8 @@ class Fluid3DTests(unittest.TestCase):
         evidence_dir.mkdir(parents=True, exist_ok=True)
         log_path = evidence_dir / f"{fixture}.log"
 
-        missing = [str(ROOT / source) for source in HASHED_SOURCES if not (ROOT / source).is_file()]
+        fixture_sources = SPATIAL_HASHED_SOURCES if fixture == "spatial-slices" else HASHED_SOURCES
+        missing = [str(ROOT / source) for source in fixture_sources if not (ROOT / source).is_file()]
         self.assertFalse(missing, "Missing required production/test sources:\n" + "\n".join(missing))
 
         if fixture == "spatial-slices":
@@ -1114,7 +1195,7 @@ class Fluid3DTests(unittest.TestCase):
                     sha256(advection_manifest_path) if advection_manifest is not None else None
                 ),
                 "sourceSHA256": {
-                    source: sha256(ROOT / source) for source in HASHED_SOURCES
+                    source: sha256(ROOT / source) for source in fixture_sources
                 },
                 "metallibSHA256": sha256(metallib),
                 "commands": {

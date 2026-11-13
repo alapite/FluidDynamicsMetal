@@ -18,6 +18,10 @@ private enum Fluid3DHarnessError: Error, CustomStringConvertible {
     }
 }
 
+private enum SpatialAllocationFault: Error {
+    case injected
+}
+
 private final class BenchmarkCompletionStamp: @unchecked Sendable {
     let semaphore = DispatchSemaphore(value: 0)
     private let lock = NSLock()
@@ -41,6 +45,18 @@ private final class BenchmarkCompletionStamp: @unchecked Sendable {
 @main
 @MainActor
 private struct Fluid3DChecks {
+    private static let cubeVertices: [SIMD3<Double>] = [
+        SIMD3<Double>(0, 0, 0), SIMD3<Double>(1, 0, 0),
+        SIMD3<Double>(0, 1, 0), SIMD3<Double>(1, 1, 0),
+        SIMD3<Double>(0, 0, 1), SIMD3<Double>(1, 0, 1),
+        SIMD3<Double>(0, 1, 1), SIMD3<Double>(1, 1, 1),
+    ]
+    private static let cubeEdges: [(Int, Int)] = [
+        (0, 1), (2, 3), (4, 5), (6, 7),
+        (0, 2), (1, 3), (4, 6), (5, 7),
+        (0, 4), (1, 5), (2, 6), (3, 7),
+    ]
+
     private struct PendingBenchmarkSample {
         let command: MTLCommandBuffer
         let status: PressureProjection3D.StatusSlot
@@ -958,7 +974,23 @@ private struct Fluid3DChecks {
         }
         try verifySpatialABIRoundTrip(device: device, metal: metal)
 
-        let visualization = try FieldVisualization3D(metal: metal)
+        let productionResources = FieldVisualization3D.SpatialResourceAllocator.production
+        let productionPipelineAllocator = productionResources.makePipeline
+        let productionDepthAllocator = productionResources.makeDepthAttachment
+        var pipelineAllocationCount = 0
+        var depthAllocationCount = 0
+        var countedResources = productionResources
+        countedResources.makePipeline = { device, library in
+            pipelineAllocationCount += 1
+            return try productionPipelineAllocator(device, library)
+        }
+        countedResources.makeDepthAttachment = { device, descriptor in
+            depthAllocationCount += 1
+            return productionDepthAllocator(device, descriptor)
+        }
+        let visualization = try FieldVisualization3D(metal: metal, resources: countedResources)
+        try require(pipelineAllocationCount == 2,
+                    "Spatial sheet and guide pipelines must each be allocated exactly once")
         let simulation = try FluidSimulation3D(metal: metal)
         let width = 512
         let height = 512
@@ -973,6 +1005,14 @@ private struct Fluid3DChecks {
         guard let destination = device.makeTexture(descriptor: descriptor) else {
             throw Fluid3DHarnessError.library("Could not allocate the spatial-slice regression destination")
         }
+        let spatialInputValidation = try verifySpatialInputValidation(
+            device: device,
+            metal: metal,
+            visualization: visualization,
+            simulation: simulation,
+            destination: destination,
+            depthAllocationCount: { depthAllocationCount }
+        )
 
         let fields: [(String, (Double, Double, Double) -> Double)] = [
             ("affine", { x, y, z in 0.1 + 0.2*x + 0.3*y + 0.4*z }),
@@ -1058,7 +1098,7 @@ private struct Fluid3DChecks {
             }
             let afterPresentation = try scanSimulation(simulation)
             try require(
-                afterPresentation == beforePresentation,
+                simulationFieldsMatchExactBits(afterPresentation, beforePresentation),
                 "\(fieldName) spatial sampling mutated simulation textures"
             )
         }
@@ -1135,8 +1175,12 @@ private struct Fluid3DChecks {
         for y in 0..<height {
             for x in 0..<width {
                 let offset = (y * width + x) * 4
-                if edgeOnPixels[offset] != 0 || edgeOnPixels[offset + 1] != 0
-                    || edgeOnPixels[offset + 2] != 0 {
+                let red = Int(edgeOnPixels[offset + 2])
+                let green = Int(edgeOnPixels[offset + 1])
+                let blue = Int(edgeOnPixels[offset])
+                let isCubeGuide = (abs(red - 102) <= 1 && abs(green - 102) <= 1 && abs(blue - 102) <= 1)
+                    || (abs(red - 166) <= 1 && abs(green - 166) <= 1 && abs(blue - 166) <= 1)
+                if !isCubeGuide && (red != 0 || green != 0 || blue != 0) {
                     edgeOnPoints.append((x, y))
                 }
             }
@@ -1166,6 +1210,262 @@ private struct Fluid3DChecks {
                 && abs(actualBounds.3 - edgeOnBounds.3) <= 2,
             "Edge-on XY raster bounds \(actualBounds) must match independent fixed-plane projection \(edgeOnBounds), not a billboard"
         )
+
+        let emptyDye = [Float](repeating: 0, count: 64 * 64 * 64)
+        let emptyUpload = metal.newCommandBuffer()
+        try simulation.dye.encodeUpload(emptyDye, to: simulation.dye.ping, command: emptyUpload)
+        try simulation.dye.encodeUpload(emptyDye, to: simulation.dye.pong, command: emptyUpload)
+        emptyUpload.commit()
+        emptyUpload.waitUntilCompleted()
+        try require(emptyUpload.status == .completed, "Could not seed empty-dye guide fixture")
+        let beforeGuides = try scanSimulation(simulation)
+
+        let inspectionBeforeResize = InspectionState3D()
+        let evidenceDirectory = referenceDirectory.deletingLastPathComponent()
+            .appendingPathComponent("inspection3d-evidence", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: evidenceDirectory, withIntermediateDirectories: true
+        )
+        var guideCaptures: [String] = []
+        for (width, height) in [(384, 144), (144, 384), (320, 240)] {
+            let guideDestination = try makeSpatialDestination(
+                device: device, width: width, height: height
+            )
+            let pixels = try renderSpatialImage(
+                metal: metal,
+                visualization: visualization,
+                simulation: simulation,
+                destination: guideDestination,
+                inspection: inspectionBeforeResize,
+                width: width,
+                height: height
+            )
+            _ = try assertCubeGuides(
+                pixels,
+                width: width,
+                height: height,
+                camera: inspectionBeforeResize.camera,
+                pointScale: 1,
+                expectedColor: SIMD3<Int>(102, 102, 102),
+                label: "default-fit \(width)x\(height)"
+            )
+            let capture = "cube-default-fit-\(width)x\(height).ppm"
+            try writePPM(
+                SliceImage(width: width, height: height, pixels: pixels),
+                to: evidenceDirectory.appendingPathComponent(capture)
+            )
+            guideCaptures.append(capture)
+        }
+
+        let oneXSize = (256, 192)
+        let twoXSize = (512, 384)
+        let oneXDestination = try makeSpatialDestination(
+            device: device, width: oneXSize.0, height: oneXSize.1
+        )
+        let oneXPixels = try renderSpatialImage(
+            metal: metal,
+            visualization: visualization,
+            simulation: simulation,
+            destination: oneXDestination,
+            inspection: inspectionBeforeResize,
+            width: oneXSize.0,
+            height: oneXSize.1,
+            pointScale: 1
+        )
+        let oneXGuideCount = try assertCubeGuides(
+            oneXPixels,
+            width: oneXSize.0,
+            height: oneXSize.1,
+            camera: inspectionBeforeResize.camera,
+            pointScale: 1,
+            expectedColor: SIMD3<Int>(102, 102, 102),
+            label: "1x one-point guides"
+        )
+        let twoXDestination = try makeSpatialDestination(
+            device: device, width: twoXSize.0, height: twoXSize.1
+        )
+        let twoXPixels = try renderSpatialImage(
+            metal: metal,
+            visualization: visualization,
+            simulation: simulation,
+            destination: twoXDestination,
+            inspection: inspectionBeforeResize,
+            width: twoXSize.0,
+            height: twoXSize.1,
+            pointScale: 2
+        )
+        let twoXGuideCount = try assertCubeGuides(
+            twoXPixels,
+            width: twoXSize.0,
+            height: twoXSize.1,
+            camera: inspectionBeforeResize.camera,
+            pointScale: 2,
+            expectedColor: SIMD3<Int>(102, 102, 102),
+            label: "2x one-point guides"
+        )
+        try require(
+            pipelineAllocationCount == 2,
+            "Viewport changes must reuse the spatial pipeline instead of rebuilding it"
+        )
+        let guidePixelScaleRatio = Double(twoXGuideCount) / Double(oneXGuideCount)
+        try require(
+            guidePixelScaleRatio >= 3.2 && guidePixelScaleRatio <= 4.8,
+            "One-point guide raster area must scale quadratically from 1x to 2x; ratio=\(guidePixelScaleRatio)"
+        )
+        let twoXCapture = "cube-default-fit-2x.ppm"
+        try writePPM(
+            SliceImage(width: twoXSize.0, height: twoXSize.1, pixels: twoXPixels),
+            to: evidenceDirectory.appendingPathComponent(twoXCapture)
+        )
+        guideCaptures.append(twoXCapture)
+
+        let contrastPixels = try renderSpatialImage(
+            metal: metal,
+            visualization: visualization,
+            simulation: simulation,
+            destination: oneXDestination,
+            inspection: inspectionBeforeResize,
+            width: oneXSize.0,
+            height: oneXSize.1,
+            pointScale: 1,
+            increaseContrast: true
+        )
+        _ = try assertCubeGuides(
+            contrastPixels,
+            width: oneXSize.0,
+            height: oneXSize.1,
+            camera: inspectionBeforeResize.camera,
+            pointScale: 1,
+            expectedColor: SIMD3<Int>(166, 166, 166),
+            label: "Increase Contrast guides"
+        )
+        let contrastCapture = "cube-increase-contrast.ppm"
+        try writePPM(
+            SliceImage(width: oneXSize.0, height: oneXSize.1, pixels: contrastPixels),
+            to: evidenceDirectory.appendingPathComponent(contrastCapture)
+        )
+        guideCaptures.append(contrastCapture)
+
+        var rotatedInspection = inspectionBeforeResize
+        rotatedInspection.camera.setYawDegrees(95)
+        let originalCameraFrame = try Camera3D.frame(
+            state: inspectionBeforeResize.camera,
+            viewportSize: CGSize(width: oneXSize.0, height: oneXSize.1)
+        )
+        let rotatedCameraFrame = try Camera3D.frame(
+            state: rotatedInspection.camera,
+            viewportSize: CGSize(width: oneXSize.0, height: oneXSize.1)
+        )
+        let cameraMatrixChanged = (0..<4).contains { column in
+            (0..<4).contains { row in
+                originalCameraFrame.worldToClip[column][row].bitPattern
+                    != rotatedCameraFrame.worldToClip[column][row].bitPattern
+            }
+        }
+        try require(cameraMatrixChanged,
+                    "An actual camera edit must change the production world-to-clip matrix")
+        let rotatedPixels = try renderSpatialImage(
+            metal: metal,
+            visualization: visualization,
+            simulation: simulation,
+            destination: oneXDestination,
+            inspection: rotatedInspection,
+            width: oneXSize.0,
+            height: oneXSize.1
+        )
+        try require(
+            rotatedPixels != oneXPixels,
+            "Changing the camera must change the projected guide image"
+        )
+        _ = try assertCubeGuides(
+            rotatedPixels,
+            width: oneXSize.0,
+            height: oneXSize.1,
+            camera: rotatedInspection.camera,
+            pointScale: 1,
+            expectedColor: SIMD3<Int>(102, 102, 102),
+            label: "camera-edited guides"
+        )
+        try require(
+            inspectionBeforeResize == InspectionState3D(),
+            "Viewport changes or rendering mutated the stored inspection/camera state"
+        )
+        let allocationsBeforeRepeatedSizes = depthAllocationCount
+        for (width, height) in [(160, 96), (160, 96), (96, 160), (96, 160)] {
+            let repeatedDestination = try makeSpatialDestination(
+                device: device, width: width, height: height
+            )
+            let repeatedPixels = try renderSpatialImage(
+                metal: metal,
+                visualization: visualization,
+                simulation: simulation,
+                destination: repeatedDestination,
+                inspection: inspectionBeforeResize,
+                width: width,
+                height: height
+            )
+            _ = try assertCubeGuides(
+                repeatedPixels,
+                width: width,
+                height: height,
+                camera: inspectionBeforeResize.camera,
+                pointScale: 1,
+                expectedColor: SIMD3<Int>(102, 102, 102),
+                label: "repeated-size \(width)x\(height)"
+            )
+        }
+        let repeatedSizeAllocations = depthAllocationCount - allocationsBeforeRepeatedSizes
+        try require(
+            repeatedSizeAllocations == 2,
+            "Depth attachments must be reused for repeated sizes, allocation delta=\(repeatedSizeAllocations)"
+        )
+
+        var failedPipelineResources = productionResources
+        failedPipelineResources.makePipeline = { _, _ in
+            throw SpatialAllocationFault.injected
+        }
+        var pipelineAllocationFailed = false
+        do {
+            _ = try FieldVisualization3D(metal: metal, resources: failedPipelineResources)
+        } catch {
+            pipelineAllocationFailed = true
+        }
+        try require(pipelineAllocationFailed,
+                    "Spatial pipeline allocation failure must throw instead of terminating or succeeding")
+
+        var failedDepthResources = productionResources
+        failedDepthResources.makeDepthAttachment = { _, _ in nil }
+        let failedDepthVisualization = try FieldVisualization3D(
+            metal: metal, resources: failedDepthResources
+        )
+        let failedDepthDestination = try makeSpatialDestination(
+            device: device, width: 80, height: 72
+        )
+        let failedDepthCommand = metal.newCommandBuffer()
+        var depthAllocationFailed = false
+        do {
+            try failedDepthVisualization.encodeInspection(
+                command: failedDepthCommand,
+                simulation: simulation,
+                destination: failedDepthDestination,
+                viewport: MTLViewport(
+                    originX: 0, originY: 0, width: 80, height: 72, znear: 0, zfar: 1
+                ),
+                inspection: inspectionBeforeResize,
+                pointScale: 1,
+                increaseContrast: false
+            )
+        } catch FieldVisualization3DError.depthAttachmentAllocationFailed(width: 80, height: 72) {
+            depthAllocationFailed = true
+        }
+        try require(depthAllocationFailed,
+                    "Depth attachment allocation failure must throw its checked size-specific error")
+
+        let afterGuides = try scanSimulation(simulation)
+        try require(
+            simulationFieldsMatchExactBits(afterGuides, beforeGuides),
+            "Spatial cube guide draws modified one or more ping/pong simulation resources"
+        )
         return [
             "passed": true,
             "fixture": "spatial-slices",
@@ -1179,7 +1479,116 @@ private struct Fluid3DChecks {
             "abiRoundTrip": true,
             "independentPayloadSHA256": actualHash,
             "legacyFixedSliceRetained": true,
+            "cubeEdgesChecked": cubeEdges.count,
+            "cubeGuidePointScaleRatio": guidePixelScaleRatio,
+            "cubeGuidePixelCounts": ["1x": oneXGuideCount, "2x": twoXGuideCount],
+            "cubeDepthAttachmentReuseAllocations": repeatedSizeAllocations,
+            "cubeSpatialPipelineAllocations": pipelineAllocationCount,
+            "checkedPipelineAllocationFailure": pipelineAllocationFailed,
+            "checkedDepthAllocationFailure": depthAllocationFailed,
+            "emptyDyeGuidesVisible": true,
+            "cameraMatrixChanged": cameraMatrixChanged,
+            "cameraChangesProjectedImage": true,
+            "resizePreservesInspectionState": true,
+            "resizePreservesBothSimulationGenerations": true,
+            "invalidDestinationFormatRejected": spatialInputValidation.invalidDestinationFormatRejected,
+            "invalidViewportRejected": spatialInputValidation.invalidViewportRejected,
+            "zeroExtentDeferredWithoutDepthAllocation": spatialInputValidation.zeroExtentDeferredWithoutDepthAllocation,
+            "captures": guideCaptures,
         ]
+    }
+
+    private static func verifySpatialInputValidation(
+        device: MTLDevice,
+        metal: MetalDevice,
+        visualization: FieldVisualization3D,
+        simulation: FluidSimulation3D,
+        destination: MTLTexture,
+        depthAllocationCount: () -> Int
+    ) throws -> (
+        invalidDestinationFormatRejected: Bool,
+        invalidViewportRejected: Bool,
+        zeroExtentDeferredWithoutDepthAllocation: Bool
+    ) {
+        let invalidFormatDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm,
+            width: destination.width,
+            height: destination.height,
+            mipmapped: false
+        )
+        invalidFormatDescriptor.storageMode = .shared
+        invalidFormatDescriptor.usage = [.renderTarget]
+        guard let invalidFormatDestination = device.makeTexture(descriptor: invalidFormatDescriptor) else {
+            throw Fluid3DHarnessError.library("Could not allocate invalid-format spatial validation target")
+        }
+        var invalidDestinationFormatRejected = false
+        do {
+            try visualization.encodeInspection(
+                command: metal.newCommandBuffer(),
+                simulation: simulation,
+                destination: invalidFormatDestination,
+                viewport: MTLViewport(
+                    originX: 0, originY: 0,
+                    width: Double(destination.width), height: Double(destination.height),
+                    znear: 0, zfar: 1
+                ),
+                inspection: InspectionState3D(),
+                pointScale: 1,
+                increaseContrast: false
+            )
+        } catch let error as FieldVisualization3DError {
+            guard case .invalidDestinationFormat(.rgba8Unorm) = error else { throw error }
+            invalidDestinationFormatRejected = true
+            try require(error.localizedDescription.contains("3D visualization destination"),
+                        "Spatial destination format errors must not be reported as legacy slice errors")
+        }
+        try require(invalidDestinationFormatRejected,
+                    "Spatial rendering must reject destinations with a non-bgra8Unorm pixel format")
+
+        var invalidViewportRejected = false
+        do {
+            try visualization.encodeInspection(
+                command: metal.newCommandBuffer(),
+                simulation: simulation,
+                destination: destination,
+                viewport: MTLViewport(
+                    originX: 0, originY: 0,
+                    width: Double(destination.width + 1), height: Double(destination.height),
+                    znear: 0, zfar: 1
+                ),
+                inspection: InspectionState3D(),
+                pointScale: 1,
+                increaseContrast: false
+            )
+        } catch FieldVisualization3DError.invalidViewport {
+            invalidViewportRejected = true
+        }
+        try require(invalidViewportRejected,
+                    "Spatial rendering must reject a viewport extending beyond its destination")
+
+        let allocationsBeforeZeroExtent = depthAllocationCount()
+        try visualization.encodeInspection(
+            command: metal.newCommandBuffer(),
+            simulation: simulation,
+            destination: destination,
+            viewport: MTLViewport(
+                originX: 0, originY: 0, width: 0,
+                height: Double(destination.height), znear: 0, zfar: 1
+            ),
+            inspection: InspectionState3D(),
+            pointScale: 1,
+            increaseContrast: false
+        )
+        let zeroExtentDeferredWithoutDepthAllocation =
+            depthAllocationCount() == allocationsBeforeZeroExtent
+        try require(zeroExtentDeferredWithoutDepthAllocation,
+                    "A zero-width drawable must defer rendering before allocating a depth attachment")
+
+        return (
+            invalidDestinationFormatRejected,
+            invalidViewportRejected,
+            zeroExtentDeferredWithoutDepthAllocation
+        )
     }
 
     private static func verifySpatialABIRoundTrip(device: MTLDevice, metal: MetalDevice) throws {
@@ -1252,7 +1661,9 @@ private struct Fluid3DChecks {
         destination: MTLTexture,
         inspection: InspectionState3D,
         width: Int,
-        height: Int
+        height: Int,
+        pointScale: Float = 1,
+        increaseContrast: Bool = false
     ) throws -> [UInt8] {
         let command = metal.newCommandBuffer()
         try visualization.encodeInspection(
@@ -1265,8 +1676,8 @@ private struct Fluid3DChecks {
                 znear: 0, zfar: 1
             ),
             inspection: inspection,
-            pointScale: 1,
-            increaseContrast: false
+            pointScale: pointScale,
+            increaseContrast: increaseContrast
         )
         command.commit()
         command.waitUntilCompleted()
@@ -1282,6 +1693,163 @@ private struct Fluid3DChecks {
             )
         }
         return pixels
+    }
+
+    private static func makeSpatialDestination(
+        device: MTLDevice,
+        width: Int,
+        height: Int
+    ) throws -> MTLTexture {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: FieldVisualization3D.destinationPixelFormat,
+            width: width,
+            height: height,
+            mipmapped: false
+        )
+        descriptor.storageMode = .shared
+        descriptor.usage = [.renderTarget]
+        guard let texture = device.makeTexture(descriptor: descriptor) else {
+            throw Fluid3DHarnessError.library(
+                "Could not allocate the \(width)x\(height) spatial guide destination"
+            )
+        }
+        return texture
+    }
+
+    private static func assertCubeGuides(
+        _ pixels: [UInt8],
+        width: Int,
+        height: Int,
+        camera: CameraState3D,
+        pointScale: Double,
+        expectedColor: SIMD3<Int>,
+        label: String
+    ) throws -> Int {
+        let projected = cubeVertices.map {
+            independentlyProjectedPoint($0, camera: camera, width: width, height: height)
+        }
+        let projectedBounds = (
+            projected.map(\.x).min() ?? 0,
+            projected.map(\.x).max() ?? 0,
+            projected.map(\.y).min() ?? 0,
+            projected.map(\.y).max() ?? 0
+        )
+        try require(
+            projectedBounds.0 >= 0 && projectedBounds.1 < Double(width)
+                && projectedBounds.2 >= 0 && projectedBounds.3 < Double(height),
+            "\(label) independently projected cube vertices must fit the full-aspect viewport: \(projectedBounds)"
+        )
+        let endpointRadius = max(1.5, pointScale * 1.5)
+        for (index, point) in projected.enumerated() {
+            try require(
+                containsGuidePixel(
+                    pixels,
+                    width: width,
+                    height: height,
+                    around: point,
+                    radius: endpointRadius,
+                    color: expectedColor
+                ),
+                "\(label) is missing projected cube endpoint \(index) at \(point)"
+            )
+        }
+        for (edgeIndex, edge) in cubeEdges.enumerated() {
+            let midpoint = (projected[edge.0] + projected[edge.1]) * 0.5
+            try require(
+                containsGuidePixel(
+                    pixels,
+                    width: width,
+                    height: height,
+                    around: midpoint,
+                    radius: endpointRadius,
+                    color: expectedColor
+                ),
+                "\(label) is missing projected cube edge \(edgeIndex) midpoint at \(midpoint)"
+            )
+        }
+        let guidePixelCount = countGuidePixels(pixels, color: expectedColor)
+        var maximumHalfWidthPixels = 0.0
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = (y * width + x) * 4
+                guard isGuidePixel(pixels, offset: offset, color: expectedColor) else { continue }
+                let pixelCenter = SIMD2<Double>(Double(x) + 0.5, Double(y) + 0.5)
+                let minimumDistance = cubeEdges.map { edge in
+                    distance(
+                        pixelCenter,
+                        toSegmentFrom: projected[edge.0],
+                        to: projected[edge.1]
+                    )
+                }.min() ?? .infinity
+                maximumHalfWidthPixels = max(maximumHalfWidthPixels, minimumDistance)
+            }
+        }
+        try require(
+            maximumHalfWidthPixels <= pointScale * 0.5 + 0.8,
+            "\(label) projected stroke exceeds one point: maximum half-width=\(maximumHalfWidthPixels)px at \(pointScale)x"
+        )
+        return guidePixelCount
+    }
+
+    private static func containsGuidePixel(
+        _ pixels: [UInt8],
+        width: Int,
+        height: Int,
+        around center: SIMD2<Double>,
+        radius: Double,
+        color: SIMD3<Int>
+    ) -> Bool {
+        let minX = max(0, Int(floor(center.x - radius)))
+        let maxX = min(width - 1, Int(ceil(center.x + radius)))
+        let minY = max(0, Int(floor(center.y - radius)))
+        let maxY = min(height - 1, Int(ceil(center.y + radius)))
+        for y in minY...maxY {
+            for x in minX...maxX {
+                let offset = (y * width + x) * 4
+                let actual = SIMD3<Int>(
+                    Int(pixels[offset + 2]),
+                    Int(pixels[offset + 1]),
+                    Int(pixels[offset])
+                )
+                if abs(actual.x - color.x) <= 1
+                    && abs(actual.y - color.y) <= 1
+                    && abs(actual.z - color.z) <= 1 {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private static func countGuidePixels(
+        _ pixels: [UInt8],
+        color: SIMD3<Int>
+    ) -> Int {
+        stride(from: 0, to: pixels.count, by: 4).reduce(into: 0) { count, offset in
+            if isGuidePixel(pixels, offset: offset, color: color) { count += 1 }
+        }
+    }
+
+    private static func isGuidePixel(
+        _ pixels: [UInt8],
+        offset: Int,
+        color: SIMD3<Int>
+    ) -> Bool {
+        abs(Int(pixels[offset + 2]) - color.x) <= 1
+            && abs(Int(pixels[offset + 1]) - color.y) <= 1
+            && abs(Int(pixels[offset]) - color.z) <= 1
+    }
+
+    private static func distance(
+        _ point: SIMD2<Double>,
+        toSegmentFrom start: SIMD2<Double>,
+        to end: SIMD2<Double>
+    ) -> Double {
+        let segment = end - start
+        let lengthSquared = simd_dot(segment, segment)
+        guard lengthSquared > 0 else { return simd_length(point - start) }
+        let fraction = min(1, max(0, simd_dot(point - start, segment) / lengthSquared))
+        return simd_length(point - (start + fraction * segment))
     }
 
     private static func projectedSpatialPixel(
@@ -2691,6 +3259,24 @@ private struct Fluid3DChecks {
                         "Dye left bounded concentration range")
         }
         return fields
+    }
+
+    private static func simulationFieldsMatchExactBits(
+        _ lhs: [String: [Float]],
+        _ rhs: [String: [Float]]
+    ) -> Bool {
+        guard Set(lhs.keys) == Set(rhs.keys) else { return false }
+        for name in lhs.keys {
+            guard let left = lhs[name], let right = rhs[name], left.count == right.count else {
+                return false
+            }
+            if !zip(left, right).allSatisfy({ pair in
+                pair.0.bitPattern == pair.1.bitPattern
+            }) {
+                return false
+            }
+        }
+        return true
     }
 
     private static func operatorFixture(

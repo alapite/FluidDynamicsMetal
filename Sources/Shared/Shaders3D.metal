@@ -38,6 +38,10 @@ struct Fluid3DSpatialSliceOutput {
     float3 worldPosition [[user(locn0)]];
 };
 
+struct Fluid3DSpatialGuideOutput {
+    float4 position [[position]];
+};
+
 vertex Fluid3DSliceVertexOutput fluid3DVertex(
     const device Fluid3DSliceVertex *vertices [[buffer(0)]],
     uint vertexID [[vertex_id]]) {
@@ -154,6 +158,99 @@ fragment float4 fluid3DSpatialSlice(
         encodedRGB = mix(palette.amber.rgb, palette.cream.rgb, amount);
     }
     return float4(encodedRGB, 1.0f);
+}
+
+inline float3 fluid3DUnitCubeVertex(uint index) {
+    switch (index) {
+        case 0u: return float3(0.0f, 0.0f, 0.0f);
+        case 1u: return float3(1.0f, 0.0f, 0.0f);
+        case 2u: return float3(0.0f, 1.0f, 0.0f);
+        case 3u: return float3(1.0f, 1.0f, 0.0f);
+        case 4u: return float3(0.0f, 0.0f, 1.0f);
+        case 5u: return float3(1.0f, 0.0f, 1.0f);
+        case 6u: return float3(0.0f, 1.0f, 1.0f);
+        default: return float3(1.0f, 1.0f, 1.0f);
+    }
+}
+
+inline uint2 fluid3DUnitCubeEdge(uint index) {
+    switch (index) {
+        case 0u: return uint2(0u, 1u);
+        case 1u: return uint2(2u, 3u);
+        case 2u: return uint2(4u, 5u);
+        case 3u: return uint2(6u, 7u);
+        case 4u: return uint2(0u, 2u);
+        case 5u: return uint2(1u, 3u);
+        case 6u: return uint2(4u, 6u);
+        case 7u: return uint2(5u, 7u);
+        case 8u: return uint2(0u, 4u);
+        case 9u: return uint2(1u, 5u);
+        case 10u: return uint2(2u, 6u);
+        default: return uint2(3u, 7u);
+    }
+}
+
+vertex Fluid3DSpatialGuideOutput fluid3DSpatialGuideVertex(
+    uint vertexID [[vertex_id]],
+    constant Fluid3DInspectionUniforms &uniforms [[buffer(0)]]) {
+    uint corner = vertexID % 6u;
+    uint2 edge = fluid3DUnitCubeEdge(vertexID / 6u);
+    float4 startClip = uniforms.worldToClip * float4(fluid3DUnitCubeVertex(edge.x), 1.0f);
+    float4 endClip = uniforms.worldToClip * float4(fluid3DUnitCubeVertex(edge.y), 1.0f);
+    float2 startNDC = startClip.xy / startClip.w;
+    float2 endNDC = endClip.xy / endClip.w;
+    float2 screenDelta = (endNDC - startNDC) * float2(
+        uniforms.viewport.x * 0.5f,
+        -uniforms.viewport.y * 0.5f
+    );
+    float pixelLength = length(screenDelta);
+    float2 direction = pixelLength > 0.0001f
+        ? screenDelta / pixelLength
+        : float2(1.0f, 0.0f);
+    float2 normal = float2(-direction.y, direction.x);
+
+    uint endpointIndex;
+    float side;
+    switch (corner) {
+        case 0u:
+            endpointIndex = 0u;
+            side = -1.0f;
+            break;
+        case 1u:
+            endpointIndex = 0u;
+            side = 1.0f;
+            break;
+        case 2u:
+        case 3u:
+            endpointIndex = 1u;
+            side = -1.0f;
+            break;
+        case 4u:
+            endpointIndex = 0u;
+            side = 1.0f;
+            break;
+        default:
+            endpointIndex = 1u;
+            side = 1.0f;
+            break;
+    }
+
+    float4 position = endpointIndex == 0u ? startClip : endClip;
+    float halfWidthPixels = uniforms.viewport.z * 0.5f;
+    float2 ndcOffset = normal * side * halfWidthPixels * float2(
+        2.0f / uniforms.viewport.x,
+        -2.0f / uniforms.viewport.y
+    );
+    position.xy += ndcOffset * position.w;
+    Fluid3DSpatialGuideOutput output;
+    output.position = position;
+    return output;
+}
+
+fragment float4 fluid3DSpatialGuide(
+    Fluid3DSpatialGuideOutput input [[stage_in]],
+    constant float4 &color [[buffer(0)]]) {
+    return color;
 }
 
 kernel void fluid3DABIRoundTrip(
