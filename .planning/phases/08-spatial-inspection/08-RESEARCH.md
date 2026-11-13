@@ -76,7 +76,7 @@ The baseline has a genuine evolving 64³ solver and a read-only fixed central XY
 
 `Renderer.draw(in:)` already encodes a logical solver step before acquiring a drawable and calls `consumeStep()` only after successful encoding. `transitionTo3D` constructs candidate resources and validates reset before committing the mode, with generation-fenced diagnostics and 2D recovery. Preserve these patterns when introducing tracers and depth resources. [VERIFIED: Sources/Shared/Renderer.swift:225-292,369-426]
 
-**Primary recommendation (design proposal):** Introduce pure 3D inspection/camera values, a separate session-owned `TracerSystem3D`, and a depth-equipped `FieldVisualization3D`. Advance tracers immediately after a successful solver-step encoding, using that step's newly projected velocity and GPU status guard, independently of visibility/drawables. Validate a thin camera-plus-slice end-to-end path before adding tracers and broader presentation variations. Exact UI layout/copy and visual constants must be captured in the missing `08-UI-SPEC.md` before executable planning.
+**Primary recommendation (design proposal):** Introduce pure 3D inspection/camera values, a separate session-owned `TracerSystem3D`, and a depth-equipped `FieldVisualization3D`. Advance tracers immediately after a successful solver-step encoding, using that step's newly projected velocity and GPU status guard, independently of visibility/drawables. Validate a thin camera-plus-slice end-to-end path before adding tracers and broader presentation variations. **Planning update (2026-11-13):** `08-UI-SPEC.md` now exists and is approved; its exact layout/copy and visual constants supersede the research candidates below. Approval is a design-contract result, not implementation acceptance.
 
 ## Project Constraints (from AGENTS.md)
 
@@ -256,7 +256,7 @@ Run focused checks after each meaningful task; after each wave build affected ta
 - Missing pure inspection/camera tests and state representation.
 - Missing multi-axis spatial render, depth-occlusion, tracer and complete-state production fixtures/independent expected data.
 - Missing native keyboard/gesture-isolation coverage and injected tracer/depth-allocation failures.
-- Missing `08-UI-SPEC.md`; manual plan-phase UI gate must stop before planner dispatch until it exists or the operator explicitly reruns with `--skip-ui`.
+- UI gate resolved for planning: approved `08-UI-SPEC.md` is present. This does not close the missing production tests listed above.
 - Preserve existing numerical feasibility/projection/finite tests; do not use a screenshot in their place.
 
 ## Security Domain
@@ -294,12 +294,12 @@ Phase 7's fixed face-on/no-guides wording was a delivery boundary, not a permane
 
 No external factual claim is intentionally left as `[ASSUMED]`. Source-backed observations are distinguished from **design proposals**, which remain subject to the UI design contract, executable planning and implementation verification. No new user numerical-method decision is needed; the context delegates those technical choices to research/planning. Visual constants and usability are not yet validated.
 
-## Open Questions / Planning Risks
+## Open Questions (RESOLVED)
 
-1. **UI contract missing:** stop at the manual UI gate after saving research/validation. Next command is `/gsd-ui-phase 8`, then `/gsd-plan-phase 8` to reuse this research. Do not synthesize an approved UI-SPEC as an unrequested side effect.
-2. **Visual constants:** final camera limits/sensitivities, guide styling, cube back edges, marker count/size/cyan and keyboard increments need explicit design-contract values and later visual checks. Research supplies candidates, not passing observations.
-3. **Performance:** historical solver/slice timings are not 30-fps evidence; the heavy baseline makes a small tracer kernel preferable, but no frame-rate estimate is justified here. Preserve numerical gates and leave integrated measured qualification to Phase 10. [VERIFIED: docs/3d-phase7-verification.md]
-4. **Coverage debt:** Phase 7 manual review, macOS 26 runtime, physical multitouch and displayed pacing retain their recorded pending/NOT TESTED/NOT MEASURED status. This research closes none of them. [VERIFIED: .planning/REQUIREMENTS.md; docs/3d-phase7-verification.md]
+1. **UI contract — RESOLVED:** approved `08-UI-SPEC.md` was created by the intervening UI workflow. Plan-phase uses it without synthesizing approval or rerunning the UI workflow.
+2. **Visual constants — RESOLVED for planning:** use UI-SPEC's 25°/18°/100% camera, 40° FOV, bounded sliders/gestures, full-aspect fit, all-edge subdued cube, bottom-left guide and 512 pale-cyan 3 pt markers. Implementation still needs math/GPU/native and manual visual checks; constants are not measured usability results.
+3. **Performance ownership — RESOLVED:** preserve the explicit legacy fixed-slice benchmark path and numerical gates; create separately identified spatial evidence. No frame-rate prediction is made; integrated measured qualification remains Phase 10. [VERIFIED: docs/3d-phase7-verification.md]
+4. **Coverage debt — RESOLVED as an evidence policy, not completed checks:** Phase 7 manual review, macOS 26 runtime, physical multitouch and displayed pacing retain pending/NOT TESTED/NOT MEASURED status. Plans must record only actual new observations. [VERIFIED: .planning/REQUIREMENTS.md; docs/3d-phase7-verification.md]
 
 ## Sources
 

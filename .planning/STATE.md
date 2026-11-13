@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: 3D Teaching Foundation
-status: executing
-stopped_at: Phase 8 UI-SPEC approved
-last_updated: "2026-11-13T18:54:09.376Z"
-last_activity: 2026-11-13 -- Phase 07 Plan 07-09 documentation closeout recorded under user-directed no-issues assumption
+status: ready_to_execute
+stopped_at: Phase 8 planned and inline plan review passed
+last_updated: "2026-11-13T19:12:10.272Z"
+last_activity: 2026-11-13 -- Phase 8 planning complete
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 9
+  total_plans: 18
   completed_plans: 9
-  percent: 100
+  percent: 50
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-11-06)
 
 **Core value:** People can interact with a responsive, visually familiar fluid simulation on both supported platforms and adjust it without editing source code.
-**Current focus:** Phase 07 — first-3d-fluid-vertical-slice
+**Current focus:** Phase 08 — spatial-inspection
 
 ## Current Position
 
-Phase: 07 (first-3d-fluid-vertical-slice) — PLAN CLOSEOUT COMPLETE; USER-FACING ACCEPTANCE INCOMPLETE
-Plan: 9 of 9 closed (07-09 administratively closed under user direction)
-Status: Manual visual/accessibility/native-interaction review was not performed; six user-facing requirements remain pending. VER-03 is complete from automated production-kernel evidence.
-Last activity: 2026-11-13 -- Phase 07 Plan 07-09 documentation closeout recorded under user-directed no-issues assumption
+Phase: 08 (spatial-inspection) — PLANNED; IMPLEMENTATION NOT STARTED
+Plan: 0 of 9 complete; next 08-01 / Wave 1
+Status: Ready to execute
+Last activity: 2026-11-13 -- Phase 8 planning complete
 
-Progress: [██████████] 100%
+Progress: [█████░░░░░] 50% of currently planned v1.1 plans closed (9/18); Phase 8 is 0/9. Phase 7 user-facing acceptance remains incomplete, so no v1.1 phase is marked fully accepted here.
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Progress: [██████████] 100%
 
 ### Blockers/Concerns
 
+- Phase 8 has nine executable plans / nine sequential waves / seventeen tasks. Distinct inline plan review passed after correcting early standalone-source dependencies and active-failure Free Play recovery/copy. All five owned requirements and D-01–21 are covered; schema/structure/XML/dependency/decision checks passed. See `08-PLAN-CHECK.md`. No Phase 8 implementation, app build/test, GPU evidence, measured feedback latency or human acceptance was performed during planning. Plan 08-09 is a blocking future human-review checkpoint; no prior no-issues assumption auto-approves it.
 - Phase 6 VER-02 is verified on the available macOS 27 host and iOS 26.4 simulators. The user approved closing v1.0 on 2026-09-25 while deferring actual macOS 26 runtime launch/drag beyond this milestone; PLAT-01 remains NOT TESTED and unverified.
 - Phase 6 iPhone and iPad HUD UI-test runs timed out without results; they remain NOT TESTED for this run. The user approved the separate manual checklist on the three prepared targets.
 - Xcode 27.0 Metal Toolchain 27A266a installed. The Mac target builds for arm64 with a macOS 26.0 minimum on this macOS 27 host.
@@ -115,11 +116,11 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 
 ## Session Continuity
 
-Last session: 2026-11-13T18:54:09.367Z
-Stopped at: Phase 8 UI-SPEC approved
-Resume file: .planning/phases/08-spatial-inspection/08-UI-SPEC.md
+Last session: 2026-11-13T19:12:10.272Z
+Stopped at: Phase 8 planned and inline plan review passed
+Resume file: .planning/phases/08-spatial-inspection/08-01-PLAN.md
 
 ## Operator Next Steps
 
-- Phase 8 UI design contract approved at `.planning/phases/08-spatial-inspection/08-UI-SPEC.md` after inline research and a distinct inline six-dimension checker pass: five PASS, one non-blocking inherited-spacing FLAG, zero BLOCK. Context and research are available; next run `/gsd-plan-phase 8`. No Phase 8 implementation, app tests or human visual/accessibility acceptance were performed by this UI-spec workflow.
+- Run `/gsd-execute-phase 8` to begin 08-01. Plans, reused research/approved UI-SPEC, pattern map, updated validation strategy and inline checker report are in `.planning/phases/08-spatial-inspection/`. Review plans or use `/gsd-review --phase 8 --all` for optional external peer review first. Auto-advance remains off; no implementation was started by plan-phase.
 - No remaining Phase 7 plans. When convenient, the user may complete the unchecked manual-review checklist in `docs/3d-phase7-verification.md`; record only actual observations. Do not treat the user-directed no-issues assumption as visual/interaction approval. Keep the six user-facing requirements pending; actual macOS 26 runtime and physical-device checks remain NOT TESTED, and displayed frame pacing remains NOT MEASURED.

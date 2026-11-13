@@ -93,7 +93,51 @@ Planning focus: define grid locations, units, time-step/order, interpolation, bo
 4. Camera, slice, visibility, and resize changes preserve the 64³ grid and complete simulated state at equal step counts, verified against a presentation-independent reference run.
 5. Labelled native controls are keyboard-operable, and control/camera gestures are isolated from fluid injection and from each other's actions.
 
-**Plans**: TBD
+**Plans**: 9 plans in 9 waves
+
+Plans:
+**Wave 1**
+
+- [ ] 08-01-PLAN.md — Preregister inspection/oracle expectations and test pure camera/slice values.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 08-02-PLAN.md — Verify two-sided spatial sheets, subdued cube and depth-equipped rendering.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 08-03-PLAN.md — Integrate presentation-only renderer state and retained Restart choices.
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 08-04-PLAN.md — Deliver native camera/slice controls, guide and exclusive paused gestures.
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 08-05-PLAN.md — Verify deterministic passive3D tracer reset, MAC RK2 and failure guards.
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 08-06-PLAN.md — Integrate hidden tracer advancement, opaque-sheet occlusion and native visibility.
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 08-07-PLAN.md — Prove complete-state independence across presentation and step schedules.
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 08-08-PLAN.md — Record fresh regression evidence and accurate spatial-inspection usage.
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 08-09-PLAN.md — Obtain actual human visual/accessibility/input review without assumption-based PASS claims.
+
+**Cross-cutting constraints:**
+
+- The established 2D solver and its Swift/Metal ABI remain unchanged.
+
+**Planning status (2026-11-13):** Existing research/UI-SPEC reused; pattern mapping and 17-task executable validation contract created. All five owned requirements and 21 context decisions pass structural/coverage checks and distinct inline plan review after one revision. See `08-PLAN-CHECK.md`. Final human review remains a blocking execution checkpoint. No Phase 8 implementation/build/test/human acceptance is claimed by planning.
+
 **UI hint**: yes
 
 Planning focus: coherent world/texture/screen conventions, bounds and camera recovery, readable slice orientation/depth, deterministic tracer seeding/advection, and event routing. Keep the native interface consistent with existing Mac patterns. Recheck restart preservation when new inspection choices are introduced.
@@ -138,7 +182,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 7. First 3D Fluid Vertical Slice | 9/9 | Plans closed; acceptance incomplete | — (plans closed 2026-11-13) |
-| 8. Spatial Inspection | 0/TBD | Not started | — |
+| 8. Spatial Inspection | 0/9 | Planned — ready to execute | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |
 

@@ -1,15 +1,15 @@
 ---
 phase: 8
 slug: spatial-inspection
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-11-13
 ---
 
 # Phase 8 — Validation Strategy
 
-> Draft validation contract derived from `08-RESEARCH.md`. Executable plans are not yet created: the manual UI-SPEC gate is pending. Proposed new test methods below do not exist yet. No implementation or runtime verification is claimed.
+> Executable validation contract for nine plans / nine waves / seventeen tasks. Approved UI-SPEC is present. `nyquist_compliant: true` records checked **planning coverage**, not passing implementation tests; `wave_0_complete: false` records that the new harnesses/fixtures have not been built. All implementation/test/runtime results remain pending.
 
 ## Test Infrastructure
 
@@ -18,34 +18,56 @@ created: 2026-11-13
 | Framework | Existing XCTest state/Mac HUD targets; Python unittest wrappers compiling Swift production fixtures |
 | Config | `FluidDynamicsMetal.xcodeproj/xcshareddata/xcschemes/FluidDynamicsMetalOSX.xcscheme`; `Tests/Integration/test_fluid3d.py` source inventory |
 | Existing quick run | `python3 -m unittest Tests.Integration.test_fluid3d.Fluid3DTests.test_evidence_schema Tests.Integration.test_fluid3d.Fluid3DTests.test_volume_kernels_read_only_solver_status` |
+| New fast oracle (08-01-01 creates it) | `python3 -m unittest Tests.Integration.test_inspection3d_reference` |
+| New fast production math/state (08-01-02 creates it; 08-03-01 expands it) | `python3 -m unittest Tests.Integration.test_inspection3d_state` |
 | Focused state run | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO -only-testing:FluidDynamicsMetalStateTests` |
 | Full integration | `python3 -m unittest discover -s Tests/Integration` after a fresh Mac build |
 | Full Mac tests | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO` |
 | Estimated runtime | NOT MEASURED for Phase 8. Historical full integration: 572 s; do not promise full GPU/Xcode feedback under 30 s. |
 
-Quick existing tests protect schema/source constraints only; they cannot establish INS-01–04 or CTRL-08. Final planning must add feature-specific automated feedback and populate task IDs/waves below without inventing results.
+Quick existing tests protect schema/source constraints only; they cannot establish INS-01–04 or CTRL-08. New fast modules provide oracle/math/state feedback; mandatory supplemental production GPU and native UI commands in each plan establish integration. Running only the fast modules does not complete a GPU/UI task. No library/framework installation is needed.
 
 ## Sampling Rate
 
 - **After each task:** run the new/changed focused behavioral tests and affected existing checks. Write failing behavior assertions before implementation.
 - **After each wave:** build affected app targets, run relevant production fixtures and state/HUD regressions; use the freshly built production metallib.
 - **Before phase verification:** both no-override builds, full Mac state/HUD and integration suites, applicable iPhone/iPad HUD regressions; retain separate manual status.
-- **Continuity:** no three consecutive tasks without automated feedback. Final planner/checker must verify this against actual tasks.
-- **Feedback latency:** measure and record focused CPU/state and GPU times separately during execution; target a fast pure-state/math subset instead of treating long full-suite latency as compliant by assertion.
+- **Continuity:** every one of the seventeen scheduled tasks has an automated command; all sixteen implementation/documentation tasks have focused feedback plus required integration gates where applicable. The human checkpoint also revalidates evidence, but its observations remain manual.
+- **Feedback latency:** target under 30 s for the pure oracle/state command including its compilation; measure and record compilation/run and supplemental GPU/UI times separately in 08-01. Runtime is NOT MEASURED during planning. If the fast command exceeds this target, optimize bounded dependency/fixture reuse without dropping behavioral assertions; do not claim the target was measured or fulfilled from plan review. Historical renderer/GPU tests already exceed 30 s and are explicitly separate required integration gates, not fast-loop commands.
 
 ## Per-Task Verification Map
 
-Task IDs/plans/waves are **unassigned pending UI-SPEC and executable planning**. These are requirement-level verification obligations, not fake scheduled tasks.
+Aliases (each expands to an exact runnable command after the scheduled producer creates it):
 
-| Requirement | Threat Ref | Secure behavior | Test type | Automated command / status |
-|---|---|---|---|---|
-| INS-01 | T-08-input | Bounded finite camera, outside-volume zoom, reset-only changes | State/math + production render + Mac HUD | New state/HUD assertions and proposed `python3 -m unittest Tests.Integration.test_fluid3d.Fluid3DTests.test_spatial_slices` — MISSING |
-| INS-02 | T-08-input | Validated plane/depth; correct axes/endpoints/midpoint | GPU + independent analytic fixture | Proposed `Fluid3DTests.test_spatial_slices` — MISSING |
-| INS-03 | T-08-queue | Status-guarded, step-only passive advancement even hidden | GPU + independent RK2 reference | Proposed `python3 -m unittest Tests.Integration.test_fluid3d.Fluid3DTests.test_tracer_evolution` — MISSING |
-| INS-04 | T-08-resource, T-08-queue | Complete-state independence, reset retention and safe fallback | Production renderer/readback + state | Proposed `python3 -m unittest Tests.Integration.test_fluid3d.Fluid3DTests.test_inspection_independence` — MISSING |
-| CTRL-08 | T-08-routing | Focus and exclusive canvas/panel routing; no injection | Mac HUD + production contact/state assertions | New native keyboard/gesture cases — MISSING; command to finalize with actual case names |
+- **R:** `python3 -m unittest Tests.Integration.test_inspection3d_reference`
+- **S:** `python3 -m unittest Tests.Integration.test_inspection3d_state`
+- **G(name):** `python3 -m unittest Tests.Integration.test_fluid3d.Fluid3DTests.test_NAME`, replacing NAME with the literal name in the table. Fresh Mac build required after Metal/source changes.
+- **U(name):** `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO -only-testing:FluidDynamicsMetalOSXUITests/HUDUITests/NAME`, replacing NAME with the named case.
+- **E:** `python3 Tests/Integration/test_fluid3d.py --verify-inspection-evidence .build/inspection3d-evidence`
 
-Threat IDs are draft references for later PLAN threat-model blocks: input = nonfinite/unbounded uniforms; resource = unchecked allocations/resize churn; queue = failed/stale/in-flight work; routing = cross-window input effects. They are not findings of confirmed exploits.
+All rows are **pending execution**. “Create here” means failing behavioral tests are written and run in that task before implementation, not that an absent test is currently runnable. Supplemental G/U/E gates are mandatory, not alternatives to fast feedback.
+
+| Task ID | Plan / Wave | Requirements | Threat refs / secure behavior | Fast automated feedback | Required supplemental gate | Test availability at planning |
+|---|---|---|---|---|---|---|
+| 08-01-01 | 01 / 1 | INS-01/02/03/04 | input/oracle: preregistration and independent finite expectations | R | Contract hash/oracle corruption tests within R | Create R here |
+| 08-01-02 | 01 / 1 | INS-01/02/04 | input: finite bounded camera and exact operation scopes | S + R | Both app builds | Create S here |
+| 08-02-01 | 02 / 2 | INS-01/02/04 | input/queue: ABI, fixed-world read-only sampling | S + R | G(spatial_slices), G(slice_and_palette) | Create spatial_slices here; legacy case exists |
+| 08-02-02 | 02 / 2 | INS-01/02/04 | resource: depth reuse/faults and cube transforms | S + R | G(spatial_slices), G(evidence_schema) | Extend spatial fixture here; schema exists |
+| 08-03-01 | 03 / 3 | INS-01/02/04 | queue: no pending-step/pause/reset side effects | S | New state_operation_scopes case in S | Extend S here |
+| 08-03-02 | 03 / 3 | INS-01/02/04 | resource/queue: no-advance redraw and transactional state | S | G(inspection_routing), G(renderer_steps_and_inactivity), G(transitions_and_failures) | Create routing here; old cases exist |
+| 08-04-01 | 04 / 4 | INS-01/02/04, CTRL-08 | routing/access: native focus/keys and scope | S | U(testSpatialInspectionControlsAndKeyboard), U(testSpatialInspectionLayoutAndModeReturn) | Create UI cases here |
+| 08-04-02 | 04 / 4 | INS-01/04, CTRL-08 | routing/input: canvas ownership/guide pass-through | S | U(testSpatialInspectionGestureIsolation), previous keyboard case | Create gesture case here |
+| 08-05-01 | 05 / 5 | INS-03/04 | resource: deterministic full-volume tracer reset | R + S | G(tracer_evolution) | Create tracer fixture here |
+| 08-05-02 | 05 / 5 | INS-03/04 | queue/feedback: production MAC RK2, failure guard, no feedback | R + S | G(tracer_evolution), G(volume_kernels_read_only_solver_status) | Extend oracle/tracer here; source guard exists |
+| 08-06-01 | 06 / 6 | INS-03/04 | queue/resource: hidden/nil-drawable advance, rollback/retry | S + R | G(inspection_routing), G(tracer_evolution), G(transitions_and_failures) | Extend earlier fixtures here |
+| 08-06-02 | 06 / 6 | INS-01/02/03/04, CTRL-08 | routing/resource: depth-tested discs and checkbox-only visibility | S + R | G(tracer_occlusion), U(testSpatialTracerVisibilityAndRestart) | Create GPU/UI cases here |
+| 08-07-01 | 07 / 7 | INS-03/04 | inventory/queue: complete staged data, negative mutation checks | S + R | G(inspection_independence) | Create complete-inventory fixture here |
+| 08-07-02 | 07 / 7 | INS-03/04, CTRL-08 | routing/queue: complete paused/equal-step invariance | S + R | G(inspection_independence), G(inspection_routing), G(renderer_steps_and_inactivity) | Extend independence fixture here |
+| 08-08-01 | 08 / 8 | All five | evidence: fail-closed freshness/coverage schema | G(inspection_evidence_schema), G(evidence_schema) | Negative manifest mutations in schema test | Create new schema here; existing schema needs no GPU |
+| 08-08-02 | 08 / 8 | All five | evidence/coverage: real regression results, honest statuses | G(inspection_evidence_schema) + S | E; both builds/full Mac/full integration/iPhone+iPad HUD | E created by previous task; matrix infrastructure exists |
+| 08-09-01 | 09 / 9 | All five | coverage: explicit actual human observations | E | Blocking human review; identifiers/images do not replace it | E from 08-08; human review pending |
+
+Task dependencies are explicit in PLAN frontmatter; each producer runs before its consumers. No dangling `<automated>MISSING</automated>` reference exists: tests are created test-first within their owning task or earlier waves. Threat IDs match PLAN registers and represent mitigations to verify, not confirmed exploit findings.
 
 ## Preregistered Acceptance Protocol
 
@@ -60,13 +82,17 @@ Threat IDs are draft references for later PLAN threat-model blocks: input = nonf
 
 ## Wave 0 Requirements
 
-- [ ] `08-UI-SPEC.md` — required before manual plan-phase proceeds (or explicit operator `--skip-ui` override).
-- [ ] Pure inspection/camera tests and shared state representation; align Xcode test membership.
-- [ ] Production spatial-slice/occlusion, tracer and complete-state fixtures registered in Swift/Python with independent expected results.
-- [ ] Diagnostic readback inventories include workspace/status/latches and new tracer buffers; existing `scanSimulation` does not compare workspace values.
-- [ ] New shared dependencies added to standalone source lists in `test_fluid3d.py`, `test_renderer_correctness.py`, `test_educational_release.py` and source-hash inventories.
-- [ ] Native focus/keyboard and panel-versus-canvas gesture tests, including negative side-effect assertions.
-- [ ] Final plans assign every task an automated command or explicit dependency on these checks and preserve existing numerical/2D regression commands.
+- [x] `08-UI-SPEC.md` approved and read; manual planning UI gate satisfied without override.
+- [ ] 08-01-01: independent `inspection3d_reference.swift` / `test_inspection3d_reference.py` and contract.
+- [ ] 08-01-02: production `test_inspection3d_state.swift` / `.py`, shared values/math and Xcode membership.
+- [ ] 08-02-01: spatial fixture registration/ABI assertions and all three standalone source lists, at first camera-dependent compile (not deferred until Renderer integration).
+- [ ] 08-03-01/02: state-scope and no-advance renderer routing assertions.
+- [ ] 08-04-01/02: native keyboard/focus/gesture/guide and negative side-effect UI cases.
+- [ ] 08-05-01/02: tracer reset/RK2/guard/no-feedback production fixture and independent expected positions.
+- [ ] 08-06-01/02: hidden/nil-drawable schedule, occlusion and native tracer/restart/failure cases.
+- [ ] 08-07-01/02: complete staging/inventory including workspace/status/latches/tracers plus negative detector checks and paired runs.
+- [ ] 08-08-01: separate Phase8 evidence schema/CLI and negative manifests.
+- [x] All17 tasks have automated feedback plus assigned feature-specific integration gates; every producer/dependency is scheduled and numerical/2D regression gates are preserved.
 
 No framework installation is proposed. Do not create passing-only test stubs or mark absent methods as runnable verification.
 
@@ -92,12 +118,12 @@ Phase 7 unperformed manual review remains pending. Actual macOS 26 runtime and p
 
 ## Validation Sign-Off
 
-- [ ] Executable plans exist with assigned per-task verification and waves
-- [ ] Every task has automated verification or an explicit Wave 0 dependency
-- [ ] Sampling continuity checked against final plans
-- [ ] Every MISSING test reference is scheduled
+- [x] Executable plans exist with assigned per-task verification and waves
+- [x] Every task has automated verification and explicit creation-before-use ordering
+- [x] Sampling continuity checked against final plans: 17/17 automated entries; no unverified three-task window
+- [x] Every absent test reference has an owning producer task; no passing-only scaffolds
 - [x] No watch-mode flags proposed
 - [ ] Focused feedback latency measured and acceptable
-- [ ] `nyquist_compliant: true` set only after the executable plan contract is checked
+- [x] `nyquist_compliant: true` records checked executable plan contract, not implementation success
 
-**Approval:** Pending. Research/strategy artifacts only; UI gate prevents claiming Phase 8 planned or plan verification passed.
+**Approval:** Planning contract approved2026-11-13 after distinct inline review. New harnesses/fixtures, actual latency and all feature acceptance remain unexecuted; keep `wave_0_complete: false` until their producer tasks genuinely pass. No app build, GPU test or human review was performed by plan-phase.
