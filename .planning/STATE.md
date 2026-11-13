@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: 3D Teaching Foundation
 status: executing
-stopped_at: Completed Phase 07 Wave 5 (07-06); merged and post-merge verified; next 07-07
-last_updated: "2026-11-08T11:11:55Z"
-last_activity: 2026-11-08 -- Phase 07 Wave 5 (07-06) post-merge verification completed
+stopped_at: Phase 07 plans closed; manual visual/native review not performed by user direction; six user-facing requirements remain pending
+last_updated: "2026-11-13T17:20:36Z"
+last_activity: 2026-11-13 -- Phase 07 Plan 07-09 documentation closeout recorded under user-directed no-issues assumption
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 9
-  completed_plans: 6
-  percent: 67
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -25,24 +25,24 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 
 ## Current Position
 
-Phase: 07 (first-3d-fluid-vertical-slice) — EXECUTING
-Plan: 6 of 9 complete; next 07-07 (Wave 6)
-Status: Wave 5 complete; ready to execute Wave 6
-Last activity: 2026-11-08 -- Phase 07 Wave 5 (07-06) post-merge verification completed
+Phase: 07 (first-3d-fluid-vertical-slice) — PLAN CLOSEOUT COMPLETE; USER-FACING ACCEPTANCE INCOMPLETE
+Plan: 9 of 9 closed (07-09 administratively closed under user direction)
+Status: Manual visual/accessibility/native-interaction review was not performed; six user-facing requirements remain pending. VER-03 is complete from automated production-kernel evidence.
+Last activity: 2026-11-13 -- Phase 07 Plan 07-09 documentation closeout recorded under user-directed no-issues assumption
 
-Progress: [██████░░░░] 67%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 20 (14 archived v1.0 + 6 current v1.1)
+- Total plans completed: 23 (14 archived v1.0 + 9 current v1.1)
 - Average duration: N/A (historical plan durations not fully aggregated)
 - Total execution time: At least 5.2 hours across recorded v1.1 Phase 7 plans; archived v1.0 duration is excluded.
 
-**By Phase:** v1.0 implementation plans 14/14 archived; Phase 7 plans 6/9 complete. Historical macOS 26 and device-only verification remain deferred.
+**By Phase:** v1.0 implementation plans 14/14 archived; Phase 7 plans 9/9 closed. Phase 7 user-facing acceptance remains incomplete because manual review was not performed; VER-03 is complete from automated evidence. Historical macOS 26 and device-only verification remain deferred.
 
-**Recent Trend:** Compatible production 3D projection/reset/step, fixed-slice, and transactional renderer integration checks have passed; native UI integration, end-to-end lesson verification, and human review remain ahead.
+**Recent Trend:** Compatible production 3D projection/reset/step, fixed-slice, transactional renderer integration, native Mac UI checks, 28 integration tests, both-target builds, and final iPhone/iPad simulator HUD retries have passed. Solver/slice baseline and evidence report are complete. The user directed documentation closeout under an assumption of no issues; manual review was not performed and remains an optional follow-up, not a PASS.
 
 ## Accumulated Context
 
@@ -64,7 +64,7 @@ Progress: [██████░░░░] 67%
 
 ### Pending Todos
 
-None yet.
+- Optional follow-up when convenient: work through the unchecked manual-review checklist in `docs/3d-phase7-verification.md` and record actual observations. Until then, keep SIM-04, SIM-05, SIM-06, LES-01, LES-02, and LES-06 pending manual acceptance.
 
 ### Blockers/Concerns
 
@@ -80,6 +80,9 @@ None yet.
 - Phase 7 Plan 07-03 is merged into master and post-merge verified: all seven GPU projection families, independent readback gates, explicit failure/queued-session checks and the strengthened 600-step finite soak passed; 23 integration tests and both app builds passed, plus 34 Mac state/HUD tests before and after merge. All Phase 7 requirements remain pending until end-to-end lesson/UI verification.
 - Phase 7 Plan 07-04 is merged into master and post-merge verified: both app builds, all 25 integration regressions, 34 Mac state/HUD tests, the iPhone iOS 26.4 HUD suite (11/11), and the iPad iOS 26.3 HUD suite (11/11) passed. The iPad Pro 13-inch M5 / iOS 26.4 simulator run had 6/11 pass and five orientation-wait failures at `Tests/UI/iOS/HUDUITests.swift:137`; this unrelated simulator/test diagnostic is recorded, with no UI changes. At that checkpoint four plans remained, next 07-06 / Wave 5.
 - Phase 7 Plan 07-06 is merged into master and post-merge verified: both no-override app builds passed, Mac state tests passed (25/25), and all 27 integration tests passed, including 3D renderer transition/step/inactivity fixtures and existing 2D renderer/educational regressions. Plans 07-07 through 07-09 remain; phase requirements remain pending.
+- Phase 7 Plan 07-07 is verified: all six focused 3D Mac HUD tests passed; full Mac HUD suite 15/15 and state suite 25/25 passed; both no-override app builds passed; all 27 integration tests passed. Narrow-width wrapping has a Debug-only test override and UI regression. Light/Dark and Simulation-menu screenshot attachments are retained in the full UI `.xcresult`. Manual visual/accessibility review remains pending for 07-09; actual macOS 26 and physical-device checks remain NOT TESTED. Work is uncommitted; next is 07-08 / Wave 7.
+- Phase 7 Plan 07-08 is verified: benchmark/evidence schema, production fixtures, no-override builds, Mac state/HUD (40/40), full integration (28/28), and final iPhone/iPad HUD suites (11/11 each) passed. Initial iPhone 9/11 and iPad 8/11 orientation/fade outcomes and successful focused/full retries are preserved in `.build/fluid3d-evidence/regression-matrix.json`. The 64³ M3 Pro solver-only and solver-plus-fixed-slice GPU medians are 161.410/317.521 ms; this is offscreen timing, not FPS. See `docs/3d-phase7-verification.md` and `07-08-SUMMARY.md`. Requirements remain pending for 07-09; macOS 26 runtime and physical multitouch remain NOT TESTED.
+- Phase 7 Plan 07-09 documentation closeout is recorded after the user said they cannot commit to manual checks and directed us to proceed assuming no issues. The report retains an unchecked manual checklist and explicitly records that no visual/accessibility/interaction checks or observations were made; this is not a human-review PASS. Six user-facing Phase 7 requirements remain pending, VER-03 is complete on automated production-kernel evidence, actual macOS 26 and physical-device multitouch remain NOT TESTED, and displayed frame pacing remains NOT MEASURED. All nine plans are closed; phase-level user-facing acceptance is incomplete.
 - The 64³ wall/edge/corner pressure stress case converged at 317/320 iterations, leaving only three iterations of cap margin. This is measured numerical evidence, not a performance or cross-device guarantee. No cap or primary acceptance threshold was relaxed.
 - Phase 3 inline code review `03-REVIEW.md` records an advisory resample-pipeline failure-path warning; successful Mac/iOS user interaction and current GPU tests do not exercise that negative path.
 
@@ -112,10 +115,10 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 
 ## Session Continuity
 
-Last session: 2026-11-08T11:11:55Z
-Stopped at: Completed Phase 07 Wave 5 (07-06); merged and post-merge verified; next 07-07
-Resume file: .planning/phases/07-first-3d-fluid-vertical-slice/07-07-PLAN.md
+Last session: 2026-11-13T17:20:36Z
+Stopped at: Phase 07 plan closeout complete under user direction; manual review not performed and user-facing acceptance remains pending
+Resume file: docs/3d-phase7-verification.md
 
 ## Operator Next Steps
 
-- Wave filter `--wave 5` is complete; STOP before Wave 6. The next plan is 07-07 (native grouped navigation, focus, and recovery UI). Keep phase requirements pending; phase-level verification/completion is intentionally skipped while three plans remain. Explicit human visual/interaction approval at 07-09 is not already granted.
+- No remaining Phase 7 plans. When convenient, the user may complete the unchecked manual-review checklist in `docs/3d-phase7-verification.md`; record only actual observations. Do not treat the user-directed no-issues assumption as visual/interaction approval. Keep the six user-facing requirements pending; actual macOS 26 runtime and physical-device checks remain NOT TESTED, and displayed frame pacing remains NOT MEASURED.

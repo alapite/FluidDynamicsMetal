@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Metal
 import MetalKit
 import simd
@@ -17,9 +18,39 @@ private enum Fluid3DHarnessError: Error, CustomStringConvertible {
     }
 }
 
+private final class BenchmarkCompletionStamp: @unchecked Sendable {
+    let semaphore = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var completedAt: UInt64?
+
+    func complete() {
+        lock.lock()
+        completedAt = DispatchTime.now().uptimeNanoseconds
+        lock.unlock()
+        semaphore.signal()
+    }
+
+    func wait() -> UInt64 {
+        semaphore.wait()
+        lock.lock()
+        defer { lock.unlock() }
+        return completedAt ?? 0
+    }
+}
+
 @main
 @MainActor
 private struct Fluid3DChecks {
+    private struct PendingBenchmarkSample {
+        let command: MTLCommandBuffer
+        let status: PressureProjection3D.StatusSlot
+        let completion: BenchmarkCompletionStamp
+        let encodeMilliseconds: Double
+        let submitMilliseconds: Double
+        let submitStartedAt: UInt64
+        let measuredStep: Int?
+    }
+
     private struct ProjectionFields {
         let u: VolumeField3D
         let v: VolumeField3D
@@ -75,6 +106,7 @@ private struct Fluid3DChecks {
         let metal = MetalDevice(device: device, library: library)
         let fixture = arguments[2]
         guard fixture == "storage-abi" || fixture == "advection-boundaries"
+                || fixture == "benchmark"
                 || fixture == "slice-palette"
                 || fixture == "evolution-visibility"
                 || fixture == "operators" || fixture == "projection" || fixture == "reset-finite"
@@ -82,7 +114,9 @@ private struct Fluid3DChecks {
             throw Fluid3DHarnessError.usage("unknown fixture selector: \(fixture)")
         }
         let result: [String: Any]
-        if fixture == "renderer-steps-and-inactivity" {
+        if fixture == "benchmark" {
+            result = try benchmark(device: device, metal: metal)
+        } else if fixture == "renderer-steps-and-inactivity" {
             result = try rendererStepsAndInactivity(device: device, metal: metal)
         } else if fixture == "transitions-and-failures" {
             result = try rendererTransitionsAndFailures(device: device, metal: metal)
@@ -122,6 +156,417 @@ private struct Fluid3DChecks {
             )
         }
         try emit(result)
+    }
+
+    private static func benchmark(device: MTLDevice, metal: MetalDevice) throws -> [String: Any] {
+        let view = MTKView(frame: CGRect(x: 0, y: 0, width: 1280, height: 720), device: device)
+        let renderer = Renderer(metalView: view, metal: metal)
+        renderer.selectMode(.dyeAdvection3D)
+        guard renderer.lastModeOutcome?.succeeded == true,
+              let simulation = renderer.simulation3D,
+              let visualization = renderer.visualization3D else {
+            throw Fluid3DHarnessError.assertion(
+                "Could not create a production 3D renderer while retaining the existing 2D session"
+            )
+        }
+        try require(renderer.simulation.width == 1280 && renderer.simulation.height == 720,
+                    "Benchmark must retain the 1280x720 2D Free Play resources")
+        try require(simulation.configuration == .production,
+                    "Benchmark must use the fixed production 64-cubed simulation")
+
+        let seed = ExperimentRecipes3D.initialState(for: .production)
+        let seedHash = seedSHA256(seed)
+        let outputDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: FieldVisualization3D.destinationPixelFormat,
+            width: 1280,
+            height: 720,
+            mipmapped: false
+        )
+        outputDescriptor.storageMode = .private
+        outputDescriptor.usage = [.renderTarget]
+        guard let output = device.makeTexture(descriptor: outputDescriptor) else {
+            throw Fluid3DHarnessError.library("Could not allocate the 1280x720 fixed-slice benchmark output")
+        }
+        output.label = "3D benchmark 1280x720 offscreen output"
+        let viewport = MTLViewport(
+            originX: 280,
+            originY: 0,
+            width: 720,
+            height: 720,
+            znear: 0,
+            zfar: 1
+        )
+        let inventory = benchmarkResourceInventory(
+            simulation: simulation,
+            retainedTwoD: renderer.simulation,
+            output: output
+        )
+
+        let solverOnly = try runBenchmarkConfiguration(
+            name: "solver-only",
+            withSlice: false,
+            simulation: simulation,
+            visualization: visualization,
+            output: output,
+            viewport: viewport,
+            seed: seed,
+            seedHash: seedHash,
+            resourceInventory: inventory,
+            metal: metal
+        )
+        let solverAndSlice = try runBenchmarkConfiguration(
+            name: "solver-plus-fixed-slice",
+            withSlice: true,
+            simulation: simulation,
+            visualization: visualization,
+            output: output,
+            viewport: viewport,
+            seed: seed,
+            seedHash: seedHash,
+            resourceInventory: inventory,
+            metal: metal
+        )
+
+        return [
+            "passed": true,
+            "fixture": "benchmark",
+            "device": device.name,
+            "os": ProcessInfo.processInfo.operatingSystemVersionString,
+            "grid": [64, 64, 64],
+            "stepDefinition": "one production encodeStep call; steps are not seconds or display frames",
+            "timedSegment": [
+                "gpuTimingSource": "completed MTLCommandBuffer.gpuStartTime/gpuEndTime in milliseconds",
+                "inFlightLimit": 3,
+                "warmupStepsPerConfiguration": 60,
+                "measuredStepsPerConfiguration": 240,
+                "readbacks": "full-state preflight/postflight only, outside timed samples",
+                "statusInspection": "per-command status read after completion; outside GPU timing",
+                "metalValidation": "disabled during timed run; no capture or readback encoders in timed commands",
+                "displayedFPSClaim": false,
+                "displayedFramePacing": "NOT MEASURED",
+            ],
+            "viewport": [280, 0, 720, 720],
+            "output": [1280, 720],
+            "seedSHA256": seedHash,
+            "configurations": [solverOnly, solverAndSlice],
+        ]
+    }
+
+    private static func runBenchmarkConfiguration(
+        name: String,
+        withSlice: Bool,
+        simulation: FluidSimulation3D,
+        visualization: FieldVisualization3D,
+        output: MTLTexture,
+        viewport: MTLViewport,
+        seed: Fluid3DInitialState,
+        seedHash: String,
+        resourceInventory: [String: Any],
+        metal: MetalDevice
+    ) throws -> [String: Any] {
+        let reset = metal.newCommandBuffer()
+        let resetStatus = try simulation.encodeReset(command: reset, initialState: seed)
+        reset.commit()
+        reset.waitUntilCompleted()
+        try require(reset.status == .completed,
+                    "\(name) deterministic reset failed: \(String(describing: reset.error))")
+        let resetDiagnostics = resetStatus.diagnostics()
+        try requireAcceptedBenchmarkDiagnostics(resetDiagnostics, label: "\(name) reset")
+
+        let initialFields = try scanSimulation(simulation)
+        let initialEvolutionFields = [
+            "u": initialFields["u/ping"]!,
+            "v": initialFields["v/ping"]!,
+            "w": initialFields["w/ping"]!,
+            "dye": initialFields["dye/ping"]!,
+        ]
+        let initialInventory = initialFields.mapValues(\.count)
+        let totalSteps = 60 + 240
+        var measuredSamples: [[String: Any]] = []
+        measuredSamples.reserveCapacity(240)
+        var maximumIterations = 0
+        var maximumResidual = 0.0
+        var maximumDivergence = 0.0
+        var maximumIdentityError = 0.0
+
+        for batchStart in stride(from: 0, to: totalSteps, by: 3) {
+            let batchCount = min(3, totalSteps - batchStart)
+            var pending: [PendingBenchmarkSample] = []
+            pending.reserveCapacity(batchCount)
+            for offset in 0..<batchCount {
+                let index = batchStart + offset
+                let command = metal.newCommandBuffer()
+                command.label = "3D \(name) benchmark step \(index + 1)"
+                let encodeStartedAt = DispatchTime.now().uptimeNanoseconds
+                let status = try simulation.encodeStep(command: command)
+                if withSlice {
+                    try visualization.encodeSlice(
+                        command: command,
+                        simulation: simulation,
+                        destination: output,
+                        viewport: viewport
+                    )
+                }
+                let encodeEndedAt = DispatchTime.now().uptimeNanoseconds
+                let completion = BenchmarkCompletionStamp()
+                command.addCompletedHandler { _ in completion.complete() }
+                let submitStartedAt = DispatchTime.now().uptimeNanoseconds
+                command.commit()
+                let submitEndedAt = DispatchTime.now().uptimeNanoseconds
+                let measuredStep = index >= 60 ? index - 59 : nil
+                pending.append(PendingBenchmarkSample(
+                    command: command,
+                    status: status,
+                    completion: completion,
+                    encodeMilliseconds: milliseconds(from: encodeStartedAt, to: encodeEndedAt),
+                    submitMilliseconds: milliseconds(from: submitStartedAt, to: submitEndedAt),
+                    submitStartedAt: submitStartedAt,
+                    measuredStep: measuredStep
+                ))
+            }
+
+            // Harvest at most three completed command buffers per batch. No CPU wait,
+            // status read, full-field readback, validation layer, or capture enters a
+            // command's GPU-time interval.
+            for item in pending {
+                let completedAt = item.completion.wait()
+                try require(item.command.status == .completed,
+                            "\(name) benchmark command failed: \(String(describing: item.command.error))")
+                let gpuStart = item.command.gpuStartTime
+                let gpuEnd = item.command.gpuEndTime
+                try require(gpuStart.isFinite && gpuEnd.isFinite && gpuStart > 0 && gpuEnd > gpuStart,
+                            "\(name) command has missing or invalid completed GPU timestamps")
+                let diagnostics = item.status.diagnostics()
+                try requireAcceptedBenchmarkDiagnostics(diagnostics, label: "\(name) step")
+                maximumIterations = max(maximumIterations, diagnostics.iterations)
+                maximumResidual = max(maximumResidual, Double(diagnostics.trueResidualDTInf))
+                maximumDivergence = max(maximumDivergence, Double(diagnostics.projectedDivergenceDTInf))
+                maximumIdentityError = max(maximumIdentityError, Double(diagnostics.identityDTError))
+
+                guard let measuredStep = item.measuredStep else { continue }
+                let completionMilliseconds = milliseconds(from: item.submitStartedAt, to: completedAt)
+                let gpuMilliseconds = (gpuEnd - gpuStart) * 1000
+                try require(completionMilliseconds > 0 && gpuMilliseconds.isFinite && gpuMilliseconds > 0,
+                            "\(name) measured sample has a nonpositive or invalid duration")
+                measuredSamples.append([
+                    "step": measuredStep,
+                    "gpuMilliseconds": gpuMilliseconds,
+                    "hostEncodeMilliseconds": item.encodeMilliseconds,
+                    "hostSubmitMilliseconds": item.submitMilliseconds,
+                    "hostCompletionMilliseconds": completionMilliseconds,
+                    "finite": true,
+                    "projection": benchmarkProjectionJSON(diagnostics),
+                ])
+            }
+        }
+
+        try require(measuredSamples.count == 240,
+                    "\(name) must produce exactly 240 completed measured samples")
+        let finalFields = try scanSimulation(simulation)
+        var fieldChanges: [String: Double] = [:]
+        for field in ["u", "v", "w", "dye"] {
+            guard let before = initialEvolutionFields[field], let after = finalFields["\(field)/ping"] else {
+                throw Fluid3DHarnessError.assertion("\(name) full-state scan omitted \(field)")
+            }
+            fieldChanges[field] = maximumAbsoluteDifference(before, after)
+        }
+        try require(fieldChanges.values.allSatisfy { $0.isFinite && $0 > 0 },
+                    "\(name) measured work was frozen or did not evolve every transported component: \(fieldChanges)")
+        try require(initialInventory == finalFields.mapValues(\.count),
+                    "\(name) pre/post full-state resource shape changed")
+
+        let finalSample = measuredSamples.last!["projection"] as! [String: Any]
+        let validation: [String: Any] = [
+            "status": "PASS",
+            "preflightFinite": true,
+            "preflightWallNormalsExactZero": true,
+            "preflightStep": 0,
+            "preflightResetProjection": benchmarkProjectionJSON(resetDiagnostics),
+            "postflightFinite": true,
+            "postflightWallNormalsExactZero": true,
+            "postflightStep": 300,
+            "postflightProjection": finalSample,
+            "allWarmupAndMeasuredStatusesPassed": true,
+            "changedFields": fieldChanges,
+        ]
+        return [
+            "mode": name,
+            "grid": [64, 64, 64],
+            "dt": Double(simulation.configuration.dt),
+            "pressure": ["iterationCap": PressureProjection3D.maximumIterations, "dtInfTolerance": 1e-5],
+            "seedSHA256": seedHash,
+            "warmupSteps": 60,
+            "measuredSteps": 240,
+            "inFlightLimit": 3,
+            "output": [
+                "allocated": true,
+                "width": output.width,
+                "height": output.height,
+                "pixelFormat": "bgra8Unorm",
+            ],
+            "viewport": ["x": 280, "y": 0, "width": 720, "height": 720],
+            "presentation": [
+                "kind": "offscreen",
+                "fixedSliceRendered": withSlice,
+                "displayedFPSClaim": false,
+                "displayedFramePacing": "NOT MEASURED",
+                "displayedFPS": NSNull(),
+            ],
+            "validation": validation,
+            "resourceInventory": resourceInventory,
+            "samples": measuredSamples,
+            "qualitySummary": [
+                "maximumIterations": maximumIterations,
+                "maximumTrueResidualDTInf": maximumResidual,
+                "maximumProjectedDivergenceDTInf": maximumDivergence,
+                "maximumIdentityDTError": maximumIdentityError,
+                "capHitCount": 0,
+                "failedStatusCount": 0,
+            ],
+        ]
+    }
+
+    private static func requireAcceptedBenchmarkDiagnostics(
+        _ diagnostics: Fluid3DProjectionDiagnostics,
+        label: String
+    ) throws {
+        let metrics = [
+            diagnostics.rhsMean,
+            diagnostics.compatibilityBound,
+            diagnostics.inputDivergenceDTInf,
+            diagnostics.projectedDivergenceDTInf,
+            diagnostics.trueResidualDTInf,
+            diagnostics.identityDTError,
+            diagnostics.divergenceReduction,
+            diagnostics.maximumWallNormalValue,
+        ]
+        try require(metrics.allSatisfy(\.isFinite), "\(label) contains a nonfinite pressure/status metric")
+        try require(diagnostics.failure == .none && diagnostics.converged && !diagnostics.capHit,
+                    "\(label) projection failed: \(diagnostics.failure), capHit=\(diagnostics.capHit)")
+        try require(diagnostics.iterations >= 0 && diagnostics.iterations <= PressureProjection3D.maximumIterations,
+                    "\(label) has an invalid iteration count")
+        try require(diagnostics.trueResidualDTInf <= 1e-5
+                    && diagnostics.projectedDivergenceDTInf <= 1e-5
+                    && diagnostics.identityDTError <= 2e-5
+                    && diagnostics.maximumWallNormalValue == 0,
+                    "\(label) violates the projection/residual/wall acceptance contract")
+    }
+
+    private static func benchmarkProjectionJSON(
+        _ diagnostics: Fluid3DProjectionDiagnostics
+    ) -> [String: Any] {
+        [
+            "failure": diagnostics.failure.description,
+            "converged": diagnostics.converged,
+            "capHit": diagnostics.capHit,
+            "iterations": diagnostics.iterations,
+            "trueResidualDTInf": diagnostics.trueResidualDTInf,
+            "projectedDivergenceDTInf": diagnostics.projectedDivergenceDTInf,
+            "identityDTError": diagnostics.identityDTError,
+            "maximumWallNormalValue": diagnostics.maximumWallNormalValue,
+            "rhsMean": diagnostics.rhsMean,
+            "compatibilityBound": diagnostics.compatibilityBound,
+            "inputDivergenceDTInf": diagnostics.inputDivergenceDTInf,
+            "divergenceReduction": diagnostics.divergenceReduction,
+        ]
+    }
+
+    private static func benchmarkResourceInventory(
+        simulation: FluidSimulation3D,
+        retainedTwoD: FluidSimulation,
+        output: MTLTexture
+    ) -> [String: Any] {
+        let fieldTextures: [(String, MTLTexture)] = simulation.diagnosticFields.flatMap { name, field in
+            [("\(name)/ping", field.ping), ("\(name)/pong", field.pong)]
+        }
+        let twoDTextures = retainedTwoD.allTextures
+        let twoDBuffers = [retainedTwoD.particles.positions, retainedTwoD.particles.history,
+                           retainedTwoD.vertices, retainedTwoD.indices]
+        let readbackStagingBytes = simulation.diagnosticFields.reduce(0) { total, entry in
+            total + 2 * entry.1.stagingLayout.totalBytes
+        } + simulation.projection.diagnosticReductionWorkspace.length
+        let textures = fieldTextures.map { name, texture in
+            [
+                "name": name,
+                "width": texture.width,
+                "height": texture.height,
+                "depth": texture.depth,
+                "pixelFormat": texture.pixelFormat.rawValue,
+                "storageMode": texture.storageMode.rawValue,
+                "allocatedBytes": texture.allocatedSize,
+            ] as [String: Any]
+        }
+        let retainedTextureList = twoDTextures.map { texture in
+            [
+                "name": texture.label ?? "retained 2D field",
+                "width": texture.width,
+                "height": texture.height,
+                "pixelFormat": texture.pixelFormat.rawValue,
+                "allocatedBytes": texture.allocatedSize,
+            ] as [String: Any]
+        }
+        let retainedBufferList = twoDBuffers.map { buffer in
+            [
+                "name": buffer.label ?? "retained 2D buffer",
+                "lengthBytes": buffer.length,
+                "allocatedBytes": buffer.allocatedSize,
+            ] as [String: Any]
+        }
+        return [
+            "simulation3DTextures": [
+                "pingPongTextureCount": fieldTextures.count,
+                "allocatedBytes": fieldTextures.reduce(0) { $0 + $1.1.allocatedSize },
+                "textures": textures,
+            ],
+            "pressure": [
+                "reductionWorkspaceBytes": simulation.projection.diagnosticReductionWorkspace.allocatedSize,
+                "reductionWorkspaceLengthBytes": simulation.projection.diagnosticReductionWorkspace.length,
+                "statusSlotBytes": MemoryLayout<Fluid3DPCGState>.stride,
+                "maximumInFlightStatusSlots": 3,
+                "failureLatchBytes": 4,
+                "standaloneProjectionLatchBytes": 4,
+                "pressureHighLowPingPongTexturesIncluded": true,
+            ],
+            "readbackStaging": [
+                "transientBytes": readbackStagingBytes,
+                "fullStateTextureReadbackCount": fieldTextures.count,
+                "reductionWorkspaceReadbackBytes": simulation.projection.diagnosticReductionWorkspace.length,
+                "timedSegmentReadbackCount": 0,
+            ],
+            "retained2D": [
+                "textureCount": twoDTextures.count,
+                "allocatedBytes": twoDTextures.reduce(0) { $0 + $1.allocatedSize },
+                "textures": retainedTextureList,
+                "bufferBytes": twoDBuffers.reduce(0) { $0 + $1.allocatedSize },
+                "buffers": retainedBufferList,
+            ],
+            "fixedSliceGeometry": ["vertexBufferBytes": 64, "indexBufferBytes": 12,
+                                   "pipelineStateAllocation": "driver-managed; Metal does not expose byte size"],
+            "output": [
+                "allocated": true,
+                "allocatedBytes": output.allocatedSize,
+                "width": output.width,
+                "height": output.height,
+                "pixelFormat": output.pixelFormat.rawValue,
+            ],
+        ]
+    }
+
+    private static func seedSHA256(_ seed: Fluid3DInitialState) -> String {
+        var bytes = Data()
+        bytes.reserveCapacity((seed.u.count + seed.v.count + seed.w.count + seed.dye.count) * MemoryLayout<UInt32>.stride)
+        for values in [seed.u, seed.v, seed.w, seed.dye] {
+            for value in values {
+                var bits = value.bitPattern.littleEndian
+                withUnsafeBytes(of: &bits) { bytes.append(contentsOf: $0) }
+            }
+        }
+        return SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func milliseconds(from start: UInt64, to end: UInt64) -> Double {
+        guard end >= start else { return 0 }
+        return Double(end - start) / 1_000_000
     }
 
     private static func rendererTransitionsAndFailures(

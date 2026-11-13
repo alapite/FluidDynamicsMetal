@@ -10,6 +10,14 @@ import AppKit
 import MetalKit
 
 class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValidation {
+    private static let selectableModes: [(identity: String, mode: SimulationMode)] = [
+        ("freePlay", .freePlay),
+        ("advection", .experiment(.advection)),
+        ("interactingVortices", .experiment(.interactingVortices)),
+        ("dyeStretching", .experiment(.dyeStretching)),
+        ("dyeAdvection3D", .dyeAdvection3D),
+    ]
+
     var renderer: Renderer!
     private let experimentSelector = NSPopUpButton()
     private let stepButton = NSButton(title: "Step", target: nil, action: nil)
@@ -21,8 +29,18 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private let adjustmentLabel = NSTextField(labelWithString: "")
     private let adjustmentSelector = NSPopUpButton()
     private let colourLegend = ColourLegendView()
+    private let threeDColourLegend = ColourLegendView()
     private let legend = NSTextField(wrappingLabelWithString: "")
     private let explanation = NSTextField(wrappingLabelWithString: "")
+    private let twoDBodyStack = NSStackView()
+    private let threeDBodyStack = NSStackView()
+    private let threeDIntroStack = NSStackView()
+    private let threeDLegendStack = NSStackView()
+    private let threeDHeading = NSTextField(wrappingLabelWithString: "3D Dye Advection")
+    private let threeDSlice = NSTextField(wrappingLabelWithString: "XY slice · halfway through Z")
+    private let threeDConcentration = NSTextField(labelWithString: "Dye concentration")
+    private let threeDLegend = NSTextField(wrappingLabelWithString: "Less dye → More dye")
+    private let threeDNote = NSTextField(wrappingLabelWithString: "This is a cross-section of dye carried by an evolving 3D flow. Brighter areas contain more dye. Dye can move out of this fixed plane. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
     private let aboutButton = NSButton(title: "About this simulation", target: nil, action: nil)
     private let aboutText = NSTextField(wrappingLabelWithString: LearningCopy.about)
     private var overlayButtons: [NSButton] = []
@@ -38,16 +56,32 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private let controlsScroll = NSScrollView()
     private let pauseButton = NSButton(title: "Pause", target: nil, action: nil)
     private let tuningButton = NSButton(title: "Show Tuning", target: nil, action: nil)
+    private let transportStack = NSStackView()
+    private let primaryTransportRow = NSStackView()
+    private let restartTransportRow = NSStackView()
     private let tuningGroup = NSStackView()
     private var tuningSliders: [TuningControl: NSSlider] = [:]
     private var tuningValues: [TuningControl: NSTextField] = [:]
     private var isTuningExpanded = false
     private var fieldButtons: [DisplayField: NSButton] = [:]
     private var controlsPanel: NSPanel?
+    private weak var simulationMenu: NSMenu?
     private var panelConfigured = false
     private var restorePanelAfterMinimize = false
+    private var modeTransitionInProgress = false
+    private var modeTransitionSource: SimulationMode?
+    private var isPresentingModeFailure = false
     private var hudWidth: NSLayoutConstraint?
     private var hudHeight: NSLayoutConstraint?
+#if DEBUG
+    private var testVisibleWidthOverride: CGFloat? {
+        let prefix = "--fluid3d-test-visible-width="
+        guard let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(prefix) }),
+              let width = argument.split(separator: "=", maxSplits: 1).last.flatMap({ Double($0) }),
+              width >= 256 else { return nil }
+        return CGFloat(width)
+    }
+#endif
     var metalView: MTKView {
         return view as! MTKView
     }
@@ -57,11 +91,24 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        renderer = Renderer(metalView: metalView)
+        renderer = Renderer(metalView: metalView, threeDFactory: makeThreeDSessionFactory())
         metalView.delegate = renderer
 
         installControls()
         renderer.stateDidChange = { [weak self] in self?.refreshTransport() }
+        renderer.modeOutcomeDidChange = { [weak self] outcome in
+            guard let self else { return }
+            let sourceMode = self.modeTransitionSource
+            self.modeTransitionSource = nil
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.refreshControls()
+                if let error = outcome.errorMessage, outcome.requestedMode.is3D {
+                    self.presentThreeDModeFailure(error: error, sourceMode: sourceMode,
+                                                   committedMode: outcome.committedMode)
+                }
+            }
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(resignActive), name: NSApplication.willResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(becomeActive), name: NSApplication.didBecomeActiveNotification, object: nil)
 
@@ -176,11 +223,84 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             command.target = self; command.keyEquivalentModifierMask = .command; simulationMenu.addItem(command)
         }
         simulationMenu.addItem(.separator())
-        for (index, mode) in SimulationMode.allCases.enumerated() {
-            let command = NSMenuItem(title: mode.title, action: #selector(selectExperimentMenu(_:)), keyEquivalent: String(index + 1))
-            command.tag = index; command.target = self; command.keyEquivalentModifierMask = .command; simulationMenu.addItem(command)
-        }
+        appendModeGroup("2D", modes: SimulationMode.twoDimensionalModes, to: simulationMenu,
+                        menuActions: true)
+        simulationMenu.addItem(.separator())
+        appendModeGroup("3D", modes: [.dyeAdvection3D], to: simulationMenu, menuActions: true)
+        self.simulationMenu = simulationMenu
+        refreshModeSelection()
 
+    }
+
+    private func makeThreeDSessionFactory() -> Renderer3DSessionFactory {
+#if DEBUG
+        let argumentPrefix = "--fluid3d-test-failure="
+        if let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(argumentPrefix) }),
+           let stage = argument.split(separator: "=", maxSplits: 1).last.map(String.init),
+           ["allocation", "pipeline", "reset"].contains(stage) {
+            var pendingFailure: String? = stage
+            func inject(_ requestedStage: String) throws {
+                guard pendingFailure == requestedStage else { return }
+                pendingFailure = nil
+                throw NSError(domain: "FluidDynamicsMetalUITestFailure", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "Injected 3D preparation failure"])
+            }
+            return Renderer3DSessionFactory(
+                makeSimulation: { metal in
+                    try inject("allocation")
+                    return try FluidSimulation3D(metal: metal)
+                },
+                makeVisualization: { metal in
+                    try inject("pipeline")
+                    return try FieldVisualization3D(metal: metal)
+                },
+                encodeReset: { simulation, command in
+                    try inject("reset")
+                    return try simulation.encodeReset(command: command)
+                }
+            )
+        }
+#endif
+        return Renderer3DSessionFactory()
+    }
+
+    private static func identity(for mode: SimulationMode) -> String? {
+        selectableModes.first(where: { $0.mode == mode })?.identity
+    }
+
+    private static func mode(for item: NSMenuItem?) -> SimulationMode? {
+        guard let identity = item?.representedObject as? String else { return nil }
+        return selectableModes.first(where: { $0.identity == identity })?.mode
+    }
+
+    private static func shortcut(for mode: SimulationMode) -> String {
+        switch mode {
+        case .freePlay: return "1"
+        case .experiment(.advection): return "2"
+        case .experiment(.interactingVortices): return "3"
+        case .experiment(.dyeStretching): return "4"
+        case .dyeAdvection3D: return ""
+        }
+    }
+
+    private func appendModeGroup(_ title: String, modes: [SimulationMode], to menu: NSMenu,
+                                menuActions: Bool) {
+        let heading = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        heading.representedObject = "mode-group.\(title)"
+        heading.isEnabled = false
+        menu.addItem(heading)
+        for mode in modes {
+            let shortcut = menuActions ? Self.shortcut(for: mode) : ""
+            let item = NSMenuItem(title: mode.title,
+                                  action: menuActions ? #selector(selectExperimentMenu(_:)) : nil,
+                                  keyEquivalent: shortcut)
+            item.representedObject = Self.identity(for: mode)
+            if menuActions {
+                item.target = self
+                if !shortcut.isEmpty { item.keyEquivalentModifierMask = [.command] }
+            }
+            menu.addItem(item)
+        }
     }
 
     @objc private func toggleControlsPanel(_ sender: Any?) {
@@ -192,13 +312,21 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if (menuItem.representedObject as? String)?.hasPrefix("mode-group.") == true { return false }
         if menuItem.action == #selector(toggleControlsPanel(_:)) {
             menuItem.title = controlsPanel?.isVisible == true ? "Hide Simulation Controls" : "Show Simulation Controls"
         }
-        if menuItem.action == #selector(singleStep(_:)) { return renderer.state.canStep }
-        if menuItem.action == #selector(togglePause(_:)) { menuItem.title = pauseButton.title; return !renderer.state.complete }
+        if menuItem.action == #selector(singleStep(_:)) { return !modeTransitionInProgress && renderer.state.canStep }
+        if menuItem.action == #selector(togglePause(_:)) {
+            menuItem.title = pauseButton.title
+            return !modeTransitionInProgress && !renderer.state.complete
+        }
         if menuItem.action == #selector(restart(_:)) { menuItem.title = restartButton.title }
-        if menuItem.action == #selector(selectExperimentMenu(_:)) { menuItem.state = renderer.state.mode == SimulationMode.allCases[menuItem.tag] ? .on : .off }
+        if menuItem.action == #selector(selectExperimentMenu(_:)) {
+            guard let mode = Self.mode(for: menuItem) else { return false }
+            menuItem.state = renderer.state.mode == mode ? .on : .off
+            return !modeTransitionInProgress && view.window?.isVisible == true
+        }
         return view.window?.isVisible == true
     }
 
@@ -248,17 +376,77 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             button.setAccessibilityIdentifier(id)
             button.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
         }
-        experimentSelector.addItems(withTitles: SimulationMode.allCases.map(\.title))
+        let experimentMenu = NSMenu(title: "Experiments")
+        appendModeGroup("2D", modes: SimulationMode.twoDimensionalModes, to: experimentMenu,
+                        menuActions: false)
+        experimentMenu.addItem(.separator())
+        appendModeGroup("3D", modes: [.dyeAdvection3D], to: experimentMenu, menuActions: false)
+        experimentSelector.menu = experimentMenu
         experimentSelector.target = self; experimentSelector.action = #selector(selectExperiment(_:))
         experimentSelector.setAccessibilityLabel("Experiments"); experimentSelector.setAccessibilityIdentifier("experimentSelector")
         button(pauseButton, #selector(togglePause(_:)), "transport.pause")
         button(stepButton, #selector(singleStep(_:)), "transport.step")
         button(restartButton, #selector(restart(_:)), "transport.restart")
-        let transport = NSStackView(views: [pauseButton, stepButton, restartButton]); transport.spacing = 4
+        primaryTransportRow.orientation = .horizontal
+        primaryTransportRow.alignment = .centerY
+        primaryTransportRow.spacing = 4
+        primaryTransportRow.addArrangedSubview(pauseButton)
+        primaryTransportRow.addArrangedSubview(stepButton)
+        restartTransportRow.orientation = .horizontal
+        restartTransportRow.alignment = .centerY
+        restartTransportRow.addArrangedSubview(restartButton)
+        transportStack.orientation = .horizontal
+        transportStack.alignment = .centerY
+        transportStack.spacing = 4
+        transportStack.addArrangedSubview(primaryTransportRow)
+        transportStack.addArrangedSubview(restartTransportRow)
         stepLabel.setAccessibilityIdentifier("stepCount")
         vertical(pinnedStack)
-        for view in [experimentSelector, transport, stepLabel] { pinnedStack.addArrangedSubview(view) }
-        vertical(bodyStack); vertical(fieldGroup); vertical(lessonGroup); vertical(tuningGroup)
+        for view in [experimentSelector, transportStack, stepLabel] { pinnedStack.addArrangedSubview(view) }
+        vertical(bodyStack); vertical(twoDBodyStack); vertical(threeDBodyStack)
+        vertical(threeDIntroStack); vertical(threeDLegendStack)
+        vertical(fieldGroup); vertical(lessonGroup); vertical(tuningGroup)
+        threeDBodyStack.spacing = 16
+        threeDIntroStack.spacing = 8
+        threeDLegendStack.spacing = 4
+        threeDHeading.font = .systemFont(ofSize: 17, weight: .semibold)
+        threeDHeading.setAccessibilityIdentifier("lesson3d.heading")
+        threeDHeading.setAccessibilityLabel("3D Dye Advection")
+        threeDSlice.font = .systemFont(ofSize: 11, weight: .regular)
+        threeDSlice.setAccessibilityIdentifier("lesson3d.slice")
+        threeDSlice.setAccessibilityLabel("XY slice, halfway through Z")
+        threeDConcentration.font = .systemFont(ofSize: 11, weight: .semibold)
+        threeDConcentration.setAccessibilityIdentifier("lesson3d.concentration")
+        threeDConcentration.setAccessibilityLabel("Dye concentration")
+        threeDLegend.font = .systemFont(ofSize: 11, weight: .regular)
+        threeDLegend.setAccessibilityIdentifier("lesson3d.legend")
+        threeDLegend.setAccessibilityLabel("Dye concentration, less dye to more dye")
+        threeDNote.font = .systemFont(ofSize: 13, weight: .regular)
+        threeDNote.setAccessibilityIdentifier("lesson3d.note")
+        threeDNote.setAccessibilityLabel(threeDNote.stringValue)
+        threeDNote.usesSingleLineMode = false
+        threeDNote.maximumNumberOfLines = 0
+        threeDNote.lineBreakMode = .byWordWrapping
+        let noteParagraph = NSMutableParagraphStyle()
+        noteParagraph.lineHeightMultiple = 1.5
+        threeDNote.attributedStringValue = NSAttributedString(
+            string: threeDNote.stringValue,
+            attributes: [
+                .font: threeDNote.font!,
+                .paragraphStyle: noteParagraph,
+                .foregroundColor: NSColor.labelColor,
+            ]
+        )
+        threeDIntroStack.addArrangedSubview(threeDHeading)
+        threeDIntroStack.addArrangedSubview(threeDSlice)
+        threeDLegendStack.addArrangedSubview(threeDConcentration)
+        threeDLegendStack.addArrangedSubview(threeDColourLegend)
+        threeDLegendStack.addArrangedSubview(threeDLegend)
+        threeDBodyStack.addArrangedSubview(threeDIntroStack)
+        threeDBodyStack.addArrangedSubview(threeDLegendStack)
+        threeDBodyStack.addArrangedSubview(threeDNote)
+        colourLegend.setAccessibilityElement(false)
+        threeDColourLegend.setAccessibilityElement(false)
         question.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
         question.setAccessibilityIdentifier("lesson.question")
         let noticeHeading = NSTextField(labelWithString: "What to notice")
@@ -266,8 +454,8 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         adjustmentSelector.target = self; adjustmentSelector.action = #selector(changeAdjustment(_:))
         adjustmentSelector.setAccessibilityIdentifier("experimentAdjustment")
         for view in [question, noticeHeading, notice, adjustmentLabel, adjustmentSelector, NSTextField(wrappingLabelWithString: LearningCopy.adjustment)] { lessonGroup.addArrangedSubview(view) }
-        bodyStack.addArrangedSubview(lessonGroup)
-        bodyStack.addArrangedSubview(NSTextField(labelWithString: "View"))
+        twoDBodyStack.addArrangedSubview(lessonGroup)
+        twoDBodyStack.addArrangedSubview(NSTextField(labelWithString: "View"))
         for field in DisplayField.allCases {
             let item = NSButton(title: field.title, target: self, action: #selector(selectField(_:)))
             item.tag = field.rawValue; item.setButtonType(.toggle); item.bezelStyle = .rounded
@@ -277,16 +465,17 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             let row = NSStackView(views: fields.compactMap { fieldButtons[$0] }); row.distribution = .fillEqually
             fieldGroup.addArrangedSubview(row); row.widthAnchor.constraint(equalTo: fieldGroup.widthAnchor).isActive = true
         }
-        bodyStack.addArrangedSubview(fieldGroup); bodyStack.addArrangedSubview(explanation); bodyStack.addArrangedSubview(colourLegend); bodyStack.addArrangedSubview(legend)
+        twoDBodyStack.addArrangedSubview(fieldGroup); twoDBodyStack.addArrangedSubview(explanation); twoDBodyStack.addArrangedSubview(colourLegend); twoDBodyStack.addArrangedSubview(legend)
         colourLegend.heightAnchor.constraint(equalToConstant: 12).isActive = true
+        threeDColourLegend.heightAnchor.constraint(equalToConstant: 12).isActive = true
         legend.setAccessibilityIdentifier("fieldLegend")
         for (index, title) in ["Velocity arrows", "Particles", "Trails"].enumerated() {
             let item = NSButton(checkboxWithTitle: title, target: self, action: #selector(changeOverlay(_:)))
-            item.tag = index; item.setAccessibilityIdentifier("overlay.\(index)"); overlayButtons.append(item); bodyStack.addArrangedSubview(item)
+            item.tag = index; item.setAccessibilityIdentifier("overlay.\(index)"); overlayButtons.append(item); twoDBodyStack.addArrangedSubview(item)
         }
-        bodyStack.addArrangedSubview(NSTextField(wrappingLabelWithString: LearningCopy.trails))
+        twoDBodyStack.addArrangedSubview(NSTextField(wrappingLabelWithString: LearningCopy.trails))
         button(tuningButton, #selector(toggleTuning(_:)), "tuning.toggle")
-        bodyStack.addArrangedSubview(tuningButton)
+        twoDBodyStack.addArrangedSubview(tuningButton)
         for control in TuningControl.allCases {
             let label = NSTextField(labelWithString: control.title), value = NSTextField(labelWithString: "")
             value.alignment = .right; tuningValues[control] = value
@@ -300,10 +489,13 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             slider.widthAnchor.constraint(equalTo: row.widthAnchor).isActive = true
         }
         tuningGroup.addArrangedSubview(NSTextField(wrappingLabelWithString: LearningCopy.fading))
-        tuningGroup.isHidden = true; bodyStack.addArrangedSubview(tuningGroup)
+        tuningGroup.isHidden = true; twoDBodyStack.addArrangedSubview(tuningGroup)
         button(aboutButton, #selector(toggleAbout(_:)), "about.toggle")
-        aboutText.isHidden = true; bodyStack.addArrangedSubview(aboutButton); bodyStack.addArrangedSubview(aboutText)
-        for stack in [pinnedStack, bodyStack] {
+        aboutText.isHidden = true; twoDBodyStack.addArrangedSubview(aboutButton); twoDBodyStack.addArrangedSubview(aboutText)
+        bodyStack.addArrangedSubview(twoDBodyStack)
+        bodyStack.addArrangedSubview(threeDBodyStack)
+        for stack in [pinnedStack, bodyStack, twoDBodyStack, threeDBodyStack,
+                      threeDIntroStack, threeDLegendStack] {
             stack.translatesAutoresizingMaskIntoConstraints = false
             for child in stack.arrangedSubviews { child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         }
@@ -331,34 +523,96 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     @objc private func updateAppearance() {
         opaqueSurface.isHidden = !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
         opaqueSurface.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        colourLegend.needsDisplay = true
+        threeDColourLegend.needsDisplay = true
     }
 
     private func updateControlLayout() {
         guard renderer != nil else { return }
-        let width: CGFloat = 368
+        let visibleFrame = controlsPanel?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+        var availableWidth = visibleFrame?.width ?? 384
+#if DEBUG
+        if let testVisibleWidthOverride {
+            availableWidth = min(availableWidth, testVisibleWidthOverride)
+        }
+#endif
+        let width = min(368, max(240, availableWidth - 16))
         hudWidth?.constant = width
         hud.layoutSubtreeIfNeeded()
+        let horizontalTransportWidth = primaryTransportRow.fittingSize.width
+            + restartTransportRow.fittingSize.width + transportStack.spacing
+        let shouldWrapRestart = width - 32 < horizontalTransportWidth
+        transportStack.orientation = shouldWrapRestart ? .vertical : .horizontal
+        transportStack.alignment = shouldWrapRestart ? .leading : .centerY
+        hud.layoutSubtreeIfNeeded()
         let wanted = pinnedStack.fittingSize.height + bodyStack.fittingSize.height + 36
-        let available = max(240, (controlsPanel?.screen?.visibleFrame.height ?? 800) - 80)
+        let available = max(240, (visibleFrame?.height ?? 800) - 80)
         let height = min(available, max(240, wanted))
-        if hudHeight?.constant != height {
-            hudHeight?.constant = height
-            if let panel = controlsPanel {
-                let top = panel.frame.maxY
-                panel.setContentSize(NSSize(width: width, height: height))
-                panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: top - panel.frame.height))
+        hudHeight?.constant = height
+
+        if let panel = controlsPanel {
+            let targetSize = NSSize(width: width, height: height)
+            let currentSize = panel.contentView?.bounds.size ?? .zero
+            if abs(currentSize.width - targetSize.width) > 0.5 || abs(currentSize.height - targetSize.height) > 0.5 {
+                let previousFrame = panel.frame
+                panel.setContentSize(targetSize)
+                let newFrame = panel.frame
+                let targetX = min(max(previousFrame.minX, visibleFrame?.minX ?? previousFrame.minX),
+                                  max(visibleFrame?.minX ?? previousFrame.minX,
+                                      (visibleFrame?.maxX ?? newFrame.maxX) - newFrame.width))
+                let targetY = min(max(previousFrame.maxY - newFrame.height,
+                                      visibleFrame?.minY ?? previousFrame.minY),
+                                  max(visibleFrame?.minY ?? previousFrame.minY,
+                                      (visibleFrame?.maxY ?? newFrame.maxY) - newFrame.height))
+                panel.setFrameOrigin(NSPoint(x: targetX, y: targetY))
             }
         }
     }
-    @objc private func selectExperiment(_ sender: NSPopUpButton) { changeMode(SimulationMode.allCases[sender.indexOfSelectedItem]) }
-    @objc private func selectExperimentMenu(_ sender: NSMenuItem) { changeMode(SimulationMode.allCases[sender.tag]) }
-    private func changeMode(_ mode: SimulationMode) {
-        mouseHeld = false; rebaseDrag = false; renderer.clearInput(); renderer.selectMode(mode); refreshControls()
+    @objc private func selectExperiment(_ sender: NSPopUpButton) {
+        guard let mode = Self.mode(for: sender.selectedItem) else {
+            refreshModeSelection()
+            return
+        }
+        changeMode(mode)
     }
-    @objc private func singleStep(_ sender: Any?) { renderer.requestSingleStep() }
-    @objc private func restart(_ sender: Any?) { mouseHeld = false; renderer.restartCurrentSimulation(); refreshControls() }
+    @objc private func selectExperimentMenu(_ sender: NSMenuItem) {
+        guard let mode = Self.mode(for: sender) else { return }
+        changeMode(mode)
+    }
+    private func changeMode(_ mode: SimulationMode) {
+        guard !modeTransitionInProgress else { return }
+        modeTransitionSource = renderer.state.mode
+        modeTransitionInProgress = true
+        refreshTransport()
+        mouseHeld = false
+        rebaseDrag = false
+        renderer.clearInput()
+        renderer.selectMode(mode)
+        modeTransitionInProgress = false
+        refreshControls()
+    }
+    @objc private func singleStep(_ sender: Any?) {
+        guard !modeTransitionInProgress else { return }
+        renderer.requestSingleStep()
+    }
+    @objc private func restart(_ sender: Any?) {
+        guard !modeTransitionInProgress else { return }
+        if renderer.state.mode.is3D {
+            modeTransitionSource = renderer.state.mode
+            modeTransitionInProgress = true
+            refreshTransport()
+            mouseHeld = false
+            renderer.restartCurrentSimulation()
+            modeTransitionInProgress = false
+            refreshControls()
+            return
+        }
+        mouseHeld = false
+        renderer.restartCurrentSimulation()
+        refreshControls()
+    }
     @objc private func changeAdjustment(_ sender: NSPopUpButton) {
-        guard let lesson = renderer.state.mode.experiment else { return }
+        guard !renderer.state.mode.is3D, let lesson = renderer.state.mode.experiment else { return }
         renderer.setExperimentAdjustment(lesson.choices[sender.indexOfSelectedItem]); refreshControls()
     }
     @objc private func changeOverlay(_ sender: NSButton) {
@@ -368,20 +622,26 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private func refreshTransport() {
         let state = renderer.state
         stepLabel.stringValue = state.status
-        pauseButton.title = state.userPaused ? (state.mode.experiment != nil && state.stepCount == 0 ? "Run" : "Resume") : "Pause"
+        pauseButton.title = state.userPaused ? (state.mode.isLesson && state.stepCount == 0 ? "Run" : "Resume") : "Pause"
         pauseButton.setAccessibilityLabel(state.userPaused ? "Resume simulation" : "Pause simulation")
-        pauseButton.isEnabled = !state.complete
-        stepButton.isEnabled = state.canStep
+        pauseButton.isEnabled = !modeTransitionInProgress && !state.complete
+        stepButton.isEnabled = !modeTransitionInProgress && state.canStep
+        experimentSelector.isEnabled = !modeTransitionInProgress
+        restartButton.isEnabled = !modeTransitionInProgress
         restartButton.title = state.mode == .freePlay ? "Reset fluid" : "Restart experiment"
     }
 
     @objc private func selectField(_ sender: NSButton) {
+        guard !renderer.state.mode.is3D else { return }
         guard let field = DisplayField(rawValue: sender.tag) else { return }
         renderer.selectField(field)
         refreshControls()
     }
 
-    @objc private func togglePause(_ sender: NSButton) { changePauseState() }
+    @objc private func togglePause(_ sender: NSButton) {
+        guard !modeTransitionInProgress else { return }
+        changePauseState()
+    }
 
     @objc private func toggleTuning(_ sender: NSButton) {
         isTuningExpanded.toggle()
@@ -406,7 +666,56 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         }
     }
 
+    private func refreshModeSelection() {
+        guard let identity = Self.identity(for: renderer.state.mode) else { return }
+        let popupItems = experimentSelector.menu?.items ?? []
+        var selectedItem: NSMenuItem?
+        for item in popupItems {
+            guard let mode = Self.mode(for: item) else { continue }
+            let isSelected = Self.identity(for: mode) == identity
+            item.state = isSelected ? .on : .off
+            if isSelected { selectedItem = item }
+        }
+        if let selectedItem { experimentSelector.select(selectedItem) }
+        for item in simulationMenu?.items ?? [] {
+            guard let mode = Self.mode(for: item) else { continue }
+            item.state = mode == renderer.state.mode ? .on : .off
+        }
+    }
+
+    private func presentThreeDModeFailure(error: String, sourceMode: SimulationMode?,
+                                          committedMode: SimulationMode) {
+        guard !isPresentingModeFailure else { return }
+        isPresentingModeFailure = true
+        NSLog("3D lesson preparation failed: %@", error)
+
+        let restoredFreePlay = (sourceMode == nil || sourceMode?.is3D == true) && committedMode == .freePlay
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Couldn’t open 3D Dye Advection"
+        alert.informativeText = restoredFreePlay
+            ? "The 3D simulation could not be prepared. Free Play has been restored. Continue in 2D, or choose 3D Dye Advection again to retry."
+            : "The 3D simulation could not be prepared. Your 2D simulation is still available. Continue in 2D, or choose 3D Dye Advection again to retry."
+        alert.addButton(withTitle: "Continue in 2D")
+        alert.buttons.first?.keyEquivalent = "\r"
+        alert.buttons.first?.keyEquivalentModifierMask = []
+
+        let alertWindow = alert.window
+        let escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == 53, event.window === alertWindow else { return event }
+            NSApp.stopModal(withCode: .alertFirstButtonReturn)
+            return nil
+        }
+        defer {
+            if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
+        }
+        _ = alert.runModal()
+        isPresentingModeFailure = false
+        refreshControls()
+    }
+
     private func refreshControls() {
+        refreshModeSelection()
         for (field, button) in fieldButtons {
             let selected = renderer.state.field == field
             button.state = selected ? .on : .off
@@ -418,8 +727,14 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         }
         refreshTransport()
         let state = renderer.state
-        experimentSelector.selectItem(at: SimulationMode.allCases.firstIndex(of: state.mode)!)
-        lessonGroup.isHidden = state.mode == .freePlay
+        let isThreeD = state.mode.is3D
+        twoDBodyStack.isHidden = isThreeD
+        threeDBodyStack.isHidden = !isThreeD
+        threeDColourLegend.isThreeD = isThreeD
+        stepButton.setAccessibilityHelp(isThreeD ? "Advance the 3D simulation by one step" : nil)
+        restartButton.setAccessibilityHelp(isThreeD ? "Return the 3D experiment to step 0" : nil)
+        metalView.setAccessibilityLabel(isThreeD ? "Fixed XY cross-section of 3D dye concentration" : nil)
+        lessonGroup.isHidden = state.mode == .freePlay || state.mode.is3D
         if let lesson = state.mode.experiment {
             question.stringValue = lesson.question; notice.stringValue = lesson.notice; adjustmentLabel.stringValue = lesson.adjustmentTitle
             adjustmentSelector.setAccessibilityLabel(lesson.adjustmentTitle)
@@ -493,11 +808,13 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     private func changeSource() {
+        guard !renderer.state.mode.is3D else { return }
         renderer.nextSlab()
         refreshControls()
     }
 
     private func changePauseState() {
+        guard !modeTransitionInProgress else { return }
         renderer.togglePause()
         if mouseHeld { rebaseDrag = true }
         refreshControls()
@@ -506,9 +823,32 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
 
 private final class ColourLegendView: NSView {
     var field: DisplayField = .density { didSet { needsDisplay = true } }
+    var isThreeD = false { didSet { needsDisplay = true } }
+
     override func draw(_ dirtyRect: NSRect) {
-        let colors = field.palette.map { NSColor(srgbRed: CGFloat($0.x), green: CGFloat($0.y), blue: CGFloat($0.z), alpha: 1) }
-        NSGradient(colors: colors)?.draw(in: bounds, angle: 0)
-        NSColor.labelColor.setStroke(); NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5)).stroke()
+        if isThreeD {
+            let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+            let paletteStops = FieldVisualization3D.paletteStops
+            let colors = paletteStops.map { stop in
+                NSColor(srgbRed: CGFloat(stop.color.x), green: CGFloat(stop.color.y),
+                        blue: CGFloat(stop.color.z), alpha: 1).cgColor
+            } as CFArray
+            let locations = paletteStops.map { CGFloat($0.concentration) }
+            if let gradient = CGGradient(colorsSpace: colorSpace, colors: colors,
+                                         locations: locations),
+               let context = NSGraphicsContext.current?.cgContext {
+                context.drawLinearGradient(gradient,
+                                          start: CGPoint(x: bounds.minX, y: bounds.midY),
+                                          end: CGPoint(x: bounds.maxX, y: bounds.midY),
+                                          options: [])
+            }
+        } else {
+            let colors = field.palette.map {
+                NSColor(srgbRed: CGFloat($0.x), green: CGFloat($0.y), blue: CGFloat($0.z), alpha: 1)
+            }
+            NSGradient(colors: colors)?.draw(in: bounds, angle: 0)
+        }
+        NSColor.labelColor.setStroke()
+        NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5)).stroke()
     }
 }

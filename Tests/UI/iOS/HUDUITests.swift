@@ -135,7 +135,7 @@ final class HUDUITests: XCTestCase {
             return Date().timeIntervalSince(stableSince) > 0.5
         }
         XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: settled, object: nil)], timeout: 8) == .completed,
-                      "Application must actually rotate before checking its layout")
+                      "Application must actually rotate before checking its layout; app frame: \(app.frame), window frame: \(app.windows.firstMatch.frame)")
     }
     private func chooseLesson(_ title: String) {
         app.buttons["experimentSelector"].tap()

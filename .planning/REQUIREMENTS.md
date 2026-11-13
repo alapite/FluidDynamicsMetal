@@ -40,7 +40,7 @@
 
 ### Verification and Performance
 
-- [ ] **VER-03**: Developers can run production-kernel checks for three-axis advection, pressure projection, boundaries, and finite field values, against documented reference fixtures and tolerances.
+- [x] **VER-03**: Developers can run production-kernel checks for three-axis advection, pressure projection, boundaries, and finite field values, against documented reference fixtures and tolerances.
 - [ ] **VER-04**: Developers can reproduce complete fluid and tracer state after restart at equal step counts on the same device, within documented floating-point tolerances.
 - [ ] **VER-05**: Users get a measured 30 fps floor at 64³ and 1280×720 output on a named available Apple Silicon reference Mac, covering slices/tracers and volume/tracers; developers record GPU timing, frame pacing, and resource use. Sixty fps remains a goal.
 - [ ] **VER-06**: Developers retain both app builds and the existing 2D regression coverage, with documented Mac 3D usage and verification results.
@@ -87,15 +87,15 @@ Every v1.1 requirement maps to exactly one delivery phase. Later phases extend a
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SIM-04 | Phase 7 | Pending |
-| SIM-05 | Phase 7 | Pending |
-| SIM-06 | Phase 7 | Pending |
-| LES-01 | Phase 7 | Pending |
-| LES-02 | Phase 7 | Pending |
+| SIM-04 | Phase 7 | Pending — manual native review not performed |
+| SIM-05 | Phase 7 | Pending — manual visual review not performed |
+| SIM-06 | Phase 7 | Pending — manual recovery/2D-return review not performed |
+| LES-01 | Phase 7 | Pending — manual playback/counter review not performed |
+| LES-02 | Phase 7 | Pending — manual Step/count review not performed |
 | LES-03 | Phase 9 | Pending |
 | LES-04 | Phase 9 | Pending |
 | LES-05 | Phase 9 | Pending |
-| LES-06 | Phase 7 | Pending |
+| LES-06 | Phase 7 | Pending — manual inactivity review not performed |
 | INS-01 | Phase 8 | Pending |
 | INS-02 | Phase 8 | Pending |
 | INS-03 | Phase 8 | Pending |
@@ -106,12 +106,14 @@ Every v1.1 requirement maps to exactly one delivery phase. Later phases extend a
 | EDU-01 | Phase 9 | Pending |
 | EDU-02 | Phase 9 | Pending |
 | EDU-03 | Phase 9 | Pending |
-| VER-03 | Phase 7 | Pending |
+| VER-03 | Phase 7 | Complete — production-kernel fixtures (see `docs/3d-phase7-verification.md`) |
 | VER-04 | Phase 9 | Pending |
 | VER-05 | Phase 10 | Pending |
 | VER-06 | Phase 10 | Pending |
 
-**Coverage:** 23 requirements; 23 mapped, 0 unmapped. All remain pending implementation.
+**Phase 7 closeout note (2026-11-13):** The user directed the 07-09 documentation closeout to proceed on the assumption that manual review would find no issues. No manual checks were performed, so that assumption is not recorded as visual/interaction verification or approval. The six user-facing Phase 7 requirements above remain pending manual acceptance. VER-03 is complete on its automated production-kernel criterion.
+
+**Coverage:** 23 requirements; 23 mapped, 1 complete, 22 pending, 0 unmapped. Phase 7's manual review remains an optional follow-up; actual macOS 26 runtime and physical-device multitouch remain **NOT TESTED**, and displayed frame pacing remains **NOT MEASURED**.
 
 ---
-*Requirements approved: 2026-11-06. Implementation has not started.*
+*Requirements approved: 2026-11-06. Phase 7 implementation and automated verification have started; user-facing acceptance remains pending as listed above.*

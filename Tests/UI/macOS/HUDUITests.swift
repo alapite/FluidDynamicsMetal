@@ -34,11 +34,26 @@ final class HUDUITests: XCTestCase {
     func testCanvasShortcutsKeepControlsInSync() {
         let fields = ["Dye concentration", "Pressure", "Velocity", "Vorticity"]
         XCTAssertTrue(app.checkBoxes["Dye concentration"].waitForExistence(timeout: 10))
-        // Make the Metal canvas the target before sending window shortcuts.
-        app.windows["FluidDynamicsMetalOSX"].coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
-        app.windows["FluidDynamicsMetalOSX"].typeKey("s", modifierFlags: [])
+        // The floating panel can cover the chosen canvas point and keep an NSControl
+        // as first responder. Dismiss it before focusing the Metal view explicitly.
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertFalse(panel.exists)
+
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
+        canvas.typeKey("s", modifierFlags: [])
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
         assertSelected("Pressure", among: fields)
-        app.windows["FluidDynamicsMetalOSX"].typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertFalse(panel.exists)
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
+        canvas.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Resume simulation"].exists)
     }
 
@@ -188,13 +203,24 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(threeDHeading.exists)
         XCTAssertFalse(twoDHeading.isEnabled)
         XCTAssertFalse(threeDHeading.isEnabled)
-        let labels = selectorItems.allElementsBoundByIndex.map { $0.label }
-        let twoDIndex = try XCTUnwrap(labels.firstIndex(of: "2D"))
-        let threeDIndex = try XCTUnwrap(labels.firstIndex(of: "3D"))
-        XCTAssertEqual(Array(labels[(twoDIndex + 1)..<threeDIndex]), [
-            "Free Play", "Dye carried by a flow", "Two interacting vortices", "Stretching dye by stirring"
-        ])
-        XCTAssertEqual(labels.last, "3D Dye Advection")
+        let rows = selectorItems.allElementsBoundByIndex
+        let expectedRows: [(Int, XCUIElement)] = [
+            (0, twoDHeading),
+            (1, selectorItems["Free Play"]),
+            (2, selectorItems["Dye carried by a flow"]),
+            (3, selectorItems["Two interacting vortices"]),
+            (4, selectorItems["Stretching dye by stirring"]),
+            (6, threeDHeading),
+            (7, selectorItems["3D Dye Advection"]),
+        ]
+        XCTAssertEqual(rows.count, 8, "The selector must contain two groups and one native separator")
+        for (index, expected) in expectedRows {
+            XCTAssertEqual(rows[index].frame, expected.frame, "Unexpected selector row at index \(index)")
+        }
+        XCTAssertFalse(rows[5].isEnabled, "The group separator must not be selectable")
+        XCTAssertTrue(selectorItems["Free Play"].isSelected)
+        XCTAssertFalse(twoDHeading.isSelected)
+        XCTAssertFalse(threeDHeading.isSelected)
         selectorItems["3D Dye Advection"].click()
 
         XCTAssertEqual(selector.value as? String, "3D Dye Advection")
@@ -202,7 +228,7 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Run"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["transport.step"].isEnabled)
 
-        let simulationMenu = app.menuBars.menuItems["Simulation"]
+        let simulationMenu = app.menuBars.menuBarItems["Simulation"]
         simulationMenu.click()
         let menuItems = app.menuItems
         XCTAssertTrue(menuItems["2D"].exists)
@@ -210,6 +236,11 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(menuItems["3D"].exists)
         XCTAssertFalse(menuItems["3D"].isEnabled)
         XCTAssertTrue(menuItems["3D Dye Advection"].exists)
+        XCTAssertEqual(selector.value as? String, "3D Dye Advection")
+        let menuScreenshot = XCTAttachment(screenshot: app.screenshot())
+        menuScreenshot.name = "Simulation menu with committed 3D selection"
+        menuScreenshot.lifetime = .keepAlways
+        add(menuScreenshot)
         app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
 
         for (key, title) in [
@@ -219,8 +250,14 @@ final class HUDUITests: XCTestCase {
             ("4", "Stretching dye by stirring")
         ] {
             command(key)
-            XCTAssertEqual(selector.value as? String, title)
-            XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+            assertSelectorValue(title, in: selector)
+            if key == "1" {
+                XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"),
+                              "Command-1 must restore fresh, running Free Play")
+            } else {
+                XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0",
+                               "2D lessons selected by Command-2–4 start paused at step 0")
+            }
         }
 
         selector.click()
@@ -228,6 +265,147 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(selector.value as? String, "3D Dye Advection")
         XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
         XCTAssertTrue(app.buttons["Run"].exists)
+    }
+
+    func testThreeDPanelFocusAndReturn() throws {
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+
+        app.checkBoxes["Vorticity"].click()
+        app.buttons["Show Tuning"].click()
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+
+        // The selector retains native focus after selection; Space opens/operates it,
+        // but must not also toggle the canvas transport.
+        app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
+        XCTAssertTrue(app.buttons["Run"].exists)
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+
+        XCTAssertEqual(app.staticTexts["lesson3d.heading"].label, "3D Dye Advection")
+        XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "XY slice · halfway through Z")
+        XCTAssertEqual(app.staticTexts["lesson3d.slice"].label, "XY slice, halfway through Z")
+        XCTAssertEqual(app.staticTexts["lesson3d.concentration"].label, "Dye concentration")
+        XCTAssertEqual(app.staticTexts["lesson3d.legend"].value as? String, "Less dye → More dye")
+        XCTAssertEqual(app.staticTexts["lesson3d.legend"].label, "Dye concentration, less dye to more dye")
+        XCTAssertEqual(app.staticTexts["lesson3d.note"].label,
+                       "This is a cross-section of dye carried by an evolving 3D flow. Brighter areas contain more dye. Dye can move out of this fixed plane. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
+        for hiddenIdentifier in ["field.0", "overlay.0", "tuning.toggle", "about.toggle", "fieldLegend"] {
+            XCTAssertFalse(app.descendants(matching: .any)[hiddenIdentifier].exists,
+                            "Unsupported 2D content must be absent in 3D: \(hiddenIdentifier)")
+        }
+
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        canvas.typeKey("s", modifierFlags: [])
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+        XCTAssertTrue(app.buttons["Run"].exists)
+
+        // Canvas Space toggles the shared transport once, and the saved Free Play controls return.
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
+        canvas.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+        XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
+        command("1")
+        assertSelectorValue("Free Play", in: selector)
+        XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
+        XCTAssertEqual(app.checkBoxes["Vorticity"].value as? String, "Selected")
+        XCTAssertTrue(app.buttons["Hide Tuning"].exists)
+        XCTAssertTrue(app.sliders["Force"].exists)
+    }
+
+    func testThreeDAppearanceCaptures() {
+        for appearance in ["Light", "Dark"] {
+            app.terminate()
+            app = XCUIApplication()
+            app.launchArguments = ["-AppleInterfaceStyle", appearance]
+            app.launch()
+
+            let selector = app.popUpButtons["experimentSelector"]
+            XCTAssertTrue(selector.waitForExistence(timeout: 10))
+            selector.click()
+            selector.menuItems["3D Dye Advection"].click()
+            XCTAssertTrue(app.staticTexts["lesson3d.note"].waitForExistence(timeout: 5))
+
+            for (windowName, suffix) in [("FluidDynamicsMetalOSX", "canvas"),
+                                         ("Simulation Controls", "controls panel")] {
+                let attachment = XCTAttachment(screenshot: app.windows[windowName].screenshot())
+                attachment.name = "3D Dye Advection — \(appearance) appearance — \(suffix)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
+    }
+
+    func testThreeDPanelLayoutPreservesState() throws {
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+        XCTAssertTrue(app.staticTexts["lesson3d.note"].waitForExistence(timeout: 5),
+                      "The factual 3D note must be present in the scrollable panel")
+
+        let step = app.staticTexts["stepCount"]
+        let stepButton = app.buttons["transport.step"]
+        for _ in 0..<3 { stepButton.click() }
+        let reachedThree = NSPredicate(format: "value == %@", "Step 3")
+        expectation(for: reachedThree, evaluatedWith: step)
+        waitForExpectations(timeout: 5)
+
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        let scrollView = panel.scrollViews.firstMatch
+        XCTAssertTrue(scrollView.waitForExistence(timeout: 5))
+        scrollView.swipeUp()
+        XCTAssertEqual(step.value as? String, "Step 3", "Scrolling the body must not advance the solver")
+
+        let originalPanelOrigin = panel.frame.origin
+        let titleBar = panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.03))
+        titleBar.click(forDuration: 0.2, thenDragTo: titleBar.withOffset(CGVector(dx: 50, dy: -20)))
+        XCTAssertNotEqual(panel.frame.origin, originalPanelOrigin, "The utility panel should remain movable")
+        XCTAssertEqual(step.value as? String, "Step 3", "Moving the panel must not advance the solver")
+
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertFalse(panel.exists)
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertEqual(selector.value as? String, "3D Dye Advection")
+        XCTAssertEqual(step.value as? String, "Step 3", "Reopening the panel must preserve lesson state")
+
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        let oldFrame = canvas.frame
+        let corner = canvas.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
+            .withOffset(CGVector(dx: -2, dy: -2))
+        corner.click(forDuration: 0.2, thenDragTo: corner.withOffset(CGVector(dx: -80, dy: -50)))
+        XCTAssertNotEqual(canvas.frame.size, oldFrame.size)
+        XCTAssertEqual(step.value as? String, "Step 3", "Resizing the canvas must not advance the solver")
+    }
+
+    func testThreeDConstrainedPanelWrapsTransportAndText() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["--fluid3d-test-visible-width=256"]
+        app.launch()
+
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(panel.frame.width, 260,
+                                 "The constrained panel must respect its narrow content-width target")
+
+        let run = app.buttons["transport.pause"]
+        let step = app.buttons["transport.step"]
+        let restart = app.buttons["transport.restart"]
+        XCTAssertTrue(run.isHittable)
+        XCTAssertTrue(step.isHittable)
+        XCTAssertTrue(restart.isHittable)
+        XCTAssertGreaterThan(restart.frame.minY, run.frame.minY,
+                             "Restart must wrap below the Run/Step row at constrained widths")
+        XCTAssertTrue(app.staticTexts["lesson3d.note"].exists,
+                      "The factual note must remain available in the wrapped, scrollable body")
     }
 
     func testThreeDInitializationFailureRestoresTwoD() throws {
@@ -241,8 +419,8 @@ final class HUDUITests: XCTestCase {
         selector.click()
         selector.menuItems["3D Dye Advection"].click()
 
-        let alert = app.alerts["Couldn’t open 3D Dye Advection"]
-        XCTAssertTrue(alert.waitForExistence(timeout: 10))
+        let alert = app.dialogs.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertEqual(selector.value as? String, "Free Play")
         XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
         XCTAssertTrue(app.windows["FluidDynamicsMetalOSX"].exists)
@@ -275,6 +453,16 @@ final class HUDUITests: XCTestCase {
     private func command(_ key: String) {
         app.activate()
         app.typeKey(key, modifierFlags: .command)
+    }
+
+    private func assertSelectorValue(_ expected: String, in selector: XCUIElement,
+                                     file: StaticString = #filePath, line: UInt = #line) {
+        let predicate = NSPredicate(format: "value == %@", expected)
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: selector)
+        let result = XCTWaiter.wait(for: [expectation], timeout: 5)
+        XCTAssertEqual(result, .completed,
+                       "Expected selector value \(expected), got \(String(describing: selector.value))",
+                       file: file, line: line)
     }
 
     private func assertSelected(_ expected: String, among fields: [String], file: StaticString = #filePath, line: UInt = #line) {
