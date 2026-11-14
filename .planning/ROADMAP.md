@@ -108,11 +108,11 @@ Plans:
 
 - [x] 08-03-PLAN.md — Integrate presentation-only renderer state and retained Restart choices.
 
-**Wave 4** *(ready after Wave 3 completion)*
+**Wave 4** *(complete after Wave 3 completion)*
 
-- [ ] 08-04-PLAN.md — Deliver native camera/slice controls, guide and exclusive paused gestures.
+- [x] 08-04-PLAN.md — Deliver native camera/slice controls, guide and exclusive paused gestures.
 
-**Wave 5** *(blocked on Wave 4 completion)*
+**Wave 5** *(ready after Wave 4 completion)*
 
 - [ ] 08-05-PLAN.md — Verify deterministic passive3D tracer reset, MAC RK2 and failure guards.
 
@@ -138,7 +138,7 @@ Plans:
 
 **Planning status (2026-11-13):** Existing research/UI-SPEC reused; pattern mapping and 17-task executable validation contract created. All five owned requirements and 21 context decisions pass structural/coverage checks and distinct inline plan review after one revision. See `08-PLAN-CHECK.md`. Final human review remains a blocking execution checkpoint. No Phase 8 implementation/build/test/human acceptance is claimed by planning.
 
-**Execution status (2026-11-14):** 08-01 / Wave 1, 08-02 / Wave 2, and 08-03 / Wave 3 complete, **3/9** plans closed; next **08-04 / Wave 4**. Plan 08-03 verifies separated state scopes, no-advance presentation redraws with accepted-step preservation, actual drawable viewport routing, Restart retention versus re-entry defaults, and depth-failure recovery/retry. The production routing fixture, exact-step/inactivity and transition/failure fixtures, both established renderer harnesses (10 tests total), and fresh Mac/iOS Simulator builds pass. See `08-01-SUMMARY.md`, `08-02-SUMMARY.md`, and `08-03-SUMMARY.md`. No Phase 08 user-facing requirement is complete; native controls, tracers, complete-state evidence, and human acceptance remain pending. No later wave executed.
+**Execution status (2026-11-14):** 08-01 / Wave 1 through 08-04 / Wave 4 complete, **4/9** plans closed; next **08-05 / Wave 5**. The full Mac state/HUD suite passed (25 state + 19 UI tests), both no-override app builds passed, and the `spatial-slices` and `inspection-routing` production fixtures passed. Light/Dark and Increase Contrast UI capture attachments are retained as evidence only. VoiceOver and physical gesture direction/feel checks remain NOT TESTED. See `08-01-SUMMARY.md` through `08-04-SUMMARY.md`. No Phase 8 requirement is complete; tracers, complete-state evidence, and the human acceptance plan remain pending. No later plan or phase-level verification ran.
 
 **UI hint**: yes
 
@@ -184,7 +184,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 7. First 3D Fluid Vertical Slice | 9/9 | Plans closed; acceptance incomplete | — (plans closed 2026-11-13) |
-| 8. Spatial Inspection | 3/9 | In Progress — next 08-04 / Wave 4 | — |
+| 8. Spatial Inspection | 4/9 | In Progress — next 08-05 / Wave 5 | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |
 
