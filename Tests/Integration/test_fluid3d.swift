@@ -1283,7 +1283,7 @@ private struct Fluid3DChecks {
     private static func registeredEvolutionBuffers(
         _ simulation: FluidSimulation3D
     ) -> [(String, MTLBuffer)] {
-        [("projection/reduction-partials", simulation.projection.diagnosticReductionWorkspace)]
+        simulation.diagnosticBuffers
     }
 
     /// Independent ownership audit, not the registration list under test.
@@ -1324,12 +1324,8 @@ private struct Fluid3DChecks {
         var registered = registeredEvolutionBuffers(simulation)
         registered.append(("tracer/positions", tracers.positionBuffer))
         for (name, status) in statuses {
-            // The baseline exposes only CPU values; reflection here stages its
-            // actual buffer. GREEN replaces this with explicit read-only descriptors.
-            for child in Mirror(reflecting: status).children {
-                if let resource = child.value as? MTLBuffer {
-                    registered.append(("\(name)/\(child.label!)", resource))
-                }
+            for (role, resource) in status.diagnosticBuffers {
+                registered.append(("\(name)/\(role)", resource))
             }
         }
         var bufferReads: [(String, MTLBuffer, MTLBuffer)] = []
@@ -1456,8 +1452,25 @@ private struct Fluid3DChecks {
         var nan = Float.nan
         withUnsafeBytes(of: &nan) { nonfinite.resources[0].bytes.replaceSubrange(0..<4, with: $0) }
         try rejects("finite-first", nonfinite)
+        let traceStatus = try simulation.projection.makeStatusSlot(label: "complete trace reset", capturePCGTrace: true)
+        // Initialization regression: emulate recycled nonfinite allocation bytes.
+        // This is not detector corruption (which only edits staging copies).
+        let trace = traceStatus.diagnosticBuffers.first { $0.0 == "trace" }!.1
+        trace.contents().initializeMemory(as: UInt32.self, repeating: Float.nan.bitPattern, count: trace.length / 4)
+        try command(metal) {
+            try simulation.projection.encodeProjection(
+                command: $0, u: simulation.u.ping, v: simulation.v.ping, w: simulation.w.ping,
+                projectedU: simulation.u.pong, projectedV: simulation.v.pong, projectedW: simulation.w.pong,
+                status: traceStatus
+            )
+        }
+        let traced = try completeEvolutionSnapshot(
+            simulation: simulation, tracers: tracers,
+            statuses: [("status/reset", status), ("status/traced", traceStatus)]
+        )
         return ["passed": true, "fixture": "inspection-independence", "device": device.name,
                 "inventory": try compareEvolution(snapshot, snapshot, exact: true),
+                "traceInventory": try compareEvolution(traced, traced, exact: true),
                 "byteCount": snapshot.resources.reduce(0) { $0 + $1.bytes.count },
                 "negativeChecks": negatives]
     }
