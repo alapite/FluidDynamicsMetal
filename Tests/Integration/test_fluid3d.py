@@ -72,7 +72,9 @@ PRODUCTION_FIXTURES = (
     "renderer-steps-and-inactivity",
     "inspection-routing",
     "tracer-evolution",
+    "tracer-occlusion",
 )
+SPATIAL_FIXTURES = frozenset({"spatial-slices", "tracer-evolution", "tracer-occlusion"})
 REGRESSION_MATRIX_REQUIRED = (
     "macBuild",
     "iosBuild",
@@ -92,20 +94,16 @@ def sha256(path: Path) -> str:
 
 
 def _fixture_reference_manifest_path(fixture: str) -> Path:
-    directory = (
-        ".build/inspection3d-reference"
-        if fixture in {"spatial-slices", "tracer-evolution"}
-        else ".build/fluid3d-reference"
-    )
+    directory = ".build/inspection3d-reference" if fixture in SPATIAL_FIXTURES else ".build/fluid3d-reference"
     return ROOT / directory / "manifest.json"
 
 
 def _fixture_source_inventory(fixture: str) -> list[str]:
-    return (
-        SPATIAL_HASHED_SOURCES
-        if fixture in {"spatial-slices", "tracer-evolution"}
-        else HASHED_SOURCES
-    )
+    return SPATIAL_HASHED_SOURCES if fixture in SPATIAL_FIXTURES else HASHED_SOURCES
+
+
+def _fixture_capture_directory(fixture: str, evidence_dir: Path) -> Path:
+    return ROOT / ".build/inspection3d-evidence" if fixture in SPATIAL_FIXTURES else evidence_dir
 
 
 def validate_benchmark_manifest(manifest: object) -> list[str]:
@@ -739,6 +737,36 @@ def _validate_fixture_metrics(fixture: str, report: dict) -> list[str]:
         ):
             if result.get(key) is not True:
                 errors.append(f"inspection-routing is missing required regression evidence: {key}")
+    elif fixture == "tracer-occlusion":
+        for key in (
+            "frontMarkersVisibleInBlack",
+            "behindMarkersHiddenInBlack",
+            "frontMarkersVisibleInDyed",
+            "behindMarkersHiddenInDyed",
+            "outsideFootprintVisible",
+            "oppositeSideOcclusionReversed",
+            "discCornersDiscarded",
+            "edgeOnMarkersRemainCircular",
+            "oneXThreePointDiameter",
+            "twoXThreePointDiameter",
+            "markerColorIsExact",
+            "blackSheetRemainsOpaque",
+            "dyedSheetRemainsOpaque",
+        ):
+            if result.get(key) is not True:
+                errors.append(f"tracer-occlusion is missing required regression evidence: {key}")
+        if not isinstance(result.get("measurements"), dict):
+            errors.append("tracer-occlusion projected-diameter measurements are missing")
+        else:
+            measurements = result["measurements"]
+            for key in ("oneXDiameterPixels", "twoXDiameterPixels"):
+                value = measurements.get(key)
+                if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+                    errors.append(f"tracer-occlusion has invalid {key}")
+            for key in ("oneXDiameterPoints", "twoXDiameterPoints"):
+                value = measurements.get(key)
+                if not isinstance(value, (int, float)) or not math.isfinite(value) or abs(value - 3.0) > 1.0:
+                    errors.append(f"tracer-occlusion does not meet the 3-point size gate for {key}")
     return errors
 
 
@@ -814,11 +842,7 @@ def validate_evidence_bundle(evidence_dir: Path, *, quick: bool) -> list[str]:
             errors.extend(_validate_fixture_metrics(fixture, report))
         result = report.get("result")
         if isinstance(result, dict):
-            capture_directory = (
-                ROOT / ".build/inspection3d-evidence"
-                if fixture == "spatial-slices"
-                else evidence_dir
-            )
+            capture_directory = _fixture_capture_directory(fixture, evidence_dir)
             for capture in result.get("captures", []):
                 if not isinstance(capture, str) or not (capture_directory / capture).is_file():
                     errors.append(f"{report_path.name} references a missing capture: {capture}")
@@ -1110,6 +1134,9 @@ class Fluid3DTests(unittest.TestCase):
             with self.subTest(seam=seam):
                 self.assertIn(seam, renderer_source)
 
+        project = (ROOT / "FluidDynamicsMetal.xcodeproj/project.pbxproj").read_text(encoding="utf-8")
+        self.assertIn("TracerSystem3D.swift in state test Sources", project)
+
         for relative_path in (
             "Tests/Integration/test_renderer_correctness.py",
             "Tests/Integration/test_educational_release.py",
@@ -1121,12 +1148,77 @@ class Fluid3DTests(unittest.TestCase):
     def test_tracer_evidence_uses_inspection_reference_and_source_inventory(self):
         inspection_reference = ROOT / ".build/inspection3d-reference/manifest.json"
         solver_reference = ROOT / ".build/fluid3d-reference/manifest.json"
+        evidence_directory = ROOT / ".build/fluid3d-evidence"
+        self.assertEqual(
+            SPATIAL_FIXTURES,
+            frozenset({"spatial-slices", "tracer-evolution", "tracer-occlusion"}),
+        )
         self.assertEqual(_fixture_reference_manifest_path("tracer-evolution"), inspection_reference)
+        self.assertEqual(_fixture_reference_manifest_path("tracer-occlusion"), inspection_reference)
         self.assertEqual(_fixture_reference_manifest_path("spatial-slices"), inspection_reference)
         self.assertEqual(_fixture_reference_manifest_path("projection"), solver_reference)
         self.assertEqual(_fixture_source_inventory("tracer-evolution"), SPATIAL_HASHED_SOURCES)
+        self.assertEqual(_fixture_source_inventory("tracer-occlusion"), SPATIAL_HASHED_SOURCES)
         self.assertEqual(_fixture_source_inventory("spatial-slices"), SPATIAL_HASHED_SOURCES)
         self.assertEqual(_fixture_source_inventory("projection"), HASHED_SOURCES)
+        self.assertEqual(
+            _fixture_capture_directory("tracer-occlusion", evidence_directory),
+            ROOT / ".build/inspection3d-evidence",
+        )
+
+    def test_tracer_occlusion_fixture_requires_production_image_evidence(self):
+        measurements = {
+            "oneXDiameterPixels": 3,
+            "twoXDiameterPixels": 6,
+            "oneXDiameterPoints": 3,
+            "twoXDiameterPoints": 3,
+        }
+        keys = (
+            "frontMarkersVisibleInBlack",
+            "behindMarkersHiddenInBlack",
+            "frontMarkersVisibleInDyed",
+            "behindMarkersHiddenInDyed",
+            "outsideFootprintVisible",
+            "oppositeSideOcclusionReversed",
+            "discCornersDiscarded",
+            "edgeOnMarkersRemainCircular",
+            "oneXThreePointDiameter",
+            "twoXThreePointDiameter",
+            "markerColorIsExact",
+            "blackSheetRemainsOpaque",
+            "dyedSheetRemainsOpaque",
+        )
+        report = {
+            "result": {
+                "passed": True,
+                "fixture": "tracer-occlusion",
+                "measurements": measurements,
+                **{key: True for key in keys},
+            }
+        }
+        self.assertIn("tracer-occlusion", PRODUCTION_FIXTURES)
+        self.assertEqual(_fixture_source_inventory("tracer-occlusion"), SPATIAL_HASHED_SOURCES)
+        self.assertEqual(_validate_fixture_metrics("tracer-occlusion", report), [])
+
+        missing_black_occlusion = copy.deepcopy(report)
+        del missing_black_occlusion["result"]["behindMarkersHiddenInBlack"]
+        self.assertIn(
+            "tracer-occlusion is missing required regression evidence: behindMarkersHiddenInBlack",
+            _validate_fixture_metrics("tracer-occlusion", missing_black_occlusion),
+        )
+
+    def test_native_tracer_source_contract_includes_copy_accessibility_and_failure_scope(self):
+        source = (ROOT / "Sources/macOS/RenderViewController.swift").read_text(encoding="utf-8")
+        for text in (
+            "inspection3d.showTracers",
+            "Pale-cyan dots follow the flow, even while hidden.",
+            "Show or hide passive markers. Hidden markers keep moving with simulation steps.",
+            "Pale-cyan dots are passive tracers. Tracers behind the opaque slice are hidden, even where the slice is black.",
+            "Couldn’t continue 3D Dye Advection",
+            "The 3D view could not be updated. Free Play has been restored. Continue in 2D, or choose 3D Dye Advection again to retry.",
+        ):
+            with self.subTest(text=text):
+                self.assertIn(text, source)
 
     def test_spatial_fixture_evidence_requires_cube_resource_and_camera_checks(self):
         report = {
@@ -1194,21 +1286,20 @@ class Fluid3DTests(unittest.TestCase):
     def test_tracer_evolution(self):
         self.run_production_fixture("tracer-evolution")
 
+    def test_tracer_occlusion(self):
+        self.run_production_fixture("tracer-occlusion")
+
     def run_production_fixture(self, fixture: str) -> None:
         evidence_dir = ROOT / ".build/fluid3d-evidence"
         reference_dir = ROOT / ".build/fluid3d-reference"
         evidence_dir.mkdir(parents=True, exist_ok=True)
         log_path = evidence_dir / f"{fixture}.log"
 
-        fixture_sources = (
-            SPATIAL_HASHED_SOURCES
-            if fixture in {"spatial-slices", "tracer-evolution"}
-            else HASHED_SOURCES
-        )
+        fixture_sources = _fixture_source_inventory(fixture)
         missing = [str(ROOT / source) for source in fixture_sources if not (ROOT / source).is_file()]
         self.assertFalse(missing, "Missing required production/test sources:\n" + "\n".join(missing))
 
-        if fixture in {"spatial-slices", "tracer-evolution"}:
+        if fixture in SPATIAL_FIXTURES:
             reference_dir = _fixture_reference_manifest_path(fixture).parent
             reference_command = [
                 sys.executable,
@@ -1242,7 +1333,7 @@ class Fluid3DTests(unittest.TestCase):
         self.assertEqual(
             manifest.get("contractHash"),
             INSPECTION_CONTRACT_HASH
-            if fixture in {"spatial-slices", "tracer-evolution"}
+            if fixture in SPATIAL_FIXTURES
             else CONTRACT_HASH,
         )
         projection_fixtures = {

@@ -501,7 +501,9 @@ final class HUDUITests: XCTestCase {
 
         // Camera slider arrows use their own increments, and Centre Slice changes
         // only depth even after the camera and plane have changed. Choosing a
-        // plane by pointer leaves keyboard focus on Centre Slice; Tab enters Orbit.
+        // plane by pointer leaves keyboard focus on Centre Slice; Tab first reaches
+        // Show Tracers, then the next Tab enters Orbit.
+        app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
         app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
         app.typeKey(XCUIKeyboardKey.rightArrow, modifierFlags: [])
         app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
@@ -512,7 +514,7 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(elevation.value as? String, "+21°")
         XCTAssertEqual(zoom.value as? String, "105%")
 
-        for _ in 0..<4 { app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [.shift]) }
+        for _ in 0..<5 { app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [.shift]) }
         app.typeKey(XCUIKeyboardKey.leftArrow, modifierFlags: [])
         app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
         app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
@@ -642,8 +644,13 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(number(elevation), panelElevation, accuracy: 0.5)
         XCTAssertEqual(number(zoom), panelZoom, accuracy: 0.5)
         let oldPanelOrigin = panel.frame.origin
-        let titleBar = panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.03))
-        titleBar.click(forDuration: 0.2, thenDragTo: titleBar.withOffset(CGVector(dx: 40, dy: -20)))
+        let closeButton = panel.buttons[XCUIIdentifierCloseWindow]
+        let titleBarDragStart = closeButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .withOffset(CGVector(dx: 40, dy: 0))
+        titleBarDragStart.click(
+            forDuration: 0.2,
+            thenDragTo: titleBarDragStart.withOffset(CGVector(dx: 40, dy: -20))
+        )
         XCTAssertNotEqual(panel.frame.origin, oldPanelOrigin)
         XCTAssertEqual(number(orbit), panelOrbit, accuracy: 0.5)
         XCTAssertEqual(number(elevation), panelElevation, accuracy: 0.5)
@@ -733,6 +740,166 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.checkBoxes["Dye concentration"].exists)
     }
 
+    func testSpatialTracerVisibilityAndRestart() throws {
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        let checkbox = app.checkBoxes["inspection3d.showTracers"]
+        XCTAssertTrue(checkbox.waitForExistence(timeout: 5))
+        XCTAssertEqual(checkbox.label, "Show Tracers")
+        XCTAssertEqual(checkbox.value as? String, "Selected",
+                       "Tracer visibility must default on for a new 3D session")
+        XCTAssertEqual(
+            app.staticTexts["inspection3d.tracerHelp"].label,
+            "Pale-cyan dots follow the flow, even while hidden."
+        )
+        XCTAssertEqual(
+            app.staticTexts["lesson3d.note"].label,
+            "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; dye can move out of the plane. Pale-cyan dots are passive tracers. Tracers behind the opaque slice are hidden, even where the slice is black. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds."
+        )
+
+        // The mode selector retains focus after choosing the lesson. Follow the
+        // documented key-view order through Plane, depth and Centre Slice to the
+        // tracer checkbox, then verify focused Space toggles only that control.
+        for _ in 0..<7 { app.typeKey(XCUIKeyboardKey.tab, modifierFlags: []) }
+        app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+        XCTAssertEqual(checkbox.value as? String, "Not selected")
+        XCTAssertTrue(app.buttons["Run"].exists,
+                      "Focused checkbox Space must not resume or pause the canvas")
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+        app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+        XCTAssertEqual(checkbox.value as? String, "Selected")
+        XCTAssertTrue(app.buttons["Run"].exists)
+
+        let scrollView = panel.scrollViews.firstMatch
+        XCTAssertTrue(scrollView.waitForExistence(timeout: 5))
+        for _ in 0..<4 where !checkbox.isHittable { scrollView.swipeUp() }
+        XCTAssertTrue(checkbox.isHittable)
+        let step = app.staticTexts["stepCount"]
+        XCTAssertEqual(step.value as? String, "Step 0")
+        XCTAssertTrue(app.buttons["Run"].exists)
+
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        func cyanPixelCount() throws -> Int {
+            let screenshot = canvas.screenshot()
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(data: screenshot.pngRepresentation))
+            var count = 0
+            for y in 0..<bitmap.pixelsHigh {
+                for x in 0..<bitmap.pixelsWide {
+                    guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+                        continue
+                    }
+                    if color.redComponent > 0.62,
+                       color.greenComponent > 0.86,
+                       color.blueComponent > 0.92,
+                       color.greenComponent > color.redComponent + 0.12,
+                       color.blueComponent > color.greenComponent - 0.04 {
+                        count += 1
+                    }
+                }
+            }
+            return count
+        }
+
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertFalse(panel.exists)
+        let initiallyVisiblePixels = try cyanPixelCount()
+
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        checkbox.click()
+        XCTAssertEqual(checkbox.value as? String, "Not selected")
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertFalse(panel.exists)
+        let hiddenPixels = try cyanPixelCount()
+        XCTAssertLessThan(hiddenPixels, initiallyVisiblePixels,
+                          "Hiding tracers must change the paused production image")
+
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertEqual(step.value as? String, "Step 0",
+                       "Changing tracer visibility must not advance the paused lesson")
+        checkbox.click()
+        XCTAssertEqual(checkbox.value as? String, "Selected")
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        let reshownPixels = try cyanPixelCount()
+        XCTAssertGreaterThan(reshownPixels, hiddenPixels,
+                             "Re-showing tracers must reveal the current marker positions")
+
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertEqual(step.value as? String, "Step 0")
+        let plane = app.radioGroups["inspection3d.plane"]
+        plane.radioButtons["YZ"].click()
+        let depth = app.sliders["inspection3d.depth"]
+        for _ in 0..<4 where !depth.isHittable { scrollView.swipeUp() }
+        depth.coordinate(withNormalizedOffset: CGVector(dx: 0.37, dy: 0.5)).click()
+        let depthValue = depth.value as? String
+        let orbit = app.sliders["inspection3d.orbit"]
+        for _ in 0..<4 where !orbit.isHittable { scrollView.swipeUp() }
+        orbit.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)).click()
+        let orbitValue = orbit.value as? String
+        let zoom = app.sliders["inspection3d.zoom"]
+        for _ in 0..<4 where !zoom.isHittable { scrollView.swipeUp() }
+        zoom.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)).click()
+        let zoomValue = zoom.value as? String
+        XCTAssertNotEqual(depthValue, "50%")
+        XCTAssertNotEqual(orbitValue, "+25°")
+        XCTAssertNotEqual(zoomValue, "100%")
+
+        if checkbox.value as? String == "Selected" { checkbox.click() }
+        XCTAssertEqual(checkbox.value as? String, "Not selected")
+        app.buttons["Run"].click()
+        let advanced = expectation(for: NSPredicate(format: "value != %@", "Step 0"), evaluatedWith: step)
+        wait(for: [advanced], timeout: 15)
+        app.buttons["transport.pause"].click()
+        XCTAssertTrue(app.buttons["Resume simulation"].waitForExistence(timeout: 5))
+        let pausedAt = step.value as? String
+        XCTAssertNotEqual(pausedAt, "Step 0",
+                          "Hidden tracers must continue to accompany accepted solver steps")
+
+        if !checkbox.isHittable { scrollView.swipeUp() }
+        checkbox.click()
+        XCTAssertEqual(checkbox.value as? String, "Selected")
+        let pausedVisiblePixels = try cyanPixelCount()
+        XCTAssertGreaterThan(pausedVisiblePixels, hiddenPixels)
+        XCTAssertEqual(step.value as? String, pausedAt,
+                       "Showing hidden tracers while paused must not advance the solver")
+        checkbox.click()
+        XCTAssertEqual(checkbox.value as? String, "Not selected")
+        app.buttons["transport.restart"].click()
+        XCTAssertEqual(step.value as? String, "Step 0")
+        XCTAssertTrue(app.buttons["Run"].exists)
+        XCTAssertEqual(plane.value as? String, "YZ")
+        XCTAssertEqual(depth.value as? String, depthValue)
+        XCTAssertEqual(orbit.value as? String, orbitValue)
+        XCTAssertEqual(zoom.value as? String, zoomValue)
+        XCTAssertEqual(checkbox.value as? String, "Not selected",
+                       "Restart must preserve hidden tracer visibility")
+        XCTAssertEqual(
+            app.buttons["transport.restart"].label,
+            "Restart experiment"
+        )
+        XCTAssertTrue(app.buttons["transport.restart"].exists)
+
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        let hiddenAfterRestart = try cyanPixelCount()
+        XCTAssertEqual(hiddenAfterRestart, hiddenPixels,
+                       "Restart must reset hidden tracers without making them visible")
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        checkbox.click()
+        XCTAssertEqual(checkbox.value as? String, "Selected")
+        XCTAssertEqual(step.value as? String, "Step 0")
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertGreaterThan(try cyanPixelCount(), hiddenAfterRestart,
+                             "Re-showing after Restart must render the reset marker seeds")
+    }
+
     func testThreeDInitializationFailureRestoresTwoD() throws {
         app.terminate()
         app = XCUIApplication()
@@ -746,6 +913,11 @@ final class HUDUITests: XCTestCase {
 
         let alert = app.dialogs.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertEqual(alert.staticTexts.firstMatch.value as? String, "Couldn’t open 3D Dye Advection")
+        XCTAssertEqual(
+            alert.staticTexts.element(boundBy: 1).value as? String,
+            "The 3D simulation could not be prepared. Your 2D simulation is still available. Continue in 2D, or choose 3D Dye Advection again to retry."
+        )
         XCTAssertEqual(selector.value as? String, "Free Play")
         XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
         XCTAssertTrue(app.windows["FluidDynamicsMetalOSX"].exists)
@@ -761,6 +933,78 @@ final class HUDUITests: XCTestCase {
         selector.menuItems["3D Dye Advection"].click()
         XCTAssertEqual(selector.value as? String, "3D Dye Advection")
         XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+    }
+
+    func testThreeDTracerAndDepthPreparationFailuresRestoreTwoDAndRetry() throws {
+        for stage in ["tracer-allocation", "depth"] {
+            app.terminate()
+            app = XCUIApplication()
+            app.launchArguments = ["--fluid3d-test-failure=\(stage)"]
+            app.launch()
+
+            let selector = app.popUpButtons["experimentSelector"]
+            XCTAssertTrue(selector.waitForExistence(timeout: 10))
+            selector.click()
+            selector.menuItems["3D Dye Advection"].click()
+
+            let alert = app.dialogs.firstMatch
+            XCTAssertTrue(alert.waitForExistence(timeout: 10), "Missing \(stage) alert: \(app.debugDescription)")
+            XCTAssertEqual(alert.staticTexts.firstMatch.value as? String, "Couldn’t open 3D Dye Advection")
+            XCTAssertEqual(
+                alert.staticTexts.element(boundBy: 1).value as? String,
+                "The 3D simulation could not be prepared. Your 2D simulation is still available. Continue in 2D, or choose 3D Dye Advection again to retry."
+            )
+            XCTAssertEqual(selector.value as? String, "Free Play",
+                           "The prior 2D session must be restored before the \(stage) alert")
+            XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
+            XCTAssertTrue(app.windows["FluidDynamicsMetalOSX"].exists)
+            alert.buttons["Continue in 2D"].click()
+
+            selector.click()
+            selector.menuItems["3D Dye Advection"].click()
+            XCTAssertEqual(selector.value as? String, "3D Dye Advection",
+                           "The 3D lesson must be retryable after \(stage) failure")
+        }
+    }
+
+    func testThreeDActiveDepthFailureRestoresFreePlayBeforeAlertAndRetries() throws {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["--fluid3d-test-failure=active-depth"]
+        app.launch()
+
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+        XCTAssertEqual(selector.value as? String, "3D Dye Advection")
+
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        let oldFrame = canvas.frame
+        let corner = canvas.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
+            .withOffset(CGVector(dx: -2, dy: -2))
+        corner.click(forDuration: 0.2, thenDragTo: corner.withOffset(CGVector(dx: -100, dy: -60)))
+        XCTAssertNotEqual(canvas.frame.size, oldFrame.size,
+                          "The active depth fault requires a real presentation-size change")
+
+        let alert = app.dialogs.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "Missing active depth alert: \(app.debugDescription)")
+        XCTAssertEqual(alert.staticTexts.firstMatch.value as? String, "Couldn’t continue 3D Dye Advection")
+        XCTAssertEqual(
+            alert.staticTexts.element(boundBy: 1).value as? String,
+            "The 3D view could not be updated. Free Play has been restored. Continue in 2D, or choose 3D Dye Advection again to retry."
+        )
+        XCTAssertEqual(selector.value as? String, "Free Play",
+                       "Usable Free Play must be committed before the active failure alert")
+        XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
+
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+        XCTAssertEqual(selector.value as? String, "3D Dye Advection",
+                       "The 3D lesson must be retryable after active depth failure")
+        XCTAssertTrue(app.buttons["Run"].exists)
     }
 
     func testLessonCompletion() {

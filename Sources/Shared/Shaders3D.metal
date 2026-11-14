@@ -33,6 +33,13 @@ struct Fluid3DInspectionUniforms {
     float4 viewport;
 };
 
+// Separate aligned presentation ABI; must match FieldVisualization3D.SpatialTracerUniforms:
+// worldToClip@0, viewport@64, stride 80/alignment 16.
+struct Fluid3DTracerUniforms {
+    float4x4 worldToClip;
+    float4 viewport;
+};
+
 struct Fluid3DSpatialSliceOutput {
     float4 position [[position]];
     float3 worldPosition [[user(locn0)]];
@@ -40,6 +47,11 @@ struct Fluid3DSpatialSliceOutput {
 
 struct Fluid3DSpatialGuideOutput {
     float4 position [[position]];
+};
+
+struct Fluid3DSpatialTracerOutput {
+    float4 position [[position]];
+    float2 discCoordinate [[user(locn0)]];
 };
 
 vertex Fluid3DSliceVertexOutput fluid3DVertex(
@@ -158,6 +170,36 @@ fragment float4 fluid3DSpatialSlice(
         encodedRGB = mix(palette.amber.rgb, palette.cream.rgb, amount);
     }
     return float4(encodedRGB, 1.0f);
+}
+
+vertex Fluid3DSpatialTracerOutput fluid3DSpatialTracerVertex(
+    const device float4 *positions [[buffer(0)]],
+    constant Fluid3DTracerUniforms &uniforms [[buffer(1)]],
+    uint vertexID [[vertex_id]],
+    uint instanceID [[instance_id]]) {
+    const float2 corners[4] = {
+        float2(-1.0f, -1.0f),
+        float2(1.0f, -1.0f),
+        float2(-1.0f, 1.0f),
+        float2(1.0f, 1.0f),
+    };
+    float2 corner = corners[vertexID & 3u];
+    float4 center = uniforms.worldToClip * float4(positions[instanceID].xyz, 1.0f);
+    float2 ndcPerPixel = float2(2.0f / uniforms.viewport.x, -2.0f / uniforms.viewport.y);
+    float2 halfDiameterPixels = float2(1.5f * uniforms.viewport.z);
+    center.xy += corner * halfDiameterPixels * ndcPerPixel * center.w;
+
+    Fluid3DSpatialTracerOutput output;
+    output.position = center;
+    output.discCoordinate = corner;
+    return output;
+}
+
+fragment float4 fluid3DSpatialTracerFragment(Fluid3DSpatialTracerOutput input [[stage_in]]) {
+    if (dot(input.discCoordinate, input.discCoordinate) > 1.0f) {
+        discard_fragment();
+    }
+    return float4(184.0f / 255.0f, 242.0f / 255.0f, 1.0f, 1.0f);
 }
 
 inline float3 fluid3DUnitCubeVertex(uint index) {

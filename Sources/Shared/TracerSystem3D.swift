@@ -61,6 +61,10 @@ final class TracerSystem3D {
     private let bufferFactory: BufferFactory
     private let computeEncoderFactory: ComputeEncoderFactory
 
+    /// Read-only presentation access to the positions owned and advanced by
+    /// this session. Callers must not write or retain a snapshot across steps.
+    var positionBuffer: MTLBuffer { positions }
+
     var diagnosticResourceInventory: DiagnosticResourceInventory {
         DiagnosticResourceInventory(
             markerCount: Self.count,

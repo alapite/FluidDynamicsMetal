@@ -47,8 +47,9 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private let threeDSlice = NSTextField(wrappingLabelWithString: "XY slice · Z depth: 50%")
     private let threeDConcentration = NSTextField(labelWithString: "Dye concentration")
     private let threeDLegend = NSTextField(wrappingLabelWithString: "Less dye → More dye")
-    private let threeDNote = NSTextField(wrappingLabelWithString: "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; dye can move out of the plane. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
+    private let threeDNote = NSTextField(wrappingLabelWithString: "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; dye can move out of the plane. Pale-cyan dots are passive tracers. Tracers behind the opaque slice are hidden, even where the slice is black. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
     private let inspectionSliceStack = NSStackView()
+    private let inspectionTracerStack = NSStackView()
     private let inspectionCameraStack = NSStackView()
     private let inspectionPlaneControl = NSSegmentedControl(
         labels: ["XY", "XZ", "YZ"], trackingMode: .selectOne, target: nil, action: nil
@@ -56,6 +57,12 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private let inspectionDepthSlider = InspectionSlider3D(frame: .zero)
     private let inspectionDepthValue = NSTextField(labelWithString: "Z depth: 50%")
     private let inspectionCentreSliceButton = NSButton(title: "Centre Slice", target: nil, action: nil)
+    private let inspectionShowTracersButton = NSButton(
+        checkboxWithTitle: "Show Tracers", target: nil, action: nil
+    )
+    private let inspectionTracerHelp = NSTextField(
+        wrappingLabelWithString: "Pale-cyan dots follow the flow, even while hidden."
+    )
     private let inspectionOrbitSlider = InspectionSlider3D(frame: .zero)
     private let inspectionOrbitValue = NSTextField(labelWithString: "+25°")
     private let inspectionElevationSlider = InspectionSlider3D(frame: .zero)
@@ -133,9 +140,8 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.refreshControls()
-                if let error = outcome.errorMessage, outcome.requestedMode.is3D {
-                    self.presentThreeDModeFailure(error: error, sourceMode: sourceMode,
-                                                   committedMode: outcome.committedMode)
+                if outcome.errorMessage != nil, outcome.requestedMode.is3D {
+                    self.presentThreeDModeFailure(outcome: outcome, sourceMode: sourceMode)
                 }
             }
         }
@@ -293,8 +299,9 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         let argumentPrefix = "--fluid3d-test-failure="
         if let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(argumentPrefix) }),
            let stage = argument.split(separator: "=", maxSplits: 1).last.map(String.init),
-           ["allocation", "pipeline", "reset"].contains(stage) {
+           ["allocation", "pipeline", "reset", "tracer-allocation", "depth", "active-depth"].contains(stage) {
             var pendingFailure: String? = stage
+            var depthPreparationCount = 0
             func inject(_ requestedStage: String) throws {
                 guard pendingFailure == requestedStage else { return }
                 pendingFailure = nil
@@ -308,7 +315,22 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
                 },
                 makeVisualization: { metal in
                     try inject("pipeline")
-                    return try FieldVisualization3D(metal: metal)
+                    var resources = FieldVisualization3D.SpatialResourceAllocator.production
+                    resources.makeDepthAttachment = { device, descriptor in
+                        depthPreparationCount += 1
+                        do {
+                            if depthPreparationCount == 1 { try inject("depth") }
+                            if depthPreparationCount > 1 { try inject("active-depth") }
+                        } catch {
+                            return nil
+                        }
+                        return device.makeTexture(descriptor: descriptor)
+                    }
+                    return try FieldVisualization3D(metal: metal, resources: resources)
+                },
+                makeTracers: { metal in
+                    try inject("tracer-allocation")
+                    return try TracerSystem3D(metal: metal)
                 },
                 encodeReset: { simulation, command in
                     try inject("reset")
@@ -520,6 +542,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         threeDBodyStack.addArrangedSubview(threeDIntroStack)
         threeDBodyStack.addArrangedSubview(threeDLegendStack)
         threeDBodyStack.addArrangedSubview(inspectionSliceStack)
+        threeDBodyStack.addArrangedSubview(inspectionTracerStack)
         threeDBodyStack.addArrangedSubview(inspectionCameraStack)
         threeDBodyStack.addArrangedSubview(threeDNote)
         colourLegend.setAccessibilityElement(false)
@@ -572,9 +595,12 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         bodyStack.addArrangedSubview(twoDBodyStack)
         bodyStack.addArrangedSubview(threeDBodyStack)
         for stack in [pinnedStack, bodyStack, twoDBodyStack, threeDBodyStack,
-                      threeDIntroStack, threeDLegendStack, inspectionSliceStack, inspectionCameraStack] {
+                      threeDIntroStack, threeDLegendStack, inspectionSliceStack,
+                      inspectionTracerStack, inspectionCameraStack] {
             stack.translatesAutoresizingMaskIntoConstraints = false
-            for child in stack.arrangedSubviews { child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+            for child in stack.arrangedSubviews where child !== inspectionShowTracersButton {
+                child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            }
         }
         for child in lessonGroup.arrangedSubviews { child.widthAnchor.constraint(equalTo: lessonGroup.widthAnchor).isActive = true }
         controlsScroll.drawsBackground = false; controlsScroll.hasVerticalScroller = true; controlsScroll.autohidesScrollers = true
@@ -601,6 +627,11 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         inspectionSliceStack.orientation = .vertical
         inspectionSliceStack.alignment = .leading
         inspectionSliceStack.spacing = 8
+        inspectionTracerStack.orientation = .vertical
+        inspectionTracerStack.alignment = .leading
+        inspectionTracerStack.spacing = 8
+        inspectionShowTracersButton.target = self
+        inspectionShowTracersButton.action = #selector(toggleInspectionTracers(_:))
         inspectionCameraStack.orientation = .vertical
         inspectionCameraStack.alignment = .leading
         inspectionCameraStack.spacing = 8
@@ -656,6 +687,17 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         inspectionSliceStack.addArrangedSubview(planeRow)
         inspectionSliceStack.addArrangedSubview(depthRow)
         inspectionSliceStack.addArrangedSubview(inspectionCentreSliceButton)
+
+        inspectionShowTracersButton.setAccessibilityLabel("Show Tracers")
+        inspectionShowTracersButton.setAccessibilityIdentifier("inspection3d.showTracers")
+        inspectionShowTracersButton.setAccessibilityHelp(
+            "Show or hide passive markers. Hidden markers keep moving with simulation steps."
+        )
+        inspectionTracerHelp.font = .systemFont(ofSize: 11, weight: .regular)
+        inspectionTracerHelp.setAccessibilityIdentifier("inspection3d.tracerHelp")
+        inspectionTracerHelp.setAccessibilityLabel(inspectionTracerHelp.stringValue)
+        inspectionTracerStack.addArrangedSubview(inspectionShowTracersButton)
+        inspectionTracerStack.addArrangedSubview(inspectionTracerHelp)
 
         let orbitLabel = NSTextField(labelWithString: "Horizontal Orbit")
         inspectionOrbitSlider.minValue = -180
@@ -725,7 +767,8 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
 
         inspectionPlaneControl.nextKeyView = inspectionDepthSlider
         inspectionDepthSlider.nextKeyView = inspectionCentreSliceButton
-        inspectionCentreSliceButton.nextKeyView = inspectionOrbitSlider
+        inspectionCentreSliceButton.nextKeyView = inspectionShowTracersButton
+        inspectionShowTracersButton.nextKeyView = inspectionOrbitSlider
         inspectionOrbitSlider.nextKeyView = inspectionElevationSlider
         inspectionElevationSlider.nextKeyView = inspectionZoomSlider
         inspectionZoomSlider.nextKeyView = inspectionResetCameraButton
@@ -795,6 +838,14 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         refreshInspectionControls()
     }
 
+    @objc private func toggleInspectionTracers(_ sender: NSButton) {
+        guard !modeTransitionInProgress, renderer.state.mode.is3D else { return }
+        var inspection = renderer.state.inspection3D
+        inspection.showTracers = sender.state == .on
+        renderer.setInspection3D(inspection)
+        refreshInspectionControls()
+    }
+
     @objc private func resetInspectionCamera(_ sender: Any?) {
         guard renderer.state.mode.is3D else { return }
         renderer.resetCamera3D()
@@ -820,6 +871,10 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         )
         inspectionPlaneControl.setSelected(true, forSegment: inspection.plane.rawValue)
         inspectionPlaneControl.setAccessibilityValue(planeName)
+        inspectionShowTracersButton.state = inspection.showTracers ? .on : .off
+        inspectionShowTracersButton.setAccessibilityValue(
+            inspection.showTracers ? "Selected" : "Not selected"
+        )
 
         inspectionDepthSlider.doubleValue = inspection.depth * 100
         inspectionDepthSlider.setAccessibilityLabel("\(depthAxis) depth")
@@ -975,6 +1030,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         experimentSelector.isEnabled = !modeTransitionInProgress
         restartButton.isEnabled = !modeTransitionInProgress
         restartButton.title = state.mode == .freePlay ? "Reset fluid" : "Restart experiment"
+        restartButton.setAccessibilityLabel(restartButton.title)
     }
 
     @objc private func selectField(_ sender: NSButton) {
@@ -1029,19 +1085,26 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         }
     }
 
-    private func presentThreeDModeFailure(error: String, sourceMode: SimulationMode?,
-                                          committedMode: SimulationMode) {
+    private func presentThreeDModeFailure(
+        outcome: RendererModeOutcome,
+        sourceMode: SimulationMode?
+    ) {
         guard !isPresentingModeFailure else { return }
         isPresentingModeFailure = true
-        NSLog("3D lesson preparation failed: %@", error)
+        NSLog("3D lesson failure: %@", outcome.errorMessage ?? "unknown 3D failure")
 
-        let restoredFreePlay = (sourceMode == nil || sourceMode?.is3D == true) && committedMode == .freePlay
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Couldn’t open 3D Dye Advection"
-        alert.informativeText = restoredFreePlay
-            ? "The 3D simulation could not be prepared. Free Play has been restored. Continue in 2D, or choose 3D Dye Advection again to retry."
-            : "The 3D simulation could not be prepared. Your 2D simulation is still available. Continue in 2D, or choose 3D Dye Advection again to retry."
+        if outcome.failureContext == .activeSession {
+            alert.messageText = "Couldn’t continue 3D Dye Advection"
+            alert.informativeText = "The 3D view could not be updated. Free Play has been restored. Continue in 2D, or choose 3D Dye Advection again to retry."
+        } else {
+            let restoredFreePlay = sourceMode?.is3D == true && outcome.committedMode == .freePlay
+            alert.messageText = "Couldn’t open 3D Dye Advection"
+            alert.informativeText = restoredFreePlay
+                ? "The 3D simulation could not be prepared. Free Play has been restored. Continue in 2D, or choose 3D Dye Advection again to retry."
+                : "The 3D simulation could not be prepared. Your 2D simulation is still available. Continue in 2D, or choose 3D Dye Advection again to retry."
+        }
         alert.addButton(withTitle: "Continue in 2D")
         alert.buttons.first?.keyEquivalent = "\r"
         alert.buttons.first?.keyEquivalentModifierMask = []

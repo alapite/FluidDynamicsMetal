@@ -43,10 +43,16 @@ struct Renderer3DSessionFactory {
     }
 }
 
+enum RendererModeFailureContext: Equatable {
+    case preparation
+    case activeSession
+}
+
 struct RendererModeOutcome: Equatable {
     let requestedMode: SimulationMode
     let committedMode: SimulationMode
     let errorMessage: String?
+    let failureContext: RendererModeFailureContext?
     var succeeded: Bool { errorMessage == nil }
 }
 
@@ -365,7 +371,11 @@ final class Renderer: NSObject, MTKViewDelegate {
                 failureMessage = Self.message(for: error)
             }
         }
-        publishModeOutcome(requested: mode, error: failureMessage)
+        publishModeOutcome(
+            requested: mode,
+            error: failureMessage,
+            failureContext: failureMessage == nil ? nil : .preparation
+        )
         updateScheduling()
         redrawIfPaused()
         stateDidChange?()
@@ -396,8 +406,17 @@ final class Renderer: NSObject, MTKViewDelegate {
         completed3DStepCount = 0
     }
 
-    private func publishModeOutcome(requested: SimulationMode, error: String?) {
-        let outcome = RendererModeOutcome(requestedMode: requested, committedMode: state.mode, errorMessage: error)
+    private func publishModeOutcome(
+        requested: SimulationMode,
+        error: String?,
+        failureContext: RendererModeFailureContext? = nil
+    ) {
+        let outcome = RendererModeOutcome(
+            requestedMode: requested,
+            committedMode: state.mode,
+            errorMessage: error,
+            failureContext: failureContext
+        )
         lastModeOutcome = outcome
         modeOutcomeDidChange?(outcome)
     }
@@ -444,7 +463,7 @@ final class Renderer: NSObject, MTKViewDelegate {
     }
     private func render(command: MTLCommandBuffer, drawable: CAMetalDrawable, view: MTKView) throws {
         if state.mode.is3D {
-            guard let simulation3D, let visualization3D else {
+            guard let simulation3D, let visualization3D, let tracers3D else {
                 throw RendererModeFailure(stage: "3D presentation", reason: "active 3D resources are unavailable")
             }
             guard let spatialViewport = spatialViewport(in: view, drawable: drawable) else { return }
@@ -452,6 +471,7 @@ final class Renderer: NSObject, MTKViewDelegate {
                 try visualization3D.encodeInspection(
                     command: command,
                     simulation: simulation3D,
+                    tracers: tracers3D,
                     destination: drawable.texture,
                     viewport: spatialViewport.viewport,
                     inspection: state.inspection3D,
@@ -647,7 +667,11 @@ final class Renderer: NSObject, MTKViewDelegate {
         withAllBuffersDrained {
             restoreUsableTwoDState()
         }
-        publishModeOutcome(requested: requested, error: message)
+        publishModeOutcome(
+            requested: requested,
+            error: message,
+            failureContext: .activeSession
+        )
         updateScheduling()
         redrawIfPaused()
         stateDidChange?()

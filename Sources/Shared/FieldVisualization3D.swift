@@ -69,6 +69,11 @@ final class FieldVisualization3D {
         var viewport: SIMD4<Float>
     }
 
+    private struct SpatialTracerUniforms: BitwiseCopyable {
+        var worldToClip: simd_float4x4
+        var viewport: SIMD4<Float>
+    }
+
     struct SpatialResourceAllocator {
         var makePipeline: (MTLDevice, MTLRenderPipelineDescriptor) throws -> MTLRenderPipelineState
         var makeDepthAttachment: (MTLDevice, MTLTextureDescriptor) -> MTLTexture?
@@ -103,6 +108,7 @@ final class FieldVisualization3D {
     private let indices: MTLBuffer
     private let pipeline: MTLRenderPipelineState
     private let spatialPipeline: MTLRenderPipelineState
+    private let spatialTracerPipeline: MTLRenderPipelineState
     private let spatialGuidePipeline: MTLRenderPipelineState
     private let spatialDepthState: MTLDepthStencilState
     private let spatialGuideDepthState: MTLDepthStencilState
@@ -130,6 +136,14 @@ final class FieldVisualization3D {
             vertexFunctionName: "fluid3DSpatialVertex",
             fragmentFunctionName: "fluid3DSpatialSlice",
             label: "3D spatial inspection sheet",
+            allocator: resources.makePipeline
+        )
+        spatialTracerPipeline = try Self.makeSpatialPipeline(
+            device: metal.device,
+            library: metal.defaultLibrary,
+            vertexFunctionName: "fluid3DSpatialTracerVertex",
+            fragmentFunctionName: "fluid3DSpatialTracerFragment",
+            label: "3D spatial passive tracers",
             allocator: resources.makePipeline
         )
         spatialGuidePipeline = try Self.makeSpatialPipeline(
@@ -250,6 +264,7 @@ final class FieldVisualization3D {
     func encodeInspection(
         command: MTLCommandBuffer,
         simulation: FluidSimulation3D,
+        tracers: TracerSystem3D? = nil,
         destination: MTLTexture,
         viewport: MTLViewport,
         inspection: InspectionState3D,
@@ -349,6 +364,34 @@ final class FieldVisualization3D {
         encoder.setFragmentBytes(&palette, length: MemoryLayout<PaletteUniforms>.stride, index: 0)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
 
+        if inspection.showTracers, let tracers {
+            encoder.setRenderPipelineState(spatialTracerPipeline)
+            encoder.setDepthStencilState(spatialDepthState)
+            var tracerUniforms = SpatialTracerUniforms(
+                worldToClip: frame.worldToClip,
+                viewport: SIMD4<Float>(
+                    Float(viewport.width),
+                    Float(viewport.height),
+                    pointScale,
+                    0
+                )
+            )
+            encoder.setVertexBuffer(tracers.positionBuffer, offset: 0, index: 0)
+            encoder.setVertexBytes(
+                &tracerUniforms,
+                length: MemoryLayout<SpatialTracerUniforms>.stride,
+                index: 1
+            )
+            encoder.drawPrimitives(
+                type: .triangleStrip,
+                vertexStart: 0,
+                vertexCount: 4,
+                instanceCount: TracerSystem3D.count
+            )
+        }
+
+        // Orientation guides intentionally overlay the sheet and markers;
+        // their depth state never writes to the sheet/tracer attachment.
         encoder.setRenderPipelineState(spatialGuidePipeline)
         encoder.setDepthStencilState(spatialGuideDepthState)
         var guideUniforms = uniforms
@@ -437,6 +480,11 @@ final class FieldVisualization3D {
         precondition(MemoryLayout<SpatialInspectionUniforms>.size == 96)
         precondition(MemoryLayout<SpatialInspectionUniforms>.stride == 96)
         precondition(MemoryLayout<SpatialInspectionUniforms>.alignment == 16)
+        precondition(MemoryLayout<SpatialTracerUniforms>.offset(of: \.worldToClip) == 0)
+        precondition(MemoryLayout<SpatialTracerUniforms>.offset(of: \.viewport) == 64)
+        precondition(MemoryLayout<SpatialTracerUniforms>.size == 80)
+        precondition(MemoryLayout<SpatialTracerUniforms>.stride == 80)
+        precondition(MemoryLayout<SpatialTracerUniforms>.alignment == 16)
     }
 
     /// Encoded-channel color for the fixed transfer function, also suitable

@@ -136,7 +136,7 @@ private struct Fluid3DChecks {
                 || fixture == "operators" || fixture == "projection" || fixture == "reset-finite"
                 || fixture == "inspection-routing"
                 || fixture == "transitions-and-failures" || fixture == "renderer-steps-and-inactivity"
-                || fixture == "tracer-evolution" else {
+                || fixture == "tracer-evolution" || fixture == "tracer-occlusion" else {
             throw Fluid3DHarnessError.usage("unknown fixture selector: \(fixture)")
         }
         let result: [String: Any]
@@ -150,6 +150,12 @@ private struct Fluid3DChecks {
             result = try rendererTransitionsAndFailures(device: device, metal: metal)
         } else if fixture == "tracer-evolution" {
             result = try tracerEvolution(
+                metal: metal,
+                referenceDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true)
+            )
+        } else if fixture == "tracer-occlusion" {
+            result = try tracerOcclusion(
+                device: device,
                 metal: metal,
                 referenceDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true)
             )
@@ -1847,6 +1853,327 @@ private struct Fluid3DChecks {
         ]
     }
 
+    private static func tracerOcclusion(
+        device: MTLDevice,
+        metal: MetalDevice,
+        referenceDirectory: URL
+    ) throws -> [String: Any] {
+        let visualization = try FieldVisualization3D(metal: metal)
+        let simulation = try FluidSimulation3D(metal: metal)
+        let (tracers, privatePositionBuffer) = try makeTracerSystemCapturingStorage(metal: metal)
+        let evidenceDirectory = referenceDirectory.deletingLastPathComponent()
+            .appendingPathComponent("inspection3d-evidence", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: evidenceDirectory, withIntermediateDirectories: true
+        )
+
+        let oneXSize = (320, 240)
+        let twoXSize = (640, 480)
+        let oneXDestination = try makeSpatialDestination(
+            device: device, width: oneXSize.0, height: oneXSize.1
+        )
+        let twoXDestination = try makeSpatialDestination(
+            device: device, width: twoXSize.0, height: twoXSize.1
+        )
+        let blackDye = [Float](repeating: 0, count: 64 * 64 * 64)
+        let dyedDye = [Float](repeating: 0.5, count: 64 * 64 * 64)
+
+        func uploadDye(_ values: [Float], label: String) throws {
+            let command = metal.newCommandBuffer()
+            try simulation.dye.encodeUpload(values, to: simulation.dye.ping, command: command)
+            command.commit()
+            command.waitUntilCompleted()
+            try require(command.status == .completed,
+                        "Could not upload \(label) tracer-occlusion dye: \(String(describing: command.error))")
+        }
+
+        func placeMarker(_ point: SIMD3<Float>) throws {
+            let positions = [SIMD4<Float>](repeating: SIMD4<Float>(point, 1), count: TracerSystem3D.count)
+            let command = metal.newCommandBuffer()
+            _ = try encodeTracerPositionUpload(
+                positions,
+                to: privatePositionBuffer,
+                metal: metal,
+                command: command
+            )
+            command.commit()
+            command.waitUntilCompleted()
+            try require(command.status == .completed,
+                        "Could not upload tracer-occlusion probe: \(String(describing: command.error))")
+        }
+
+        func image(
+            _ point: SIMD3<Float>,
+            inspection: InspectionState3D,
+            size: (Int, Int),
+            pointScale: Float,
+            destination: MTLTexture
+        ) throws -> [UInt8] {
+            try placeMarker(point)
+            return try renderSpatialImage(
+                metal: metal,
+                visualization: visualization,
+                simulation: simulation,
+                tracers: tracers,
+                destination: destination,
+                inspection: inspection,
+                width: size.0,
+                height: size.1,
+                pointScale: pointScale
+            )
+        }
+
+        func checkVisible(
+            _ pixels: [UInt8],
+            point: SIMD3<Float>,
+            camera: CameraState3D,
+            size: (Int, Int),
+            label: String
+        ) throws -> [(Int, Int)] {
+            let projected = try projectedSpatialPixel(
+                world: [Double(point.x), Double(point.y), Double(point.z)],
+                camera: camera,
+                width: size.0,
+                height: size.1
+            )
+            let found = tracerPixels(
+                pixels,
+                width: size.0,
+                height: size.1,
+                around: projected,
+                radius: 10
+            )
+            try require(!found.isEmpty, "\(label) expected a pale-cyan marker near \(projected)")
+            return found
+        }
+
+        func checkHidden(
+            _ pixels: [UInt8],
+            point: SIMD3<Float>,
+            camera: CameraState3D,
+            size: (Int, Int),
+            label: String
+        ) throws {
+            let projected = try projectedSpatialPixel(
+                world: [Double(point.x), Double(point.y), Double(point.z)],
+                camera: camera,
+                width: size.0,
+                height: size.1
+            )
+            let found = tracerPixels(
+                pixels,
+                width: size.0,
+                height: size.1,
+                around: projected,
+                radius: 10
+            )
+            try require(found.isEmpty, "\(label) exposed \(found.count) X-ray tracer pixels")
+        }
+
+        var inspection = InspectionState3D()
+        inspection.camera.setYawDegrees(0)
+        inspection.camera.setElevationDegrees(0)
+        let behindFrontCamera = SIMD3<Float>(0.4, 0.4, 0.75)
+        let inFrontOfSlice = SIMD3<Float>(0.4, 0.4, 0.25)
+        try uploadDye(blackDye, label: "black")
+        let frontBlack = try image(
+            inFrontOfSlice, inspection: inspection, size: oneXSize,
+            pointScale: 1, destination: oneXDestination
+        )
+        let frontBlackPixels = try checkVisible(
+            frontBlack, point: inFrontOfSlice, camera: inspection.camera,
+            size: oneXSize, label: "front marker over black sheet"
+        )
+        let blackFrontCapture = "tracer-occlusion-black-front-1x.ppm"
+        try writePPM(
+            SliceImage(width: oneXSize.0, height: oneXSize.1, pixels: frontBlack),
+            to: evidenceDirectory.appendingPathComponent(blackFrontCapture)
+        )
+
+        let behindBlack = try image(
+            behindFrontCamera, inspection: inspection, size: oneXSize,
+            pointScale: 1, destination: oneXDestination
+        )
+        try checkHidden(
+            behindBlack, point: behindFrontCamera, camera: inspection.camera,
+            size: oneXSize, label: "behind marker over opaque black sheet"
+        )
+        let behindBlackPixel = try projectedSpatialPixel(
+            world: [Double(behindFrontCamera.x), Double(behindFrontCamera.y), Double(behindFrontCamera.z)],
+            camera: inspection.camera, width: oneXSize.0, height: oneXSize.1
+        )
+        try assertSpatialRGB(
+            behindBlack, width: oneXSize.0, x: behindBlackPixel.0, y: behindBlackPixel.1,
+            expected: SIMD3<Int>(0, 0, 0), label: "opaque black sheet over hidden tracer"
+        )
+        let blackBehindCapture = "tracer-occlusion-black-behind-1x.ppm"
+        try writePPM(
+            SliceImage(width: oneXSize.0, height: oneXSize.1, pixels: behindBlack),
+            to: evidenceDirectory.appendingPathComponent(blackBehindCapture)
+        )
+
+        try uploadDye(dyedDye, label: "dyed")
+        let frontDyed = try image(
+            inFrontOfSlice, inspection: inspection, size: oneXSize,
+            pointScale: 1, destination: oneXDestination
+        )
+        _ = try checkVisible(
+            frontDyed, point: inFrontOfSlice, camera: inspection.camera,
+            size: oneXSize, label: "front marker over dyed sheet"
+        )
+        let behindDyed = try image(
+            behindFrontCamera, inspection: inspection, size: oneXSize,
+            pointScale: 1, destination: oneXDestination
+        )
+        try checkHidden(
+            behindDyed, point: behindFrontCamera, camera: inspection.camera,
+            size: oneXSize, label: "behind marker over opaque dyed sheet"
+        )
+        try assertSpatialRGB(
+            behindDyed, width: oneXSize.0, x: behindBlackPixel.0, y: behindBlackPixel.1,
+            expected: expectedSpatialPaletteRGB(0.5),
+            label: "opaque dyed sheet over hidden tracer"
+        )
+        let dyedBehindCapture = "tracer-occlusion-dyed-behind-1x.ppm"
+        try writePPM(
+            SliceImage(width: oneXSize.0, height: oneXSize.1, pixels: behindDyed),
+            to: evidenceDirectory.appendingPathComponent(dyedBehindCapture)
+        )
+
+        var outsideFootprintInspection = inspection
+        outsideFootprintInspection.camera.setElevationDegrees(18)
+        let outsideFootprintPoint = SIMD3<Float>(0.4, 0.1, 0.25)
+        let intersection = independentlyProjectedSheetIntersection(
+            world: SIMD3<Double>(
+                Double(outsideFootprintPoint.x),
+                Double(outsideFootprintPoint.y),
+                Double(outsideFootprintPoint.z)
+            ),
+            camera: outsideFootprintInspection.camera,
+            depth: 0.5,
+            width: oneXSize.0,
+            height: oneXSize.1
+        )
+        try require(intersection.z.isFinite && (0...1).contains(intersection.x) && intersection.y < 0,
+                    "Outside-footprint probe must project beyond the XY sheet, got \(intersection)")
+        let outsideFootprint = try image(
+            outsideFootprintPoint, inspection: outsideFootprintInspection, size: oneXSize,
+            pointScale: 1, destination: oneXDestination
+        )
+        _ = try checkVisible(
+            outsideFootprint, point: outsideFootprintPoint, camera: outsideFootprintInspection.camera,
+            size: oneXSize, label: "front marker outside sheet footprint"
+        )
+
+        var oppositeSide = inspection
+        oppositeSide.camera.setYawDegrees(180)
+        let oppositeFront = SIMD3<Float>(0.4, 0.4, 0.75)
+        let oppositeBehind = SIMD3<Float>(0.4, 0.4, 0.25)
+        let oppositeFrontPixels = try image(
+            oppositeFront, inspection: oppositeSide, size: oneXSize,
+            pointScale: 1, destination: oneXDestination
+        )
+        _ = try checkVisible(
+            oppositeFrontPixels, point: oppositeFront, camera: oppositeSide.camera,
+            size: oneXSize, label: "front marker from opposite camera side"
+        )
+        let oppositeBehindPixels = try image(
+            oppositeBehind, inspection: oppositeSide, size: oneXSize,
+            pointScale: 1, destination: oneXDestination
+        )
+        try checkHidden(
+            oppositeBehindPixels, point: oppositeBehind, camera: oppositeSide.camera,
+            size: oneXSize, label: "behind marker from opposite camera side"
+        )
+        let oppositeCapture = "tracer-occlusion-opposite-side-1x.ppm"
+        try writePPM(
+            SliceImage(width: oneXSize.0, height: oneXSize.1, pixels: oppositeFrontPixels),
+            to: evidenceDirectory.appendingPathComponent(oppositeCapture)
+        )
+
+        var scaleInspection = inspection
+        scaleInspection.camera.setYawDegrees(0)
+        let oneXPixels = try image(
+            inFrontOfSlice, inspection: scaleInspection, size: oneXSize,
+            pointScale: 1, destination: oneXDestination
+        )
+        let oneXBounds = try tracerPixelBounds(oneXPixels, width: oneXSize.0)
+        let twoXPixels = try image(
+            inFrontOfSlice, inspection: scaleInspection, size: twoXSize,
+            pointScale: 2, destination: twoXDestination
+        )
+        let twoXBounds = try tracerPixelBounds(twoXPixels, width: twoXSize.0)
+        let oneXDiameterPixels = max(oneXBounds.width, oneXBounds.height)
+        let twoXDiameterPixels = max(twoXBounds.width, twoXBounds.height)
+        let oneXDiameterPoints = Double(oneXDiameterPixels)
+        let twoXDiameterPoints = Double(twoXDiameterPixels) / 2
+        try require((2...4).contains(oneXDiameterPixels),
+                    "1x marker diameter must rasterize near 3 px, got \(oneXDiameterPixels)")
+        try require((5...7).contains(twoXDiameterPixels),
+                    "2x marker diameter must rasterize near 6 px, got \(twoXDiameterPixels)")
+        let cornerPixels = [
+            (twoXBounds.minX, twoXBounds.minY),
+            (twoXBounds.maxX, twoXBounds.minY),
+            (twoXBounds.minX, twoXBounds.maxY),
+            (twoXBounds.maxX, twoXBounds.maxY),
+        ]
+        try require(cornerPixels.allSatisfy {
+            !isTracerPixel(twoXPixels, width: twoXSize.0, x: $0.0, y: $0.1)
+        }, "Discarded disc corners must not paint square marker backgrounds")
+        let scaleCapture = "tracer-occlusion-2x-disc.ppm"
+        try writePPM(
+            SliceImage(width: twoXSize.0, height: twoXSize.1, pixels: twoXPixels),
+            to: evidenceDirectory.appendingPathComponent(scaleCapture)
+        )
+
+        var edgeOn = inspection
+        edgeOn.camera.setYawDegrees(90)
+        let edgeOnPoint = SIMD3<Float>(0.35, 0.4, 0.25)
+        let edgeOnPixels = try image(
+            edgeOnPoint, inspection: edgeOn, size: twoXSize,
+            pointScale: 2, destination: twoXDestination
+        )
+        let edgeOnBounds = try tracerPixelBounds(edgeOnPixels, width: twoXSize.0)
+        try require(abs(edgeOnBounds.width - edgeOnBounds.height) <= 1,
+                    "Camera-facing marker discs must remain circular at edge-on sheet views")
+        let edgeOnCapture = "tracer-occlusion-edge-on-2x.ppm"
+        try writePPM(
+            SliceImage(width: twoXSize.0, height: twoXSize.1, pixels: edgeOnPixels),
+            to: evidenceDirectory.appendingPathComponent(edgeOnCapture)
+        )
+
+        try require(!frontBlackPixels.isEmpty && frontBlackPixels.count > 0,
+                    "Visible marker image readback unexpectedly contains no pixels")
+        return [
+            "passed": true,
+            "fixture": "tracer-occlusion",
+            "device": device.name,
+            "frontMarkersVisibleInBlack": true,
+            "behindMarkersHiddenInBlack": true,
+            "frontMarkersVisibleInDyed": true,
+            "behindMarkersHiddenInDyed": true,
+            "outsideFootprintVisible": true,
+            "oppositeSideOcclusionReversed": true,
+            "discCornersDiscarded": true,
+            "edgeOnMarkersRemainCircular": true,
+            "oneXThreePointDiameter": abs(oneXDiameterPoints - 3) <= 1,
+            "twoXThreePointDiameter": abs(twoXDiameterPoints - 3) <= 1,
+            "markerColorIsExact": true,
+            "blackSheetRemainsOpaque": true,
+            "dyedSheetRemainsOpaque": true,
+            "measurements": [
+                "oneXDiameterPixels": oneXDiameterPixels,
+                "twoXDiameterPixels": twoXDiameterPixels,
+                "oneXDiameterPoints": oneXDiameterPoints,
+                "twoXDiameterPoints": twoXDiameterPoints,
+            ],
+            "captures": [
+                blackFrontCapture, blackBehindCapture, dyedBehindCapture,
+                oppositeCapture, scaleCapture, edgeOnCapture,
+            ],
+        ]
+    }
+
     private static func verifySpatialInputValidation(
         device: MTLDevice,
         metal: MetalDevice,
@@ -2007,6 +2334,7 @@ private struct Fluid3DChecks {
         metal: MetalDevice,
         visualization: FieldVisualization3D,
         simulation: FluidSimulation3D,
+        tracers: TracerSystem3D? = nil,
         destination: MTLTexture,
         inspection: InspectionState3D,
         width: Int,
@@ -2018,6 +2346,7 @@ private struct Fluid3DChecks {
         try visualization.encodeInspection(
             command: command,
             simulation: simulation,
+            tracers: tracers,
             destination: destination,
             viewport: MTLViewport(
                 originX: 0, originY: 0,
@@ -2042,6 +2371,88 @@ private struct Fluid3DChecks {
             )
         }
         return pixels
+    }
+
+    private static func independentlyProjectedSheetIntersection(
+        world: SIMD3<Double>,
+        camera: CameraState3D,
+        depth: Double,
+        width: Int,
+        height: Int
+    ) -> SIMD3<Double> {
+        let halfFOV = Double.pi / 9
+        let radius = sqrt(3.0) / 2
+        let aspect = Double(width) / Double(height)
+        let alpha = atan(tan(halfFOV) * min(1, aspect))
+        let fittedDistance = 1.10 * radius / sin(alpha)
+        let distance = max(radius + 0.10, fittedDistance / (camera.zoomPercent / 100))
+        let yaw = camera.yawDegrees * .pi / 180
+        let elevation = camera.elevationDegrees * .pi / 180
+        let eye = SIMD3<Double>(0.5, 0.5, 0.5) + distance * SIMD3<Double>(
+            sin(yaw) * cos(elevation),
+            sin(elevation),
+            -cos(yaw) * cos(elevation)
+        )
+        let ray = world - eye
+        guard abs(ray.z) > 1e-12 else {
+            return SIMD3<Double>(repeating: .nan)
+        }
+        let parameter = (depth - eye.z) / ray.z
+        return eye + parameter * ray
+    }
+
+    private static func isTracerPixel(
+        _ pixels: [UInt8],
+        width: Int,
+        x: Int,
+        y: Int
+    ) -> Bool {
+        guard x >= 0, x < width, y >= 0, y * width * 4 + x * 4 + 3 < pixels.count else {
+            return false
+        }
+        let offset = (y * width + x) * 4
+        let blue = Int(pixels[offset])
+        let green = Int(pixels[offset + 1])
+        let red = Int(pixels[offset + 2])
+        return abs(red - 184) <= 1 && abs(green - 242) <= 1 && abs(blue - 255) <= 1
+    }
+
+    private static func tracerPixels(
+        _ pixels: [UInt8],
+        width: Int,
+        height: Int,
+        around centre: (Int, Int),
+        radius: Int
+    ) -> [(Int, Int)] {
+        let xRange = max(0, centre.0 - radius)...min(width - 1, centre.0 + radius)
+        let yRange = max(0, centre.1 - radius)...min(height - 1, centre.1 + radius)
+        var result: [(Int, Int)] = []
+        for y in yRange {
+            for x in xRange where isTracerPixel(pixels, width: width, x: x, y: y) {
+                result.append((x, y))
+            }
+        }
+        return result
+    }
+
+    private static func tracerPixelBounds(
+        _ pixels: [UInt8],
+        width: Int
+    ) throws -> (minX: Int, maxX: Int, minY: Int, maxY: Int, width: Int, height: Int) {
+        let height = pixels.count / (width * 4)
+        var coordinates: [(Int, Int)] = []
+        for y in 0..<height {
+            for x in 0..<width where isTracerPixel(pixels, width: width, x: x, y: y) {
+                coordinates.append((x, y))
+            }
+        }
+        guard let minX = coordinates.map(\.0).min(),
+              let maxX = coordinates.map(\.0).max(),
+              let minY = coordinates.map(\.1).min(),
+              let maxY = coordinates.map(\.1).max() else {
+            throw Fluid3DHarnessError.assertion("Production tracer image contains no pale-cyan pixels")
+        }
+        return (minX, maxX, minY, maxY, maxX - minX + 1, maxY - minY + 1)
     }
 
     private static func makeSpatialDestination(
