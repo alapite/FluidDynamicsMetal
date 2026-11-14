@@ -168,6 +168,7 @@ private func reference(_ p: SIMD3<Double>, yaw: Double, elevation: Double, zoom:
 
     private static func testStateOperationScopes() throws {
         var paused = threeDState()
+        check(paused.inspection3D == InspectionState3D(), "initial 3D entry defaults")
         paused.tuning.force = 1.7
         paused.selectField(.pressure)
         paused.setDisplayOptions(DisplayOptions(arrows: true, particles: false, trails: true))
@@ -228,6 +229,12 @@ private func reference(_ p: SIMD3<Double>, yaw: Double, elevation: Double, zoom:
         retained.finishReset()
         check(retained.inspection3D == retainedInspection, "restart reset inspection choices")
 
+        retained.selectMode(.dyeAdvection3D)
+        retained.finishReset()
+        check(retained.inspection3D == InspectionState3D(), "3D reselection did not restore inspection defaults")
+
+        let reselectedInspection = changedInspection(retained.inspection3D)
+        retained.setInspection3D(reselectedInspection)
         retained.selectMode(.freePlay)
         retained.finishReset()
         retained.selectMode(.dyeAdvection3D)
