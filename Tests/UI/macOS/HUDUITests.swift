@@ -405,7 +405,140 @@ final class HUDUITests: XCTestCase {
         XCTAssertGreaterThan(restart.frame.minY, run.frame.minY,
                              "Restart must wrap below the Run/Step row at constrained widths")
         XCTAssertTrue(app.staticTexts["lesson3d.note"].exists,
-                      "The factual note must remain available in the wrapped, scrollable body")
+                       "The factual note must remain available in the wrapped, scrollable body")
+    }
+
+    func testSpatialInspectionControlsAndKeyboard() throws {
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        let plane = app.segmentedControls["inspection3d.plane"]
+        let depth = app.sliders["inspection3d.depth"]
+        let centreSlice = app.buttons["inspection3d.centreSlice"]
+        let orbit = app.sliders["inspection3d.orbit"]
+        let elevation = app.sliders["inspection3d.elevation"]
+        let zoom = app.sliders["inspection3d.zoom"]
+        let resetCamera = app.buttons["inspection3d.resetCamera"]
+
+        XCTAssertTrue(plane.waitForExistence(timeout: 5))
+        XCTAssertTrue(depth.exists)
+        XCTAssertTrue(centreSlice.exists)
+        XCTAssertTrue(orbit.exists)
+        XCTAssertTrue(elevation.exists)
+        XCTAssertTrue(zoom.exists)
+        XCTAssertTrue(resetCamera.exists)
+        XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "XY slice · Z depth: 50%")
+        XCTAssertEqual(depth.value as? String, "50%")
+        XCTAssertEqual(orbit.value as? String, "+25°")
+        XCTAssertEqual(elevation.value as? String, "+18°")
+        XCTAssertEqual(zoom.value as? String, "100%")
+
+        // Selection retains the popup focus. Tab through the pinned controls and
+        // Plane to adjust depth using only keyboard input.
+        for _ in 0..<5 { app.typeKey(XCUIKeyboardKey.tab, modifierFlags: []) }
+        app.typeKey(XCUIKeyboardKey.leftArrow, modifierFlags: [])
+        XCTAssertEqual(depth.value as? String, "49%")
+        XCTAssertEqual(app.staticTexts["inspection3d.depthValue"].value as? String, "Z depth: 49%")
+
+        // The next Tab reaches Centre Slice. Space must operate that focused
+        // control without also toggling the canvas transport.
+        app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
+        app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+        XCTAssertEqual(depth.value as? String, "50%")
+        XCTAssertTrue(app.buttons["Run"].exists)
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+
+        plane.buttons["XZ"].click()
+        XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "XZ slice · Y depth: 50%")
+        XCTAssertEqual(app.staticTexts["inspection3d.depthValue"].value as? String, "Y depth: 50%")
+
+        // Camera slider arrows use their own increments, and Centre Slice changes
+        // only depth even after the camera and plane have changed.
+        orbit.click()
+        app.typeKey(XCUIKeyboardKey.rightArrow, modifierFlags: [])
+        elevation.click()
+        app.typeKey(XCUIKeyboardKey.upArrow, modifierFlags: [])
+        zoom.click()
+        app.typeKey(XCUIKeyboardKey.rightArrow, modifierFlags: [])
+        XCTAssertEqual(orbit.value as? String, "+30°")
+        XCTAssertEqual(elevation.value as? String, "+21°")
+        XCTAssertEqual(zoom.value as? String, "105%")
+
+        depth.click()
+        app.typeKey(XCUIKeyboardKey.leftArrow, modifierFlags: [])
+        centreSlice.click()
+        XCTAssertEqual(depth.value as? String, "50%")
+        XCTAssertEqual(orbit.value as? String, "+30°")
+        XCTAssertEqual(elevation.value as? String, "+21°")
+        XCTAssertEqual(zoom.value as? String, "105%")
+        XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "XZ slice · Y depth: 50%")
+
+        app.buttons["transport.step"].click()
+        XCTAssertTrue(app.staticTexts["Step 1"].waitForExistence(timeout: 5))
+        resetCamera.click()
+        XCTAssertEqual(orbit.value as? String, "+25°")
+        XCTAssertEqual(elevation.value as? String, "+18°")
+        XCTAssertEqual(zoom.value as? String, "100%")
+        XCTAssertEqual(depth.value as? String, "50%")
+        XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "XZ slice · Y depth: 50%")
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 1")
+        XCTAssertTrue(app.buttons["Run"].exists, "Reset Camera must preserve the paused transport state")
+    }
+
+    func testSpatialInspectionLayoutAndModeReturn() throws {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["--fluid3d-test-visible-width=256"]
+        app.launch()
+
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(panel.frame.width, 260)
+        XCTAssertTrue(app.buttons["transport.pause"].isHittable)
+        XCTAssertTrue(app.buttons["transport.step"].isHittable)
+        XCTAssertGreaterThan(app.buttons["transport.restart"].frame.minY,
+                             app.buttons["transport.pause"].frame.minY,
+                             "Restart must remain available below Run/Step at constrained width")
+
+        let scrollView = panel.scrollViews.firstMatch
+        XCTAssertTrue(scrollView.waitForExistence(timeout: 5))
+        scrollView.swipeUp()
+        XCTAssertTrue(app.sliders["inspection3d.depth"].exists)
+        XCTAssertTrue(app.buttons["inspection3d.resetCamera"].exists,
+                      "Camera recovery must remain reachable in the scrolling body")
+
+        let plane = app.segmentedControls["inspection3d.plane"]
+        plane.buttons["YZ"].click()
+        let depth = app.sliders["inspection3d.depth"]
+        depth.click()
+        app.typeKey(XCUIKeyboardKey.leftArrow, modifierFlags: [])
+        XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "YZ slice · X depth: 49%")
+
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertFalse(panel.exists)
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "YZ slice · X depth: 49%",
+                       "Closing and reopening the panel must preserve inspection state")
+
+        selector.click()
+        selector.menuItems["Dye carried by a flow"].click()
+        XCTAssertFalse(app.sliders["inspection3d.depth"].exists,
+                       "Hidden 3D controls must not remain in the 2D accessibility tree")
+        XCTAssertTrue(app.checkBoxes["Dye concentration"].exists)
+        command("4")
+        XCTAssertEqual(selector.value as? String, "Stretching dye by stirring",
+                       "Existing 2D experiment shortcuts must retain their meanings")
+        XCTAssertTrue(app.checkBoxes["Vorticity"].exists)
     }
 
     func testThreeDInitializationFailureRestoresTwoD() throws {
