@@ -22,6 +22,18 @@ private enum SpatialAllocationFault: Error {
     case injected
 }
 
+@MainActor
+private final class InspectionScheduleView: MTKView {
+    var suppressDrawable = false
+    var usableDrawableReads = 0
+    override var currentDrawable: CAMetalDrawable? {
+        guard !suppressDrawable else { return nil }
+        let drawable = super.currentDrawable
+        if drawable != nil { usableDrawableReads += 1 }
+        return drawable
+    }
+}
+
 private final class BenchmarkCompletionStamp: @unchecked Sendable {
     let semaphore = DispatchSemaphore(value: 0)
     private let lock = NSLock()
@@ -1314,17 +1326,54 @@ private struct Fluid3DChecks {
     ) throws -> EvolutionSnapshot {
         let metal = simulation.metal
         let buffer = metal.newCommandBuffer()
+        let grid = simulation.configuration
+        let expectedFields = [
+            "u", "v", "w", "dye", "transport-u", "transport-v", "transport-w",
+            "q-high-low", "divergence", "rhs", "Aq", "true-residual", "identity",
+            "recursive-residual", "preconditioned", "search",
+        ]
+        try require(simulation.diagnosticFields.map(\.0).sorted() == expectedFields.sorted(),
+                    "Registered evolution field was missing/extra/renamed")
         var textureReads: [(String, VolumeField3D, MTLTexture, MTLBuffer)] = []
         for (name, field) in simulation.diagnosticFields {
+            let component = name.hasPrefix("transport-") ? String(name.dropFirst(10)) : name
+            let expectedShape = [grid.nx + (component == "u" ? 1 : 0),
+                                 grid.ny + (component == "v" ? 1 : 0),
+                                 grid.nz + (component == "w" ? 1 : 0)]
             for (role, texture) in [("ping", field.ping), ("pong", field.pong)] {
+                try require([texture.width, texture.height, texture.depth] == expectedShape
+                            && texture.pixelFormat == .r32Float && texture.textureType == .type3D,
+                            "Registered evolution field resized/retyped: \(name)/\(role)")
                 textureReads.append(("\(name)/\(role)", field, texture,
                                      try field.encodeReadback(from: texture, command: buffer)))
             }
         }
         var registered = registeredEvolutionBuffers(simulation)
+        try require(registered.map(\.0).sorted() == [
+            "projection/reduction-partials", "projection/standalone-latch", "simulation/failure-latch",
+        ], "Registered evolution buffer was missing/extra/renamed")
+        let maximumFaceValues = max((grid.nx + 1) * grid.ny * grid.nz,
+                                    grid.nx * (grid.ny + 1) * grid.nz,
+                                    grid.nx * grid.ny * (grid.nz + 1))
+        let maximumValues = max(maximumFaceValues,
+                                2 * (grid.nx * grid.ny + grid.nx * grid.nz + grid.ny * grid.nz))
+        // Production reduction width is capped at 256; this fixture pins the
+        // actual production layout rather than accepting whatever it receives.
+        let expectedWorkspaceBytes = ((maximumValues + 255) / 256) * 16
+        for (name, resource) in registered {
+            try require(resource.length == (name.contains("latch") ? 4 : expectedWorkspaceBytes),
+                        "Registered evolution buffer resized: \(name)")
+        }
+        try require(tracers.positionBuffer.length == 8192, "Tracer position allocation resized")
         registered.append(("tracer/positions", tracers.positionBuffer))
         for (name, status) in statuses {
+            try require(status.diagnosticBuffers.map(\.0) == ["state"]
+                        || status.diagnosticBuffers.map(\.0) == ["state", "trace"],
+                        "Status resource missing/extra/renamed")
             for (role, resource) in status.diagnosticBuffers {
+                try require(resource.length == (role == "state" ? MemoryLayout<Fluid3DPCGState>.stride
+                            : PressureProjection3D.maximumIterations * 2 * 16),
+                            "Status allocation resized: \(name)/\(role)")
                 registered.append(("\(name)/\(role)", resource))
             }
         }
@@ -1359,12 +1408,14 @@ private struct Fluid3DChecks {
                               bytes: Data(bytes: staging.contents(), count: staging.length),
                               floating: !name.contains("latch"))
         }
-        let grid = simulation.configuration
         var metadata = metadata
         metadata["grid"] = "\(grid.nx),\(grid.ny),\(grid.nz)"
         metadata["h/dt"] = "\(grid.h.bitPattern),\(grid.dt.bitPattern)"
         metadata["cap"] = "\(PressureProjection3D.maximumIterations)"
         metadata["tracer-schema"] = "512 float4 stride16 w1 in-place"
+        for (name, field) in simulation.diagnosticFields {
+            metadata["generation/\(name)"] = "\(field.ping.label ?? "")|\(field.pong.label ?? "")"
+        }
         let snapshot = EvolutionSnapshot(resources: resources, metadata: metadata)
         _ = try compareEvolution(snapshot, snapshot, exact: true)
         for generation in ["ping", "pong"] {
@@ -1375,11 +1426,22 @@ private struct Fluid3DChecks {
             _ = try exactWallZeros(u: floats("u"), v: floats("v"), w: floats("w"),
                                    nx: grid.nx, ny: grid.ny, nz: grid.nz, label: "complete/\(generation)")
         }
+        let positions = snapshot.resources.first { $0.name == "tracer/positions" }!.bytes
+        try positions.withUnsafeBytes { raw in
+            for offset in stride(from: 0, to: raw.count, by: 16) {
+                for lane in 0..<4 {
+                    let value = raw.loadUnaligned(fromByteOffset: offset + lane * 4, as: Float.self)
+                    try require(lane == 3 ? value == 1 : (0...1).contains(value),
+                                "Tracer xyz bounds/w=1 schema violated")
+                }
+            }
+        }
         return snapshot
     }
 
     private static func compareEvolution(
-        _ actual: EvolutionSnapshot, _ expected: EvolutionSnapshot, exact: Bool
+        _ actual: EvolutionSnapshot, _ expected: EvolutionSnapshot, exact: Bool,
+        preserveIdentity: Bool = true
     ) throws -> [[String: Any]] {
         let names = actual.resources.map(\.name)
         try require(Set(names).count == names.count && Set(names) == Set(expected.resources.map(\.name)),
@@ -1390,7 +1452,9 @@ private struct Fluid3DChecks {
             let e = expected.resources.first { $0.name == a.name }!
             try require(a.shape == e.shape && a.format == e.format && a.floating == e.floating
                         && a.bytes.count == e.bytes.count, "Evolution resource resized/retyped: \(a.name)")
-            if exact { try require(a.identity == e.identity, "Evolution allocation/role replaced: \(a.name)") }
+            if exact && preserveIdentity {
+                try require(a.identity == e.identity, "Evolution allocation/role replaced: \(a.name)")
+            }
             var maximum = 0.0
             if a.floating {
                 try a.bytes.withUnsafeBytes { left in
@@ -1398,14 +1462,17 @@ private struct Fluid3DChecks {
                         for index in stride(from: 0, to: left.count, by: 4) {
                             let av = left.loadUnaligned(fromByteOffset: index, as: Float.self)
                             let ev = right.loadUnaligned(fromByteOffset: index, as: Float.self)
-                            try require(av.isFinite && ev.isFinite, "Nonfinite evolution byte payload: \(a.name)")
+                            guard av.isFinite && ev.isFinite else {
+                                throw Fluid3DHarnessError.assertion("Nonfinite evolution byte payload: \(a.name)")
+                            }
                             maximum = max(maximum, abs(Double(av) - Double(ev)))
                         }
                     }
                 }
             }
             let byteMatch = a.bytes == e.bytes
-            try require(exact || !a.floating ? byteMatch : maximum <= 2e-6,
+            let requiresExactBytes = exact || !a.floating || a.name.hasPrefix("status/")
+            try require(requiresExactBytes ? byteMatch : maximum <= 2e-6,
                         "Evolution resource mismatch: \(a.name), maxError=\(maximum)")
             reports.append(["name": a.name, "shape": a.shape, "format": a.format,
                             "byteCount": a.bytes.count, "byteMatch": byteMatch, "maximumAbsoluteError": maximum])
@@ -1489,11 +1556,315 @@ private struct Fluid3DChecks {
             try require(rejected, "Optional trace/status corruption was not detected")
             negatives.append("byte/\(traced.resources[index].name)")
         }
+        let schedules = try completeInspectionSchedules(device: device, metal: metal)
         return ["passed": true, "fixture": "inspection-independence", "device": device.name,
                 "inventory": try compareEvolution(snapshot, snapshot, exact: true),
                 "traceInventory": try compareEvolution(traced, traced, exact: true),
                 "byteCount": snapshot.resources.reduce(0) { $0 + $1.bytes.count },
-                "negativeChecks": negatives]
+                "negativeChecks": negatives,
+                "pausedCases": schedules.paused,
+                "equalStepCases": schedules.equal,
+                "restartCompleteInventoryMatched": true,
+                "restartComparisons": schedules.restart,
+                "threeInFlight": schedules.inFlight,
+                "failureEvidence": [
+                    "active-depth-recovery": try activeInspectionDepthFailure(device: device, metal: metal),
+                    "inspection-routing": try rendererInspectionRouting(device: device, metal: metal),
+                    "transitions-and-failures": try rendererTransitionsAndFailures(device: device, metal: metal),
+                    "renderer-steps-and-inactivity": try rendererStepsAndInactivity(device: device, metal: metal),
+                ]]
+    }
+
+    private static func activeInspectionDepthFailure(device: MTLDevice, metal: MetalDevice) throws -> [String: Any] {
+        var failDepth = false
+        let factory = Renderer3DSessionFactory(makeVisualization: { factoryMetal in
+            var allocator = FieldVisualization3D.SpatialResourceAllocator.production
+            let make = allocator.makeDepthAttachment
+            allocator.makeDepthAttachment = { device, descriptor in
+                failDepth ? nil : make(device, descriptor)
+            }
+            return try FieldVisualization3D(metal: factoryMetal, resources: allocator)
+        })
+        let view = InspectionScheduleView(frame: CGRect(x: 0, y: 0, width: 64, height: 48), device: device)
+        view.suppressDrawable = true
+        let renderer = Renderer(metalView: view, metal: metal, threeDFactory: factory)
+        renderer.selectMode(.dyeAdvection3D)
+        try require(renderer.state.mode == .dyeAdvection3D, "Active depth fixture failed initial preparation")
+        failDepth = true
+        renderer.mtkView(view, drawableSizeWillChange: CGSize(
+            width: view.drawableSize.width * 2 + 1, height: view.drawableSize.height * 2 + 1
+        ))
+        try require(renderer.state.mode == .freePlay && renderer.state.shouldAdvance
+                    && renderer.simulation3D == nil && renderer.state.pendingSteps == 0
+                    && renderer.lastModeOutcome?.failureContext == .activeSession,
+                    "Active depth failure did not restore usable running Free Play")
+        renderer.draw(in: view)
+        try require(renderer.state.stepCount == 1, "2D unavailable after active depth failure")
+        failDepth = false
+        renderer.selectMode(.dyeAdvection3D)
+        try require(renderer.state.mode == .dyeAdvection3D && renderer.state.stepCount == 0,
+                    "Active depth failure retry failed")
+        return ["recoveredToRunningFreePlay": true, "fallbackAdvanced": true, "retrySucceeded": true]
+    }
+
+    private static func rendererSnapshot(_ renderer: Renderer, semantic: Bool = false) throws -> EvolutionSnapshot {
+        guard let simulation = renderer.simulation3D, let tracers = renderer.tracers3D else {
+            throw Fluid3DHarnessError.assertion("Complete snapshot requires a committed production renderer")
+        }
+        var metadata = renderer.diagnostic3DEvolutionMetadata
+        // Only the process-local session token is normalized across fresh sessions.
+        if semantic { metadata.removeValue(forKey: "sessionGeneration") }
+        try require(metadata["touchCount"] == "0" && metadata["tapCount"] == "0"
+                    && metadata["touchRadius"] == "nil",
+                    "Inspection introduced fluid contacts")
+        return try completeEvolutionSnapshot(simulation: simulation, tracers: tracers,
+                                             statuses: renderer.diagnostic3DStatuses, metadata: metadata)
+    }
+
+    private static func settleRenderer(_ renderer: Renderer, metal: MetalDevice) throws {
+        try command(metal) { _ in }
+        pumpRendererCallbacks()
+        try require(renderer.state.mode == .dyeAdvection3D
+                    && renderer.completed3DStepCount == renderer.encoded3DStepCount,
+                    "Renderer did not retain/validate all completed steps")
+    }
+
+    private static func completeInspectionSchedules(
+        device: MTLDevice, metal: MetalDevice
+    ) throws -> (paused: [[String: Any]], equal: [[String: Any]], restart: [[String: Any]], inFlight: [[String: Any]]) {
+        let view = InspectionScheduleView(frame: CGRect(x: 0, y: 0, width: 320, height: 240), device: device)
+        view.suppressDrawable = true
+        let renderer = Renderer(metalView: view, metal: metal)
+        renderer.selectMode(.dyeAdvection3D)
+        let initial = try rendererSnapshot(renderer, semantic: true)
+        for _ in 0..<2 { renderer.requestSingleStep(); renderer.draw(in: view) }
+        try settleRenderer(renderer, metal: metal)
+        renderer.requestSingleStep()
+        renderer.requestSingleStep()
+        let pausedBaseline = try rendererSnapshot(renderer)
+        try require(renderer.state.pendingSteps == 2, "Paused inventory needs pendingSteps > 0")
+        var pausedCases: [[String: Any]] = []
+        func pausedCase(_ label: String, _ edit: () throws -> Bool) throws {
+            let positive = try edit()
+            try require(positive, "Inert inspection operation: \(label)")
+            renderer.drawPresentationOnly(in: view)
+            let after = try rendererSnapshot(renderer)
+            pausedCases.append(["case": label, "positivePresentationChange": positive,
+                                "resources": try compareEvolution(after, pausedBaseline, exact: true)])
+        }
+        for plane in [InspectionPlane3D.xz, .yz, .xy] {
+            try pausedCase("plane-\(plane)") {
+                let before = renderer.state.inspection3D
+                var edited = before; edited.plane = plane
+                renderer.setInspection3D(edited)
+                return renderer.state.inspection3D.plane == plane
+                    && renderer.state.inspection3D != before
+                    && renderer.state.inspection3D.camera == before.camera
+                    && renderer.state.inspection3D.depth == before.depth
+            }
+            for depth in [0.0, 0.3, 0.5, 1.0] {
+                try pausedCase("depth-\(plane)-\(depth)") {
+                    let before = renderer.state.inspection3D
+                    var edited = before; edited.setDepth(depth)
+                    renderer.setInspection3D(edited)
+                    return renderer.state.inspection3D.depth == depth
+                        && renderer.state.inspection3D != before
+                        && renderer.state.inspection3D.camera == before.camera
+                }
+            }
+        }
+        for (yaw, elevation, zoom) in [(0.0, 0.0, 50.0), (180, 0, 150), (90, 0, 100), (-71, 75, 115)] {
+            try pausedCase("camera-\(yaw)-\(elevation)-\(zoom)") {
+                let oldFrame = try Camera3D.frame(state: renderer.state.inspection3D.camera,
+                                                 viewportSize: CGSize(width: 320, height: 240))
+                var edited = renderer.state.inspection3D
+                edited.camera.setYawDegrees(yaw); edited.camera.setElevationDegrees(elevation)
+                edited.camera.setZoomPercent(zoom); renderer.setInspection3D(edited)
+                let newFrame = try Camera3D.frame(state: renderer.state.inspection3D.camera,
+                                                 viewportSize: CGSize(width: 320, height: 240))
+                return oldFrame.worldToClip != newFrame.worldToClip
+            }
+        }
+        try pausedCase("gesture-orbit-and-zoom") {
+            let old = renderer.state.inspection3D
+            var edited = old
+            edited.camera.setYawDegrees(-63)
+            edited.camera.setElevationDegrees(24)
+            edited.camera.setZoomPercent(112)
+            renderer.setInspection3D(edited)
+            return renderer.state.inspection3D == edited && edited.camera != old.camera
+        }
+        try pausedCase("reset-camera") {
+            let old = renderer.state.inspection3D
+            renderer.resetCamera3D()
+            return old.camera != renderer.state.inspection3D.camera
+                && renderer.state.inspection3D.camera == CameraState3D()
+                && old.plane == renderer.state.inspection3D.plane && old.depth == renderer.state.inspection3D.depth
+        }
+        try pausedCase("centre-slice") {
+            let old = renderer.state.inspection3D
+            renderer.centreSlice3D()
+            return old.depth != renderer.state.inspection3D.depth && renderer.state.inspection3D.depth == 0.5
+                && old.plane == renderer.state.inspection3D.plane && old.camera == renderer.state.inspection3D.camera
+        }
+        for shown in [false, true] {
+            try pausedCase("visibility-\(shown)") {
+                let simulation = renderer.simulation3D!, visualization = renderer.visualization3D!
+                let target = try makeSpatialDestination(device: device, width: 320, height: 240)
+                let oldPixels = try renderSpatialImage(metal: metal, visualization: visualization,
+                    simulation: simulation, tracers: renderer.tracers3D, destination: target,
+                    inspection: renderer.state.inspection3D, width: 320, height: 240)
+                var edited = renderer.state.inspection3D; edited.showTracers = shown
+                renderer.setInspection3D(edited)
+                let newPixels = try renderSpatialImage(metal: metal, visualization: visualization,
+                    simulation: simulation, tracers: renderer.tracers3D, destination: target,
+                    inspection: renderer.state.inspection3D, width: 320, height: 240)
+                return oldPixels != newPixels && renderer.state.inspection3D.showTracers == shown
+            }
+        }
+        for (width, height, scale) in [(640, 240, 1), (240, 640, 1), (320, 240, 1), (320, 240, 2)] {
+            try pausedCase("resize-\(width)x\(height)-\(scale)x") {
+                view.frame = CGRect(x: 0, y: 0, width: width, height: height)
+                view.drawableSize = CGSize(width: width * scale, height: height * scale)
+                renderer.mtkView(view, drawableSizeWillChange: view.drawableSize)
+                let target = try makeSpatialDestination(device: device, width: width * scale, height: height * scale)
+                let pixels = try renderSpatialImage(metal: metal, visualization: renderer.visualization3D!,
+                    simulation: renderer.simulation3D!, tracers: renderer.tracers3D, destination: target,
+                    inspection: renderer.state.inspection3D, width: width * scale, height: height * scale,
+                    pointScale: Float(scale))
+                return pixels.count == width * height * scale * scale * 4
+                    && pixels.contains { $0 != 0 }
+            }
+        }
+        try pausedCase("zero-viewport-defers-presentation") {
+            view.frame = .zero; view.drawableSize = .zero
+            renderer.mtkView(view, drawableSizeWillChange: .zero)
+            return view.drawableSize == .zero && renderer.state.mode == .dyeAdvection3D
+        }
+        // Direct canvas/control input entry points remain non-injecting in 3D.
+        renderer.updateMouseInteraction(position: SIMD2(12, 9), in: view)
+        renderer.updateTouchInteraction(contacts: [FluidContact(position: SIMD2(1, 2), impulse: SIMD2(3, 4))], in: view)
+        renderer.enqueueTap(at: SIMD2(7, 8), in: view)
+        _ = try compareEvolution(try rendererSnapshot(renderer), pausedBaseline, exact: true)
+        for _ in 0..<2 { renderer.draw(in: view) }
+        try settleRenderer(renderer, metal: metal)
+        try require(renderer.state.stepCount == 4 && renderer.state.pendingSteps == 0,
+                    "Accepted paused work was not preserved until normal drain")
+
+        // Independently scheduled production solver+tracers: no Renderer and no
+        // visualization in the reference path. Plan 05's oracle owns RK2 correctness.
+        let reference = try FluidSimulation3D(metal: metal)
+        let referenceTracers = try TracerSystem3D(metal: metal)
+        var resetStatus: PressureProjection3D.StatusSlot!
+        try command(metal) {
+            resetStatus = try reference.encodeReset(command: $0)
+            try referenceTracers.encodeReset(command: $0)
+        }
+        var references: [Int: EvolutionSnapshot] = [:]
+        func referenceSnapshot(step: Int, latest: PressureProjection3D.StatusSlot) throws -> EvolutionSnapshot {
+            var metadata = initial.metadata
+            for key in ["steps", "encoded", "completed"] { metadata[key] = "\(step)" }
+            metadata["statusRoles"] = step == 0 ? "status/reset" : "status/reset,status/latest"
+            // completeEvolutionSnapshot supplies roles from independently swapped fields.
+            return try completeEvolutionSnapshot(simulation: reference, tracers: referenceTracers,
+                statuses: step == 0 ? [("status/reset", resetStatus)]
+                    : [("status/reset", resetStatus), ("status/latest", latest)], metadata: metadata)
+        }
+        references[0] = try referenceSnapshot(step: 0, latest: resetStatus)
+        for step in 1...48 {
+            var latest: PressureProjection3D.StatusSlot!
+            try command(metal) {
+                latest = try reference.encodeStep(command: $0)
+                try referenceTracers.encodeAdvance(command: $0, simulation: reference, status: latest)
+            }
+            try requireAcceptedBenchmarkDiagnostics(latest.diagnostics(), label: "independent schedule \(step)")
+            if [1, 24, 48].contains(step) { references[step] = try referenceSnapshot(step: step, latest: latest) }
+        }
+        var equalCases: [[String: Any]] = []
+        var inFlightCases: [[String: Any]] = []
+        for schedule in ["shown", "hidden", "alternating", "nil-drawable"] {
+            let caseView = InspectionScheduleView(frame: CGRect(x: 0, y: 0, width: 320, height: 240), device: device)
+            caseView.suppressDrawable = schedule == "nil-drawable"
+            let actual = Renderer(metalView: caseView, metal: metal)
+            actual.selectMode(.dyeAdvection3D)
+            try require(actual.lastModeOutcome?.succeeded == true, "Schedule entry failed: \(schedule)")
+            var reports: [[String: Any]] = []
+            reports.append(["step": 0, "resources": try compareEvolution(
+                try rendererSnapshot(actual, semantic: true), references[0]!, exact: true, preserveIdentity: false)])
+            var next = 1
+            while next <= 48 {
+                // Do not cross a required checkpoint; elsewhere permit three
+                // submissions before queue fencing/callback processing.
+                let end = min(48, next == 1 ? 1 : next <= 24 ? min(24, next + 2) : min(48, next + 2))
+                for step in next...end {
+                    var edit = actual.state.inspection3D
+                    edit.plane = InspectionPlane3D.allCases[step % 3]
+                    edit.setDepth([0.0, 0.3, 0.5, 1.0][step % 4])
+                    edit.camera.setYawDegrees([0.0, 90, 180, -71][step % 4])
+                    edit.camera.setElevationDegrees(step % 2 == 0 ? 18 : -40)
+                    edit.camera.setZoomPercent([50.0, 100, 150][step % 3])
+                    edit.showTracers = schedule == "shown" || (schedule == "alternating" && step % 2 == 0)
+                    actual.setInspection3D(edit)
+                    let wide = step % 2 == 0
+                    caseView.frame = CGRect(x: 0, y: 0, width: wide ? 384 : 144, height: wide ? 144 : 384)
+                    let scale = step % 3 == 0 ? 2 : 1
+                    caseView.drawableSize = CGSize(width: Int(caseView.bounds.width) * scale,
+                                                    height: Int(caseView.bounds.height) * scale)
+                    if schedule == "nil-drawable" && step % 4 == 0 {
+                        caseView.frame = .zero; caseView.drawableSize = .zero
+                    }
+                    actual.mtkView(caseView, drawableSizeWillChange: caseView.drawableSize)
+                    for _ in 0..<(step % 3) { actual.drawPresentationOnly(in: caseView) }
+                    actual.requestSingleStep(); actual.draw(in: caseView)
+                }
+                if next == 2 {
+                    let slots = actual.diagnostic3DStatuses
+                    try require(slots.filter { $0.0.hasPrefix("status/submitted-") }.count == 3,
+                                "Three in-flight slots not accounted for before callback drain")
+                    let queued = try rendererSnapshot(actual)
+                    inFlightCases.append(["schedule": schedule, "roles": slots.map(\.0),
+                                          "inventory": try compareEvolution(queued, queued, exact: true)])
+                }
+                try settleRenderer(actual, metal: metal)
+                if let expected = references[end] {
+                    reports.append(["step": end, "resources": try compareEvolution(
+                        try rendererSnapshot(actual, semantic: true), expected, exact: false)])
+                }
+                next = end + 1
+            }
+            if schedule != "nil-drawable" {
+                try require(caseView.usableDrawableReads > 0, "Shown/hidden schedule never obtained an actual drawable")
+            } else {
+                try require(caseView.usableDrawableReads == 0, "Nil-drawable schedule acquired a drawable")
+            }
+            // Re-show does no catch-up, and does not replace status ownership.
+            let beforeReshow = try rendererSnapshot(actual)
+            var shown = actual.state.inspection3D; shown.showTracers = true
+            actual.setInspection3D(shown); actual.drawPresentationOnly(in: caseView)
+            _ = try compareEvolution(try rendererSnapshot(actual), beforeReshow, exact: true)
+            equalCases.append(["schedule": schedule, "checkpoints": reports,
+                               "usableDrawableReads": caseView.usableDrawableReads,
+                               "redrawCounts": [0, 1, 2], "backingScales": [1, 2],
+                               "viewports": ["wide", "tall", "zero in nil-drawable schedule"],
+                               "reshowNoCatchUp": true])
+        }
+        var choices = renderer.state.inspection3D
+        choices.plane = .yz; choices.setDepth(0.27); choices.showTracers = false
+        choices.camera.setYawDegrees(-71); choices.camera.setElevationDegrees(-35); choices.camera.setZoomPercent(135)
+        renderer.setInspection3D(choices)
+        renderer.requestSingleStep()
+        renderer.restartCurrentSimulation()
+        try require(renderer.state.inspection3D == choices && renderer.state.userPaused
+                    && renderer.state.stepCount == 0 && renderer.state.pendingSteps == 0,
+                    "Restart did not retain every nondefault inspection choice/reset pending work")
+        var restartReports: [[String: Any]] = []
+        restartReports.append(["step": 0, "resources": try compareEvolution(
+            try rendererSnapshot(renderer, semantic: true), references[0]!, exact: true, preserveIdentity: false)])
+        renderer.requestSingleStep(); renderer.draw(in: view)
+        try settleRenderer(renderer, metal: metal)
+        restartReports.append(["step": 1, "resources": try compareEvolution(
+            try rendererSnapshot(renderer, semantic: true), references[1]!, exact: false)])
+        return (pausedCases, equalCases, restartReports, inFlightCases)
     }
 
     private static func requireMatchingFields(

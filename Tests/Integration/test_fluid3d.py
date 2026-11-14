@@ -1296,6 +1296,16 @@ class Fluid3DTests(unittest.TestCase):
                          {"shown", "hidden", "alternating", "nil-drawable"})
         self.assertTrue(result.get("restartCompleteInventoryMatched"))
         self.assertGreaterEqual(len(result.get("pausedCases", [])), 20)
+        for case in result["equalStepCases"]:
+            self.assertEqual([item["step"] for item in case["checkpoints"]], [0, 1, 24, 48])
+            for checkpoint in case["checkpoints"]:
+                resources = checkpoint["resources"]
+                self.assertEqual(len(resources), 37 if checkpoint["step"] == 0 else 38)
+                for resource in resources:
+                    self.assertTrue(math.isfinite(resource["maximumAbsoluteError"]))
+                    self.assertLessEqual(resource["maximumAbsoluteError"], 2e-6)
+                    if resource["name"].startswith("status/"):
+                        self.assertTrue(resource["byteMatch"])
 
     def run_production_fixture(self, fixture: str) -> dict:
         evidence_dir = ROOT / ".build/fluid3d-evidence"
@@ -1548,6 +1558,13 @@ class Fluid3DTests(unittest.TestCase):
             report_path.write_text(
                 json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
             )
+            if fixture == "inspection-independence":
+                inspection_report = ROOT / ".build/inspection3d-evidence/inspection-independence.json"
+                inspection_report.parent.mkdir(parents=True, exist_ok=True)
+                inspection_report.write_text(
+                    json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n",
+                    encoding="utf-8",
+                )
             if fixture == "evolution-visibility":
                 recipe_path = evidence_dir / "recipe.json"
                 recipe_path.write_text(
