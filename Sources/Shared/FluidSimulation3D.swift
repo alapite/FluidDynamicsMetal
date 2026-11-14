@@ -62,6 +62,12 @@ final class FluidSimulation3D {
             + projection.diagnosticFields
     }
 
+    /// Read-only diagnostic inventory. Consumers must stage bytes on this
+    /// simulation's queue and inspect only after the staging command completes.
+    var diagnosticBuffers: [(String, MTLBuffer)] {
+        [("simulation/failure-latch", failureLatch)] + projection.diagnosticBuffers
+    }
+
     /// Reset is ordered on the same queue as all advances. It clears a prior
     /// session failure, initializes every generation, and projects without a step.
     @discardableResult

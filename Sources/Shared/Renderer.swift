@@ -105,6 +105,8 @@ final class Renderer: NSObject, MTKViewDelegate {
     private(set) var visualization3D: FieldVisualization3D?
     private(set) var tracers3D: TracerSystem3D?
     private(set) var latestCompleted3DStatus: PressureProjection3D.StatusSlot?
+    private(set) var reset3DStatus: PressureProjection3D.StatusSlot?
+    private var submitted3DStatuses: [(Int, PressureProjection3D.StatusSlot)] = []
     private(set) var state = SimulationState()
     private(set) var encoded3DStepCount = 0
     private(set) var completed3DStepCount = 0
@@ -122,6 +124,32 @@ final class Renderer: NSObject, MTKViewDelegate {
     private let visualization: FieldVisualization
     private let threeDFactory: Renderer3DSessionFactory
     private let completionMailbox = Renderer3DCompletionMailbox()
+
+    /// Current ownership, including every submitted slot before callback drain.
+    /// This never reads GPU memory or waits; harnesses order their own staging.
+    var diagnostic3DStatuses: [(String, PressureProjection3D.StatusSlot)] {
+        var result: [(String, PressureProjection3D.StatusSlot)] = []
+        if let reset3DStatus { result.append(("status/reset", reset3DStatus)) }
+        if let latestCompleted3DStatus, latestCompleted3DStatus !== reset3DStatus {
+            result.append(("status/latest", latestCompleted3DStatus))
+        }
+        result += submitted3DStatuses.map { ("status/submitted-\($0.0)", $0.1) }
+        return result
+    }
+
+    var diagnostic3DEvolutionMetadata: [String: String] {
+        ["mode": state.mode.title, "steps": "\(state.stepCount)",
+         "encoded": "\(encoded3DStepCount)", "completed": "\(completed3DStepCount)",
+         "pending": "\(state.pendingSteps)", "paused": "\(state.userPaused)",
+         "inactive": "\(state.inactive)", "resetting": "\(state.resetting)",
+         "complete": "\(state.complete)", "drainScheduled": "\(stepDrainScheduled)",
+         "sessionGeneration": "\(sessionGeneration)",
+         "mouseInput": String(describing: mouseInput),
+         "touchCount": "\(touchContacts.count)", "tapCount": "\(pendingTapContacts.count)",
+         "touchRadius": String(describing: touchRadius),
+         "failure": "\(lastModeOutcome?.errorMessage != nil)",
+         "statusRoles": diagnostic3DStatuses.map(\.0).joined(separator: ",")]
+    }
 
     init(
         metalView: MTKView,
@@ -178,6 +206,8 @@ final class Renderer: NSObject, MTKViewDelegate {
         visualization3D = nil
         tracers3D = nil
         latestCompleted3DStatus = nil
+        reset3DStatus = nil
+        submitted3DStatuses.removeAll()
         encoded3DStepCount = 0
         completed3DStepCount = 0
         publishModeOutcome(requested: mode, error: nil)
@@ -362,6 +392,8 @@ final class Renderer: NSObject, MTKViewDelegate {
                 visualization3D = candidateVisualization
                 tracers3D = candidateTracers
                 latestCompleted3DStatus = status
+                reset3DStatus = status
+                submitted3DStatuses.removeAll()
                 state = candidateState
                 encoded3DStepCount = 0
                 completed3DStepCount = 0
@@ -399,6 +431,8 @@ final class Renderer: NSObject, MTKViewDelegate {
         visualization3D = nil
         tracers3D = nil
         latestCompleted3DStatus = nil
+        reset3DStatus = nil
+        submitted3DStatuses.removeAll()
         recovered.finishReset()
         if wasInactive { recovered.resignActive() }
         state = recovered
@@ -611,6 +645,7 @@ final class Renderer: NSObject, MTKViewDelegate {
             return
         }
         let mailbox = completionMailbox
+        submitted3DStatuses.append((encoded3DStepCount, threeDStatus))
         command.addCompletedHandler { [weak self, semaphore] completedCommand in
             let failureMessage = Self.stepCompletionFailure(command: completedCommand, status: threeDStatus)
             mailbox.enqueue(Renderer3DStepCompletion(
@@ -646,6 +681,7 @@ final class Renderer: NSObject, MTKViewDelegate {
 
     private func processCompleted3DSteps() {
         for completion in completionMailbox.takeAll() where completion.generation == sessionGeneration {
+            submitted3DStatuses.removeAll { $0.1 === completion.status }
             if let failureMessage = completion.failureMessage {
                 failActiveThreeDSession(message: failureMessage)
                 return

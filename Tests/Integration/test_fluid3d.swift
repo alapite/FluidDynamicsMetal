@@ -1452,6 +1452,19 @@ private struct Fluid3DChecks {
         var nan = Float.nan
         withUnsafeBytes(of: &nan) { nonfinite.resources[0].bytes.replaceSubrange(0..<4, with: $0) }
         try rejects("finite-first", nonfinite)
+        var rejectedNonfiniteApproximate = false
+        do { _ = try compareEvolution(nonfinite, snapshot, exact: false) }
+        catch { rejectedNonfiniteApproximate = true }
+        try require(rejectedNonfiniteApproximate, "Approximate comparator hid nonfinite state")
+        var extra = snapshot
+        extra.resources.append(snapshot.resources[0])
+        try rejects("extra-duplicate", extra)
+        var metadataChange = snapshot
+        metadataChange.metadata["pending"] = "1"
+        try rejects("discrete-metadata", metadataChange)
+        var roleChange = snapshot
+        roleChange.resources[0].identity = ObjectIdentifier(tracers.positionBuffer)
+        try rejects("allocation-role", roleChange)
         let traceStatus = try simulation.projection.makeStatusSlot(label: "complete trace reset", capturePCGTrace: true)
         // Initialization regression: emulate recycled nonfinite allocation bytes.
         // This is not detector corruption (which only edits staging copies).
@@ -1468,6 +1481,14 @@ private struct Fluid3DChecks {
             simulation: simulation, tracers: tracers,
             statuses: [("status/reset", status), ("status/traced", traceStatus)]
         )
+        for index in traced.resources.indices where traced.resources[index].name.hasPrefix("status/traced") {
+            var changed = traced
+            changed.resources[index].bytes[0] ^= 1
+            var rejected = false
+            do { _ = try compareEvolution(changed, traced, exact: true) } catch { rejected = true }
+            try require(rejected, "Optional trace/status corruption was not detected")
+            negatives.append("byte/\(traced.resources[index].name)")
+        }
         return ["passed": true, "fixture": "inspection-independence", "device": device.name,
                 "inventory": try compareEvolution(snapshot, snapshot, exact: true),
                 "traceInventory": try compareEvolution(traced, traced, exact: true),

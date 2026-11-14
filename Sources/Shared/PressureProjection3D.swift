@@ -77,6 +77,12 @@ final class PressureProjection3D {
             return Array(UnsafeBufferPointer(start: values, count: buffer.length / MemoryLayout<Float>.stride))
         }
 
+        /// Includes the entire optional allocation, not just genuine iterations.
+        /// As with status reads, diagnostic staging must follow its submission.
+        var diagnosticBuffers: [(String, MTLBuffer)] {
+            [("state", buffer)] + (pcgTraceBuffer.map { [("trace", $0)] } ?? [])
+        }
+
         /// Call only after the owning command buffer has completed.
         func diagnostics() -> Fluid3DProjectionDiagnostics {
             let state = buffer.contents().assumingMemoryBound(to: Fluid3DPCGState.self).pointee
@@ -665,6 +671,7 @@ final class PressureProjection3D {
                 )
             }
             allocatedTrace.label = "\(label) PCG iteration trace"
+            allocatedTrace.contents().initializeMemory(as: UInt8.self, repeating: 0, count: traceByteCount)
             traceBuffer = allocatedTrace
         } else {
             traceBuffer = nil
@@ -711,6 +718,17 @@ final class PressureProjection3D {
         try validateFaceTexture(projectedU, component: .u, resource: "projected u")
         try validateFaceTexture(projectedV, component: .v, resource: "projected v")
         try validateFaceTexture(projectedW, component: .w, resource: "projected w")
+
+        // A trace captures only genuine iterations. Clear the whole allocation
+        // on each submission so early convergence/reuse cannot retain undefined
+        // tail bytes or records from an earlier solve.
+        if let trace = status.pcgTraceBuffer {
+            guard let blit = command.makeBlitCommandEncoder() else {
+                throw PressureProjection3DError.encoderUnavailable(operation: "clear optional PCG trace")
+            }
+            blit.fill(buffer: trace, range: 0..<trace.length, value: 0)
+            blit.endEncoding()
+        }
 
         var stateUniforms = makeUniforms(output: pressure.ping)
         stateUniforms.grid.w = UInt32(iterationLimit)
@@ -1061,6 +1079,11 @@ final class PressureProjection3D {
     }
 
     var diagnosticReductionWorkspace: MTLBuffer { reductionPartials }
+
+    var diagnosticBuffers: [(String, MTLBuffer)] {
+        [("projection/reduction-partials", reductionPartials),
+         ("projection/standalone-latch", standaloneLatch)]
+    }
 
     private func encode(
         _ pipeline: MTLComputePipelineState,
