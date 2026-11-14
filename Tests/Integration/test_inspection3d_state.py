@@ -9,7 +9,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class InspectionState3DChecks(unittest.TestCase):
     def test_camera_and_slice_state(self):
-        sources = [ROOT / "Sources/Shared/InspectionState3D.swift", ROOT / "Sources/Shared/Camera3D.swift"]
+        sources = [
+            ROOT / "Sources/Shared/SimulationState.swift",
+            ROOT / "Sources/Shared/InspectionState3D.swift",
+            ROOT / "Sources/Shared/Camera3D.swift",
+        ]
         for source in sources:
             self.assertTrue(source.is_file(), f"production inspection value/math missing: {source.name}")
         directory = ROOT / ".build/inspection3d-state"
