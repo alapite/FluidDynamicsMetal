@@ -104,11 +104,11 @@ Plans:
 
 - [x] 08-02-PLAN.md — Verify two-sided spatial sheets, subdued cube and depth-equipped rendering.
 
-**Wave 3** *(blocked on Wave 2 completion)*
+**Wave 3** *(complete after Wave 2 completion)*
 
-- [ ] 08-03-PLAN.md — Integrate presentation-only renderer state and retained Restart choices.
+- [x] 08-03-PLAN.md — Integrate presentation-only renderer state and retained Restart choices.
 
-**Wave 4** *(blocked on Wave 3 completion)*
+**Wave 4** *(ready after Wave 3 completion)*
 
 - [ ] 08-04-PLAN.md — Deliver native camera/slice controls, guide and exclusive paused gestures.
 
@@ -138,7 +138,7 @@ Plans:
 
 **Planning status (2026-11-13):** Existing research/UI-SPEC reused; pattern mapping and 17-task executable validation contract created. All five owned requirements and 21 context decisions pass structural/coverage checks and distinct inline plan review after one revision. See `08-PLAN-CHECK.md`. Final human review remains a blocking execution checkpoint. No Phase 8 implementation/build/test/human acceptance is claimed by planning.
 
-**Execution status (2026-11-13):** 08-01 / Wave 1 and 08-02 / Wave 2 complete, **2/9** plans closed; next **08-03 / Wave 3**. The independent foundation oracle and camera/state tests pass; Plan 08-02's production spatial fixture verifies 24 asymmetric plane/depth samples, projected cube edges, read-only simulation resources, input guards, and bounded depth/pipeline reuse. Both no-override app builds, the legacy slice/palette fixture, and evidence-schema checks pass. See `08-01-SUMMARY.md` and `08-02-SUMMARY.md`. No Phase 08 user-facing requirement is complete; renderer/UI integration, complete-state evidence, and human acceptance remain pending. No later wave executed.
+**Execution status (2026-11-14):** 08-01 / Wave 1, 08-02 / Wave 2, and 08-03 / Wave 3 complete, **3/9** plans closed; next **08-04 / Wave 4**. Plan 08-03 verifies separated state scopes, no-advance presentation redraws with accepted-step preservation, actual drawable viewport routing, Restart retention versus re-entry defaults, and depth-failure recovery/retry. The production routing fixture, exact-step/inactivity and transition/failure fixtures, both established renderer harnesses (10 tests total), and fresh Mac/iOS Simulator builds pass. See `08-01-SUMMARY.md`, `08-02-SUMMARY.md`, and `08-03-SUMMARY.md`. No Phase 08 user-facing requirement is complete; native controls, tracers, complete-state evidence, and human acceptance remain pending. No later wave executed.
 
 **UI hint**: yes
 
@@ -184,7 +184,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 7. First 3D Fluid Vertical Slice | 9/9 | Plans closed; acceptance incomplete | — (plans closed 2026-11-13) |
-| 8. Spatial Inspection | 2/9 | In Progress — next 08-03 / Wave 3 | — |
+| 8. Spatial Inspection | 3/9 | In Progress — next 08-04 / Wave 4 | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |
 

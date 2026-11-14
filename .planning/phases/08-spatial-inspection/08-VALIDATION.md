@@ -45,7 +45,7 @@ Aliases (each expands to an exact runnable command after the scheduled producer 
 - **U(name):** `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO -only-testing:FluidDynamicsMetalOSXUITests/HUDUITests/NAME`, replacing NAME with the named case.
 - **E:** `python3 Tests/Integration/test_fluid3d.py --verify-inspection-evidence .build/inspection3d-evidence`
 
-All rows are **pending execution**. “Create here” means failing behavioral tests are written and run in that task before implementation, not that an absent test is currently runnable. Supplemental G/U/E gates are mandatory, not alternatives to fast feedback.
+Rows for Waves 1–3 are complete; later rows remain **pending execution**. “Create here” means failing behavioral tests are written and run in that task before implementation, not that an absent test is currently runnable. Supplemental G/U/E gates are mandatory, not alternatives to fast feedback.
 
 | Task ID | Plan / Wave | Requirements | Threat refs / secure behavior | Fast automated feedback | Required supplemental gate | Test availability at planning |
 |---|---|---|---|---|---|---|
@@ -83,10 +83,10 @@ Task dependencies are explicit in PLAN frontmatter; each producer runs before it
 ## Wave 0 Requirements
 
 - [x] `08-UI-SPEC.md` approved and read; manual planning UI gate satisfied without override.
-- [ ] 08-01-01: independent `inspection3d_reference.swift` / `test_inspection3d_reference.py` and contract.
-- [ ] 08-01-02: production `test_inspection3d_state.swift` / `.py`, shared values/math and Xcode membership.
-- [ ] 08-02-01: spatial fixture registration/ABI assertions and all three standalone source lists, at first camera-dependent compile (not deferred until Renderer integration).
-- [ ] 08-03-01/02: state-scope and no-advance renderer routing assertions.
+- [x] 08-01-01: independent `inspection3d_reference.swift` / `test_inspection3d_reference.py` and contract.
+- [x] 08-01-02: production `test_inspection3d_state.swift` / `.py`, shared values/math and Xcode membership.
+- [x] 08-02-01: spatial fixture registration/ABI assertions and all three standalone source lists, at first camera-dependent compile (not deferred until Renderer integration).
+- [x] 08-03-01/02: state-scope and no-advance renderer routing assertions.
 - [ ] 08-04-01/02: native keyboard/focus/gesture/guide and negative side-effect UI cases.
 - [ ] 08-05-01/02: tracer reset/RK2/guard/no-feedback production fixture and independent expected positions.
 - [ ] 08-06-01/02: hidden/nil-drawable schedule, occlusion and native tracer/restart/failure cases.
