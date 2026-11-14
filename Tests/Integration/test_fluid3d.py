@@ -73,8 +73,9 @@ PRODUCTION_FIXTURES = (
     "inspection-routing",
     "tracer-evolution",
     "tracer-occlusion",
+    "inspection-independence",
 )
-SPATIAL_FIXTURES = frozenset({"spatial-slices", "tracer-evolution", "tracer-occlusion"})
+SPATIAL_FIXTURES = frozenset({"spatial-slices", "tracer-evolution", "tracer-occlusion", "inspection-independence"})
 REGRESSION_MATRIX_REQUIRED = (
     "macBuild",
     "iosBuild",
@@ -1151,7 +1152,7 @@ class Fluid3DTests(unittest.TestCase):
         evidence_directory = ROOT / ".build/fluid3d-evidence"
         self.assertEqual(
             SPATIAL_FIXTURES,
-            frozenset({"spatial-slices", "tracer-evolution", "tracer-occlusion"}),
+            frozenset({"spatial-slices", "tracer-evolution", "tracer-occlusion", "inspection-independence"}),
         )
         self.assertEqual(_fixture_reference_manifest_path("tracer-evolution"), inspection_reference)
         self.assertEqual(_fixture_reference_manifest_path("tracer-occlusion"), inspection_reference)
@@ -1288,6 +1289,9 @@ class Fluid3DTests(unittest.TestCase):
 
     def test_tracer_occlusion(self):
         self.run_production_fixture("tracer-occlusion")
+
+    def test_inspection_independence(self):
+        self.run_production_fixture("inspection-independence")
 
     def run_production_fixture(self, fixture: str) -> None:
         evidence_dir = ROOT / ".build/fluid3d-evidence"

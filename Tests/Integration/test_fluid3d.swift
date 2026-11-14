@@ -134,7 +134,8 @@ private struct Fluid3DChecks {
                 || fixture == "spatial-slices"
                 || fixture == "evolution-visibility"
                 || fixture == "operators" || fixture == "projection" || fixture == "reset-finite"
-                || fixture == "inspection-routing"
+                 || fixture == "inspection-routing"
+                 || fixture == "inspection-independence"
                 || fixture == "transitions-and-failures" || fixture == "renderer-steps-and-inactivity"
                 || fixture == "tracer-evolution" || fixture == "tracer-occlusion" else {
             throw Fluid3DHarnessError.usage("unknown fixture selector: \(fixture)")
@@ -142,6 +143,8 @@ private struct Fluid3DChecks {
         let result: [String: Any]
         if fixture == "benchmark" {
             result = try benchmark(device: device, metal: metal)
+        } else if fixture == "inspection-independence" {
+            result = try inspectionIndependence(device: device, metal: metal)
         } else if fixture == "inspection-routing" {
             result = try rendererInspectionRouting(device: device, metal: metal)
         } else if fixture == "renderer-steps-and-inactivity" {
@@ -1259,6 +1262,204 @@ private struct Fluid3DChecks {
 
     private static func pumpRendererCallbacks() {
         RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+    }
+
+    /// Payload excludes row-alignment padding: it is not texture data and Metal
+    /// does not initialize it. Every owned voxel/buffer byte is included.
+    private struct EvolutionResource {
+        var name: String
+        var shape: [Int]
+        var format: String
+        var identity: ObjectIdentifier
+        var bytes: Data
+        var floating: Bool
+    }
+
+    private struct EvolutionSnapshot {
+        var resources: [EvolutionResource]
+        var metadata: [String: String]
+    }
+
+    private static func registeredEvolutionBuffers(
+        _ simulation: FluidSimulation3D
+    ) -> [(String, MTLBuffer)] {
+        [("projection/reduction-partials", simulation.projection.diagnosticReductionWorkspace)]
+    }
+
+    /// Independent ownership audit, not the registration list under test.
+    /// Stops at Metal objects; pipelines/devices and presentation resources are
+    /// deliberately not evolution storage.
+    private static func ownedEvolutionAllocations(_ object: Any) -> Set<ObjectIdentifier> {
+        if let buffer = object as? MTLBuffer { return [ObjectIdentifier(buffer)] }
+        if let texture = object as? MTLTexture { return [ObjectIdentifier(texture)] }
+        if object is VolumeField3D || object is FluidSimulation3D
+            || object is PressureProjection3D || object is PressureProjection3D.StatusSlot
+            || object is TracerSystem3D {
+            return Mirror(reflecting: object).children.reduce(into: []) {
+                $0.formUnion(ownedEvolutionAllocations($1.value))
+            }
+        }
+        let mirror = Mirror(reflecting: object)
+        if mirror.displayStyle == .optional {
+            return mirror.children.reduce(into: []) { $0.formUnion(ownedEvolutionAllocations($1.value)) }
+        }
+        return []
+    }
+
+    private static func completeEvolutionSnapshot(
+        simulation: FluidSimulation3D,
+        tracers: TracerSystem3D,
+        statuses: [(String, PressureProjection3D.StatusSlot)],
+        metadata: [String: String] = [:]
+    ) throws -> EvolutionSnapshot {
+        let metal = simulation.metal
+        let buffer = metal.newCommandBuffer()
+        var textureReads: [(String, VolumeField3D, MTLTexture, MTLBuffer)] = []
+        for (name, field) in simulation.diagnosticFields {
+            for (role, texture) in [("ping", field.ping), ("pong", field.pong)] {
+                textureReads.append(("\(name)/\(role)", field, texture,
+                                     try field.encodeReadback(from: texture, command: buffer)))
+            }
+        }
+        var registered = registeredEvolutionBuffers(simulation)
+        registered.append(("tracer/positions", tracers.positionBuffer))
+        for (name, status) in statuses {
+            // The baseline exposes only CPU values; reflection here stages its
+            // actual buffer. GREEN replaces this with explicit read-only descriptors.
+            for child in Mirror(reflecting: status).children {
+                if let resource = child.value as? MTLBuffer {
+                    registered.append(("\(name)/\(child.label!)", resource))
+                }
+            }
+        }
+        var bufferReads: [(String, MTLBuffer, MTLBuffer)] = []
+        for (name, source) in registered {
+            guard let staging = metal.device.makeBuffer(length: source.length, options: .storageModeShared),
+                  let blit = buffer.makeBlitCommandEncoder() else {
+                throw Fluid3DHarnessError.assertion("Complete evolution staging allocation failed: \(name)")
+            }
+            blit.copy(from: source, sourceOffset: 0, to: staging, destinationOffset: 0, size: source.length)
+            blit.endEncoding()
+            bufferReads.append((name, source, staging))
+        }
+        let registeredIDs = Set(textureReads.map { ObjectIdentifier($0.2) }
+                                + registered.map { ObjectIdentifier($0.1) })
+        var ownedIDs = ownedEvolutionAllocations(simulation).union(ownedEvolutionAllocations(tracers))
+        for (_, status) in statuses { ownedIDs.formUnion(ownedEvolutionAllocations(status)) }
+        try require(registeredIDs == ownedIDs,
+                    "Fail-closed evolution inventory omitted live allocation(s): registered=\(registeredIDs.count), owned=\(ownedIDs.count)")
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        try require(buffer.status == .completed, "Queue-ordered complete evolution snapshot failed")
+        var resources = try textureReads.map { name, field, texture, staging in
+            let values = try field.decodeReadback(staging)
+            return EvolutionResource(name: name, shape: [texture.width, texture.height, texture.depth],
+                                     format: "r32Float", identity: ObjectIdentifier(texture),
+                                     bytes: values.withUnsafeBytes { Data($0) }, floating: true)
+        }
+        resources += bufferReads.map { name, source, staging in
+            EvolutionResource(name: name, shape: [source.length], format: "buffer",
+                              identity: ObjectIdentifier(source),
+                              bytes: Data(bytes: staging.contents(), count: staging.length),
+                              floating: !name.contains("latch"))
+        }
+        let grid = simulation.configuration
+        var metadata = metadata
+        metadata["grid"] = "\(grid.nx),\(grid.ny),\(grid.nz)"
+        metadata["h/dt"] = "\(grid.h.bitPattern),\(grid.dt.bitPattern)"
+        metadata["cap"] = "\(PressureProjection3D.maximumIterations)"
+        metadata["tracer-schema"] = "512 float4 stride16 w1 in-place"
+        let snapshot = EvolutionSnapshot(resources: resources, metadata: metadata)
+        _ = try compareEvolution(snapshot, snapshot, exact: true)
+        for generation in ["ping", "pong"] {
+            func floats(_ name: String) -> [Float] {
+                snapshot.resources.first { $0.name == "\(name)/\(generation)" }!.bytes
+                    .withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+            }
+            _ = try exactWallZeros(u: floats("u"), v: floats("v"), w: floats("w"),
+                                   nx: grid.nx, ny: grid.ny, nz: grid.nz, label: "complete/\(generation)")
+        }
+        return snapshot
+    }
+
+    private static func compareEvolution(
+        _ actual: EvolutionSnapshot, _ expected: EvolutionSnapshot, exact: Bool
+    ) throws -> [[String: Any]] {
+        let names = actual.resources.map(\.name)
+        try require(Set(names).count == names.count && Set(names) == Set(expected.resources.map(\.name)),
+                    "Evolution inventory missing/extra/duplicate/renamed resource")
+        try require(actual.metadata == expected.metadata, "Evolution semantic/discrete metadata differs")
+        var reports: [[String: Any]] = []
+        for a in actual.resources {
+            let e = expected.resources.first { $0.name == a.name }!
+            try require(a.shape == e.shape && a.format == e.format && a.floating == e.floating
+                        && a.bytes.count == e.bytes.count, "Evolution resource resized/retyped: \(a.name)")
+            if exact { try require(a.identity == e.identity, "Evolution allocation/role replaced: \(a.name)") }
+            var maximum = 0.0
+            if a.floating {
+                try a.bytes.withUnsafeBytes { left in
+                    try e.bytes.withUnsafeBytes { right in
+                        for index in stride(from: 0, to: left.count, by: 4) {
+                            let av = left.loadUnaligned(fromByteOffset: index, as: Float.self)
+                            let ev = right.loadUnaligned(fromByteOffset: index, as: Float.self)
+                            try require(av.isFinite && ev.isFinite, "Nonfinite evolution byte payload: \(a.name)")
+                            maximum = max(maximum, abs(Double(av) - Double(ev)))
+                        }
+                    }
+                }
+            }
+            let byteMatch = a.bytes == e.bytes
+            try require(exact || !a.floating ? byteMatch : maximum <= 2e-6,
+                        "Evolution resource mismatch: \(a.name), maxError=\(maximum)")
+            reports.append(["name": a.name, "shape": a.shape, "format": a.format,
+                            "byteCount": a.bytes.count, "byteMatch": byteMatch, "maximumAbsoluteError": maximum])
+        }
+        return reports
+    }
+
+    private static func inspectionIndependence(device: MTLDevice, metal: MetalDevice) throws -> [String: Any] {
+        let simulation = try FluidSimulation3D(metal: metal)
+        let tracers = try TracerSystem3D(metal: metal)
+        var status: PressureProjection3D.StatusSlot!
+        try command(metal) {
+            status = try simulation.encodeReset(command: $0)
+            try tracers.encodeReset(command: $0)
+        }
+        let snapshot = try completeEvolutionSnapshot(
+            simulation: simulation, tracers: tracers, statuses: [("status/reset", status)]
+        )
+        var negatives: [String] = []
+        func rejects(_ label: String, _ changed: EvolutionSnapshot) throws {
+            var rejected = false
+            do { _ = try compareEvolution(changed, snapshot, exact: true) }
+            catch { rejected = true }
+            try require(rejected, "Comparator accepted deliberately corrupted staging: \(label)")
+            negatives.append(label)
+        }
+        // Corrupt copies of staged CPU bytes only, never solver resources.
+        for index in snapshot.resources.indices {
+            let name = snapshot.resources[index].name
+            var changed = snapshot
+            changed.resources[index].bytes[0] ^= 1
+            try rejects("byte/\(name)", changed)
+            changed = snapshot
+            changed.resources.remove(at: index)
+            try rejects("omission/\(name)", changed)
+            changed = snapshot
+            changed.resources[index].name += "-renamed"
+            try rejects("rename/\(name)", changed)
+            changed = snapshot
+            changed.resources[index].shape[0] += 1
+            try rejects("resize/\(name)", changed)
+        }
+        var nonfinite = snapshot
+        var nan = Float.nan
+        withUnsafeBytes(of: &nan) { nonfinite.resources[0].bytes.replaceSubrange(0..<4, with: $0) }
+        try rejects("finite-first", nonfinite)
+        return ["passed": true, "fixture": "inspection-independence", "device": device.name,
+                "inventory": try compareEvolution(snapshot, snapshot, exact: true),
+                "byteCount": snapshot.resources.reduce(0) { $0 + $1.bytes.count },
+                "negativeChecks": negatives]
     }
 
     private static func requireMatchingFields(
