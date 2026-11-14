@@ -1291,9 +1291,13 @@ class Fluid3DTests(unittest.TestCase):
         self.run_production_fixture("tracer-occlusion")
 
     def test_inspection_independence(self):
-        self.run_production_fixture("inspection-independence")
+        result = self.run_production_fixture("inspection-independence")
+        self.assertEqual({case["schedule"] for case in result.get("equalStepCases", [])},
+                         {"shown", "hidden", "alternating", "nil-drawable"})
+        self.assertTrue(result.get("restartCompleteInventoryMatched"))
+        self.assertGreaterEqual(len(result.get("pausedCases", [])), 20)
 
-    def run_production_fixture(self, fixture: str) -> None:
+    def run_production_fixture(self, fixture: str) -> dict:
         evidence_dir = ROOT / ".build/fluid3d-evidence"
         reference_dir = ROOT / ".build/fluid3d-reference"
         evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -1563,6 +1567,7 @@ class Fluid3DTests(unittest.TestCase):
                 )
                 print(f"RECIPE EVIDENCE: {recipe_path}")
             print(f"PASS: {fixture}; evidence: {report_path}")
+            return result
 
 
 def main() -> int:
