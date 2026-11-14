@@ -63,6 +63,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private let inspectionZoomSlider = InspectionSlider3D(frame: .zero)
     private let inspectionZoomValue = NSTextField(labelWithString: "100%")
     private let inspectionResetCameraButton = NSButton(title: "Reset Camera", target: nil, action: nil)
+    private let orientationGuide = OrientationGuide3DView(frame: .zero)
     private let aboutButton = NSButton(title: "About this simulation", target: nil, action: nil)
     private let aboutText = NSTextField(wrappingLabelWithString: LearningCopy.about)
     private var overlayButtons: [NSButton] = []
@@ -71,7 +72,11 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private var displayedLesson: ExperimentID?
     private var mouseHeld = false
     private var rebaseDrag = false
+    private var inspectionDragActive = false
+    private var inspectionDragLastPoint: CGPoint?
+    private var rebaseInspectionDrag = false
     private var lastCanvasSize: CGSize = .zero
+    private var canvasTrackingArea: NSTrackingArea?
     private let hud = NSVisualEffectView()
     private let opaqueSurface = NSView()
     private let fieldGroup = NSStackView()
@@ -151,6 +156,10 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
                 return $0
             }
             if $0.window?.firstResponder is NSControl || $0.window?.firstResponder is NSTextView { return $0 }
+            // The separate controls panel owns its keys too. In particular,
+            // AppKit can make the panel itself first responder after a mode
+            // change; Space there must not fall through to canvas transport.
+            if $0.window == self.controlsPanel { return $0 }
             if $0.keyCode == 0x31 || $0.keyCode == 0x01 {
                 self.keyDown(with: $0)
                 return nil
@@ -199,12 +208,19 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     @objc private func canvasWillClose() {
+        mouseHeld = false
+        rebaseDrag = false
+        clearInspectionDrag()
         controlsPanel?.delegate = nil
         controlsPanel?.close()
     }
 
     @objc private func canvasWillMinimize() {
+        mouseHeld = false
+        rebaseDrag = false
+        clearInspectionDrag()
         renderer.resignActive()
+        NSCursor.arrow.set()
         restorePanelAfterMinimize = controlsPanel?.isVisible == true
         controlsPanel?.orderOut(nil)
     }
@@ -212,10 +228,21 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     @objc private func canvasDidRestore() {
         if NSApp.isActive { renderer.becomeActive() }
         if restorePanelAfterMinimize { showControlsPanel() }
+        updateCanvasCursor()
     }
 
-    @objc private func resignActive() { mouseHeld = false; rebaseDrag = false; renderer.resignActive() }
-    @objc private func becomeActive() { if view.window?.isMiniaturized != true { renderer.becomeActive() } }
+    @objc private func resignActive() {
+        mouseHeld = false
+        rebaseDrag = false
+        clearInspectionDrag()
+        renderer.resignActive()
+        NSCursor.arrow.set()
+    }
+
+    @objc private func becomeActive() {
+        if view.window?.isMiniaturized != true { renderer.becomeActive() }
+        updateCanvasCursor()
+    }
 
     private func installControlsMenu() {
         guard let mainMenu = NSApp.mainMenu else { return }
@@ -386,6 +413,24 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         NSLayoutConstraint.activate([hudWidth!, hudHeight!])
         panel.contentView = hud
         controlsPanel = panel
+
+        orientationGuide.translatesAutoresizingMaskIntoConstraints = false
+        orientationGuide.isHidden = true
+        metalView.addSubview(orientationGuide)
+        NSLayoutConstraint.activate([
+            orientationGuide.leadingAnchor.constraint(equalTo: metalView.leadingAnchor, constant: 16),
+            orientationGuide.bottomAnchor.constraint(equalTo: metalView.bottomAnchor, constant: -16),
+            orientationGuide.widthAnchor.constraint(equalToConstant: 64),
+            orientationGuide.heightAnchor.constraint(equalToConstant: 64),
+        ])
+        let trackingArea = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .cursorUpdate, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        metalView.addTrackingArea(trackingArea)
+        canvasTrackingArea = trackingArea
 
         opaqueSurface.translatesAutoresizingMaskIntoConstraints = false
         opaqueSurface.wantsLayer = true
@@ -759,17 +804,20 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private func refreshInspectionControls() {
         guard renderer.state.mode.is3D else { return }
         let inspection = renderer.state.inspection3D
-        let planeName: String
-        let depthAxis: String
-        switch inspection.plane {
-        case .xy: planeName = "XY"; depthAxis = "Z"
-        case .xz: planeName = "XZ"; depthAxis = "Y"
-        case .yz: planeName = "YZ"; depthAxis = "X"
-        }
+        let (planeName, depthAxis) = Self.sliceLabels(for: inspection.plane)
         let percentage = Int((inspection.depth * 100).rounded())
         let descriptor = "\(planeName) slice · \(depthAxis) depth: \(percentage)%"
         threeDSlice.stringValue = descriptor
         threeDSlice.setAccessibilityLabel("\(planeName) slice, \(depthAxis) depth \(percentage) percent")
+        orientationGuide.cameraState = inspection.camera
+        let tracerVisibility = inspection.showTracers ? "shown" : "hidden"
+        metalView.setAccessibilityLabel(
+            "3D dye concentration, \(planeName) slice at \(depthAxis) depth \(percentage) percent. "
+                + "Tracers \(tracerVisibility)."
+        )
+        metalView.setAccessibilityHelp(
+            "Drag to orbit and scroll to zoom, or use the labelled camera controls in Simulation Controls."
+        )
         inspectionPlaneControl.setSelected(true, forSegment: inspection.plane.rawValue)
         inspectionPlaneControl.setAccessibilityValue(planeName)
 
@@ -801,6 +849,14 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         return "\(rounded >= 0 ? "+" : "")\(rounded)°"
     }
 
+    private static func sliceLabels(for plane: InspectionPlane3D) -> (String, String) {
+        switch plane {
+        case .xy: ("XY", "Z")
+        case .xz: ("XZ", "Y")
+        case .yz: ("YZ", "X")
+        }
+    }
+
     private func revealFocusedInspectionControl() {
         guard let window = controlsPanel,
               let focusedView = window.firstResponder as? NSView,
@@ -813,6 +869,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         opaqueSurface.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         colourLegend.needsDisplay = true
         threeDColourLegend.needsDisplay = true
+        orientationGuide.needsDisplay = true
     }
 
     private func updateControlLayout() {
@@ -874,6 +931,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         refreshTransport()
         mouseHeld = false
         rebaseDrag = false
+        clearInspectionDrag()
         renderer.clearInput()
         renderer.selectMode(mode)
         modeTransitionInProgress = false
@@ -1024,13 +1082,15 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             updateInspectionFocusOrder()
         } else {
             restartButton.nextKeyView = nil
+            metalView.setAccessibilityLabel(nil)
+            metalView.setAccessibilityHelp(nil)
         }
+        orientationGuide.isHidden = !isThreeD
         refreshInspectionControls()
         stepButton.setAccessibilityHelp(isThreeD ? "Advance the 3D simulation by one step" : nil)
         restartButton.setAccessibilityHelp(
             isThreeD ? "Return the 3D experiment to step 0. Keep the camera, slice and tracer visibility." : nil
         )
-        metalView.setAccessibilityLabel(isThreeD ? "Fixed XY cross-section of 3D dye concentration" : nil)
         lessonGroup.isHidden = state.mode == .freePlay || state.mode.is3D
         if let lesson = state.mode.experiment {
             question.stringValue = lesson.question; notice.stringValue = lesson.notice; adjustmentLabel.stringValue = lesson.adjustmentTitle
@@ -1049,6 +1109,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         tuningGroup.isHidden = state.mode != .freePlay || !isTuningExpanded
         refreshTuningValues()
         updateControlLayout()
+        updateCanvasCursor()
     }
 
     private func updateInspectionFocusOrder() {
@@ -1065,11 +1126,27 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         guard renderer != nil, metalView.bounds.size != lastCanvasSize else { return }
         lastCanvasSize = metalView.bounds.size
         renderer.clearInput()
-        if mouseHeld { rebaseDrag = true }
+        if inspectionDragActive {
+            rebaseInspectionDrag = true
+        } else if mouseHeld {
+            rebaseDrag = true
+        }
         updateControlLayout()
     }
 
     override func mouseDown(with event: NSEvent) {
+        if renderer.state.mode.is3D {
+            guard !modeTransitionInProgress,
+                  event.window === metalView.window else { return }
+            let point = metalView.convert(event.locationInWindow, from: nil)
+            guard metalView.bounds.contains(point) else { return }
+            inspectionDragActive = true
+            inspectionDragLastPoint = point
+            rebaseInspectionDrag = false
+            NSCursor.closedHand.set()
+            return
+        }
+
         mouseHeld = true
         rebaseDrag = false
         guard renderer.state.shouldAdvance else { return }
@@ -1080,6 +1157,35 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if renderer.state.mode.is3D {
+            guard inspectionDragActive, event.window === metalView.window else { return }
+            let point = metalView.convert(event.locationInWindow, from: nil)
+            guard point.x.isFinite, point.y.isFinite else { return }
+            if rebaseInspectionDrag || inspectionDragLastPoint == nil {
+                inspectionDragLastPoint = point
+                rebaseInspectionDrag = false
+                NSCursor.closedHand.set()
+                return
+            }
+
+            guard let previous = inspectionDragLastPoint else { return }
+            inspectionDragLastPoint = point
+            let deltaX = point.x - previous.x
+            let deltaY = point.y - previous.y
+            guard deltaX.isFinite, deltaY.isFinite else { return }
+
+            var inspection = renderer.state.inspection3D
+            inspection.camera.setGestureYawDegrees(
+                inspection.camera.yawDegrees + Double(deltaX) * 0.30
+            )
+            inspection.camera.setElevationDegrees(
+                inspection.camera.elevationDegrees + Double(deltaY) * 0.30
+            )
+            renderer.setInspection3D(inspection)
+            NSCursor.closedHand.set()
+            return
+        }
+
         guard mouseHeld, renderer.state.shouldAdvance else { return }
         let point = metalView.convert(event.locationInWindow, from: nil)
 
@@ -1092,9 +1198,82 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     override func mouseUp(with event: NSEvent) {
+        if renderer.state.mode.is3D {
+            clearInspectionDrag()
+            updateCanvasCursor()
+            return
+        }
+
         mouseHeld = false
         rebaseDrag = false
         renderer.updateMouseInteraction(position: nil, in: metalView)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard renderer.state.mode.is3D else {
+            super.scrollWheel(with: event)
+            return
+        }
+        guard event.window === metalView.window else {
+            super.scrollWheel(with: event)
+            return
+        }
+        let point = metalView.convert(event.locationInWindow, from: nil)
+        guard metalView.bounds.contains(point) else {
+            super.scrollWheel(with: event)
+            return
+        }
+
+        let rawDelta = event.hasPreciseScrollingDeltas
+            ? Double(event.scrollingDeltaY)
+            : Double(event.deltaY)
+        let delta = event.isDirectionInvertedFromDevice ? -rawDelta : rawDelta
+        guard delta.isFinite, delta != 0 else { return }
+        let divisor = event.hasPreciseScrollingDeltas ? 240.0 : 12.0
+        let magnification = exp(delta / divisor)
+        guard magnification.isFinite, magnification > 0 else { return }
+
+        var inspection = renderer.state.inspection3D
+        let zoom = inspection.camera.zoomPercent * magnification
+        guard zoom.isFinite else { return }
+        inspection.camera.setZoomPercent(zoom)
+        renderer.setInspection3D(inspection)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        updateCanvasCursor()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if inspectionDragActive {
+            NSCursor.closedHand.set()
+        } else {
+            NSCursor.arrow.set()
+        }
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        updateCanvasCursor()
+    }
+
+    private func clearInspectionDrag() {
+        inspectionDragActive = false
+        inspectionDragLastPoint = nil
+        rebaseInspectionDrag = false
+    }
+
+    private func updateCanvasCursor() {
+        guard let window = metalView.window else {
+            NSCursor.arrow.set()
+            return
+        }
+        let windowPoint = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        let canvasPoint = metalView.convert(windowPoint, from: nil)
+        guard renderer.state.mode.is3D, metalView.bounds.contains(canvasPoint) else {
+            NSCursor.arrow.set()
+            return
+        }
+        (inspectionDragActive ? NSCursor.closedHand : NSCursor.openHand).set()
     }
 
     override func keyDown(with event: NSEvent) {

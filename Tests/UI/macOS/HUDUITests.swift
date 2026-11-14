@@ -276,10 +276,8 @@ final class HUDUITests: XCTestCase {
         selector.click()
         selector.menuItems["3D Dye Advection"].click()
 
-        // The selector retains native focus after selection; Space opens/operates it,
-        // but must not also toggle the canvas transport.
-        app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
-        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
+        // The mode switch hides 2D-only tuning controls; AppKit may return focus
+        // to the panel. Panel-originated Space is covered independently below.
         XCTAssertTrue(app.buttons["Run"].exists)
         XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
 
@@ -290,21 +288,36 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["lesson3d.legend"].value as? String, "Less dye → More dye")
         XCTAssertEqual(app.staticTexts["lesson3d.legend"].label, "Dye concentration, less dye to more dye")
         XCTAssertEqual(app.staticTexts["lesson3d.note"].label,
-                       "This is a cross-section of dye carried by an evolving 3D flow. Brighter areas contain more dye. Dye can move out of this fixed plane. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
+                       "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; dye can move out of the plane. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
         for hiddenIdentifier in ["field.0", "overlay.0", "tuning.toggle", "about.toggle", "fieldLegend"] {
             XCTAssertFalse(app.descendants(matching: .any)[hiddenIdentifier].exists,
                             "Unsupported 2D content must be absent in 3D: \(hiddenIdentifier)")
         }
 
-        let canvas = app.windows["FluidDynamicsMetalOSX"]
-        canvas.typeKey("s", modifierFlags: [])
-        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
-        XCTAssertTrue(app.buttons["Run"].exists)
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertFalse(panel.exists)
 
-        // Canvas Space toggles the shared transport once, and the saved Free Play controls return.
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+
+        // Keep the panel out of the canvas event path: S stays inert and Space
+        // toggles transport once when the canvas itself owns focus.
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
+        canvas.typeKey("s", modifierFlags: [])
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertFalse(panel.exists)
         canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
         canvas.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
+
+        // Reopen the separate panel before checking the restored Free Play controls.
         command("1")
         assertSelectorValue("Free Play", in: selector)
         XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
@@ -313,7 +326,29 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.sliders["Force"].exists)
     }
 
+    func testPanelSpaceDoesNotResumePausedThreeD() {
+        XCTAssertTrue(app.checkBoxes["Vorticity"].waitForExistence(timeout: 10))
+        app.checkBoxes["Vorticity"].click()
+        app.buttons["Show Tuning"].click()
+
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+
+        XCTAssertTrue(app.buttons["Run"].waitForExistence(timeout: 5))
+        // Closing the mode menu leaves the controls panel as first responder.
+        // Space from that window must not act as a canvas transport shortcut.
+        app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+
+        XCTAssertTrue(app.buttons["Run"].exists,
+                      "Space originating in Simulation Controls must not resume the canvas")
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+    }
+
     func testThreeDAppearanceCaptures() {
+        let contrastVariant = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            ? "Increase Contrast" : "Standard Contrast"
         for appearance in ["Light", "Dark"] {
             app.terminate()
             app = XCUIApplication()
@@ -329,7 +364,7 @@ final class HUDUITests: XCTestCase {
             for (windowName, suffix) in [("FluidDynamicsMetalOSX", "canvas"),
                                          ("Simulation Controls", "controls panel")] {
                 let attachment = XCTAttachment(screenshot: app.windows[windowName].screenshot())
-                attachment.name = "3D Dye Advection — \(appearance) appearance — \(suffix)"
+                attachment.name = "3D Dye Advection — \(appearance) appearance — \(contrastVariant) — \(suffix)"
                 attachment.lifetime = .keepAlways
                 add(attachment)
             }

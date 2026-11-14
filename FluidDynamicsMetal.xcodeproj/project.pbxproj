@@ -14,6 +14,7 @@
 		D80200000000000000000002 /* Camera3D.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = D80000000000000000000002 /* Camera3D.swift */; };
 		D80200000000000000000003 /* Camera3D.swift in state test Sources */ = {isa = PBXBuildFile; fileRef = D80000000000000000000002 /* Camera3D.swift */; };
 		D80300000000000000000001 /* InspectionSlider3D.swift in macOS Sources */ = {isa = PBXBuildFile; fileRef = D80300000000000000000002 /* InspectionSlider3D.swift */; };
+		D80400000000000000000001 /* OrientationGuide3DView.swift in macOS Sources */ = {isa = PBXBuildFile; fileRef = D80400000000000000000002 /* OrientationGuide3DView.swift */; };
 		E100000000000000000004004 /* ParticleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000004001 /* ParticleSystem.swift */; };
 		E100000000000000000004003 /* ParticleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000004001 /* ParticleSystem.swift */; };
 		E100000000000000000004002 /* ParticleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000004001 /* ParticleSystem.swift */; };
@@ -87,6 +88,7 @@
 		D80000000000000000000001 /* InspectionState3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectionState3D.swift; sourceTree = "<group>"; };
 		D80000000000000000000002 /* Camera3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Camera3D.swift; sourceTree = "<group>"; };
 		D80300000000000000000002 /* InspectionSlider3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectionSlider3D.swift; sourceTree = "<group>"; };
+		D80400000000000000000002 /* OrientationGuide3DView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationGuide3DView.swift; sourceTree = "<group>"; };
 		E100000000000000000004001 /* ParticleSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticleSystem.swift; sourceTree = "<group>"; };
 		E100000000000000000003001 /* FieldVisualization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldVisualization.swift; sourceTree = "<group>"; };
 		E100000000000000000002001 /* FluidSimulation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidSimulation.swift; sourceTree = "<group>"; };
@@ -190,6 +192,7 @@
 				75D520941FE5539E003525F9 /* AppDelegate.swift */,
 				75D520AE1FE55733003525F9 /* RenderViewController.swift */,
 				D80300000000000000000002 /* InspectionSlider3D.swift */,
+				D80400000000000000000002 /* OrientationGuide3DView.swift */,
 				75D5209D1FE5539E003525F9 /* Assets.xcassets */,
 				75D5209F1FE5539E003525F9 /* Main.storyboard */,
 				75D520A21FE5539E003525F9 /* Info.plist */,
@@ -434,6 +437,7 @@
 				75D520A81FE553EA003525F9 /* ComputeShader.swift in Sources */,
 				75D520AF1FE55733003525F9 /* RenderViewController.swift in Sources */,
 				D80300000000000000000001 /* InspectionSlider3D.swift in macOS Sources */,
+				D80400000000000000000001 /* OrientationGuide3DView.swift in macOS Sources */,
 				75D520951FE5539E003525F9 /* AppDelegate.swift in Sources */,
 				75D520AC1FE553EA003525F9 /* Slab.swift in Sources */,
 			);
