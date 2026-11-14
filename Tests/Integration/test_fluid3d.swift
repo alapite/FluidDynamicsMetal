@@ -127,12 +127,15 @@ private struct Fluid3DChecks {
                 || fixture == "spatial-slices"
                 || fixture == "evolution-visibility"
                 || fixture == "operators" || fixture == "projection" || fixture == "reset-finite"
+                || fixture == "inspection-routing"
                 || fixture == "transitions-and-failures" || fixture == "renderer-steps-and-inactivity" else {
             throw Fluid3DHarnessError.usage("unknown fixture selector: \(fixture)")
         }
         let result: [String: Any]
         if fixture == "benchmark" {
             result = try benchmark(device: device, metal: metal)
+        } else if fixture == "inspection-routing" {
+            result = try rendererInspectionRouting(device: device, metal: metal)
         } else if fixture == "renderer-steps-and-inactivity" {
             result = try rendererStepsAndInactivity(device: device, metal: metal)
         } else if fixture == "transitions-and-failures" {
@@ -899,6 +902,188 @@ private struct Fluid3DChecks {
             "reactivationCatchUp": false,
             "solverFaultRecoveredToTwoD": true,
             "staleCompletionIgnoredAfterModeTransition": true,
+        ]
+    }
+
+    private static func rendererInspectionRouting(
+        device: MTLDevice,
+        metal: MetalDevice
+    ) throws -> [String: Any] {
+        let view = MTKView(frame: .zero, device: device)
+        let renderer = Renderer(metalView: view, metal: metal)
+        renderer.selectMode(.dyeAdvection3D)
+        guard renderer.lastModeOutcome?.succeeded == true,
+              let simulation = renderer.simulation3D,
+              let visualization = renderer.visualization3D else {
+            throw Fluid3DHarnessError.assertion("Renderer did not commit production resources for inspection routing")
+        }
+        try require(view.currentDrawable == nil, "The presentation-only fixture requires a nil drawable")
+        try require(renderer.state.inspection3D == InspectionState3D(),
+                    "Initial 3D renderer selection must publish inspection defaults")
+
+        let width = 128
+        let height = 96
+        let destination = try makeSpatialDestination(device: device, width: width, height: height)
+        let initialFields = try scanSimulation(simulation)
+        let initialInspection = renderer.state.inspection3D
+        let initialPixels = try renderSpatialImage(
+            metal: metal, visualization: visualization, simulation: simulation,
+            destination: destination, inspection: initialInspection, width: width, height: height
+        )
+
+        renderer.requestSingleStep()
+        try require(renderer.state.pendingSteps == 1 && renderer.state.stepCount == 0,
+                    "Inspection fixture must begin with accepted paused work")
+        var edited = initialInspection
+        edited.plane = .xz
+        edited.setDepth(0.3)
+        edited.camera.setYawDegrees(95)
+        edited.camera.setElevationDegrees(12)
+        edited.camera.setZoomPercent(115)
+        edited.showTracers = false
+        renderer.setInspection3D(edited)
+        renderer.drawPresentationOnly(in: view)
+        renderer.drawPresentationOnly(in: view)
+        try require(renderer.state.inspection3D == edited,
+                    "Renderer inspection edit did not publish committed state")
+        try require(renderer.state.pendingSteps == 1 && renderer.state.stepCount == 0
+                    && renderer.encoded3DStepCount == 0,
+                    "Presentation-only redraw consumed accepted paused work")
+        let editedFields = try scanSimulation(simulation)
+        try require(simulationFieldsMatchExactBits(editedFields, initialFields),
+                    "Paused inspection redraw changed production simulation textures")
+
+        let editedPixels = try renderSpatialImage(
+            metal: metal, visualization: visualization, simulation: simulation,
+            destination: destination, inspection: renderer.state.inspection3D, width: width, height: height
+        )
+        try require(editedPixels != initialPixels,
+                    "Committed camera/slice edits must change the rendered inspection image")
+        let initialFrame = try Camera3D.frame(
+            state: initialInspection.camera, viewportSize: CGSize(width: width, height: height)
+        )
+        let editedFrame = try Camera3D.frame(
+            state: renderer.state.inspection3D.camera, viewportSize: CGSize(width: width, height: height)
+        )
+        let matrixChanged = (0..<4).contains { column in
+            (0..<4).contains { row in
+                initialFrame.worldToClip[column][row].bitPattern
+                    != editedFrame.worldToClip[column][row].bitPattern
+            }
+        }
+        try require(matrixChanged, "Committed camera edit must change the production camera matrix")
+
+        renderer.resetCamera3D()
+        try require(renderer.state.inspection3D.camera == CameraState3D()
+                    && renderer.state.inspection3D.plane == .xz
+                    && renderer.state.inspection3D.depth == 0.3
+                    && !renderer.state.inspection3D.showTracers
+                    && renderer.state.pendingSteps == 1,
+                    "Reset Camera must preserve slice, visibility, and accepted work")
+        renderer.centreSlice3D()
+        try require(renderer.state.inspection3D.camera == CameraState3D()
+                    && renderer.state.inspection3D.plane == .xz
+                    && renderer.state.inspection3D.depth == 0.5
+                    && !renderer.state.inspection3D.showTracers
+                    && renderer.state.pendingSteps == 1,
+                    "Centre Slice must change only depth and preserve accepted work")
+
+        renderer.draw(in: view)
+        pumpRendererCallbacks()
+        try require(renderer.state.stepCount == 1 && renderer.state.pendingSteps == 0
+                    && renderer.encoded3DStepCount == 1 && renderer.completed3DStepCount == 1,
+                    "Ordinary drawing must later consume exactly one previously accepted request")
+
+        var restartChoices = renderer.state.inspection3D
+        restartChoices.plane = .yz
+        restartChoices.setDepth(0.27)
+        restartChoices.camera.setYawDegrees(-71)
+        restartChoices.showTracers = false
+        renderer.setInspection3D(restartChoices)
+        renderer.requestSingleStep()
+        renderer.restartCurrentSimulation()
+        try require(renderer.state.mode == .dyeAdvection3D && renderer.state.userPaused
+                    && renderer.state.stepCount == 0 && renderer.state.pendingSteps == 0
+                    && renderer.state.inspection3D == restartChoices,
+                    "Restart must reset evolution and pending work while retaining inspection choices")
+
+        renderer.selectMode(.dyeAdvection3D)
+        try require(renderer.state.inspection3D == InspectionState3D()
+                    && renderer.state.userPaused && renderer.state.stepCount == 0,
+                    "Explicit 3D reselection must restore inspection defaults")
+
+        let zeroView = MTKView(frame: .zero, device: device)
+        let productionResources = FieldVisualization3D.SpatialResourceAllocator.production
+        var zeroSizeDepthAllocations = 0
+        let zeroSizeFactory = Renderer3DSessionFactory(
+            makeVisualization: { factoryMetal in
+                var resources = productionResources
+                let allocate = resources.makeDepthAttachment
+                resources.makeDepthAttachment = { factoryDevice, descriptor in
+                    zeroSizeDepthAllocations += 1
+                    return allocate(factoryDevice, descriptor)
+                }
+                return try FieldVisualization3D(metal: factoryMetal, resources: resources)
+            }
+        )
+        let zeroRenderer = Renderer(metalView: zeroView, metal: metal, threeDFactory: zeroSizeFactory)
+        zeroRenderer.selectMode(.dyeAdvection3D)
+        try require(zeroRenderer.lastModeOutcome?.succeeded == true && zeroSizeDepthAllocations == 0,
+                    "Zero-size entry must defer presentation depth allocation without failing")
+        zeroView.frame = CGRect(x: 0, y: 0, width: 96, height: 64)
+        zeroView.drawableSize = CGSize(width: 192, height: 128)
+        zeroRenderer.mtkView(zeroView, drawableSizeWillChange: zeroView.drawableSize)
+        let fullCanvas = zeroRenderer.viewport(in: zeroView)
+        try require(zeroRenderer.state.mode == .dyeAdvection3D && zeroSizeDepthAllocations == 1
+                    && fullCanvas.originX == 0 && fullCanvas.originY == 0
+                    && fullCanvas.width == 192 && fullCanvas.height == 128,
+                    "Resize must prepare depth once and route 3D over the full drawable canvas")
+
+        var failDepthOnce = true
+        let retryFactory = Renderer3DSessionFactory(
+            makeVisualization: { factoryMetal in
+                var resources = productionResources
+                let allocate = resources.makeDepthAttachment
+                resources.makeDepthAttachment = { factoryDevice, descriptor in
+                    if failDepthOnce {
+                        failDepthOnce = false
+                        return nil
+                    }
+                    return allocate(factoryDevice, descriptor)
+                }
+                return try FieldVisualization3D(metal: factoryMetal, resources: resources)
+            }
+        )
+        let failureView = MTKView(frame: CGRect(x: 0, y: 0, width: 96, height: 64), device: device)
+        failureView.drawableSize = CGSize(width: 192, height: 128)
+        let failureRenderer = Renderer(metalView: failureView, metal: metal, threeDFactory: retryFactory)
+        let retainedTwoD = failureRenderer.simulation!
+        failureRenderer.selectMode(.dyeAdvection3D)
+        try require(failureRenderer.state.mode == .freePlay && failureRenderer.simulation === retainedTwoD
+                    && failureRenderer.simulation3D == nil
+                    && failureRenderer.lastModeOutcome?.succeeded == false,
+                    "Initial depth allocation failure must retain usable 2D and report failure")
+        failureRenderer.selectMode(.dyeAdvection3D)
+        try require(failureRenderer.state.mode == .dyeAdvection3D
+                    && failureRenderer.lastModeOutcome?.succeeded == true
+                    && failureRenderer.simulation3D?.configuration == .production,
+                    "Retry after depth allocation failure must prepare a usable 3D session")
+
+        return [
+            "passed": true,
+            "fixture": "inspection-routing",
+            "device": device.name,
+            "nilDrawablePresentation": true,
+            "pausedPendingStepsPreserved": true,
+            "presentationFieldsBitwiseUnchanged": true,
+            "cameraMatrixChanged": matrixChanged,
+            "presentationImageChanged": true,
+            "ordinaryStepDrainRetained": true,
+            "restartRetainsInspection": true,
+            "reselectionRestoresDefaults": true,
+            "zeroSizeDepthDeferred": true,
+            "fullCanvasViewport": true,
+            "depthFailureRecoveryAndRetry": true,
         ]
     }
 

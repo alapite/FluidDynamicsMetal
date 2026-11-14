@@ -69,6 +69,7 @@ PRODUCTION_FIXTURES = (
     "evolution-visibility",
     "transitions-and-failures",
     "renderer-steps-and-inactivity",
+    "inspection-routing",
 )
 REGRESSION_MATRIX_REQUIRED = (
     "macBuild",
@@ -961,6 +962,9 @@ class Fluid3DTests(unittest.TestCase):
 
     def test_renderer_steps_and_inactivity(self):
         self.run_production_fixture("renderer-steps-and-inactivity")
+
+    def test_inspection_routing(self):
+        self.run_production_fixture("inspection-routing")
 
     def run_production_fixture(self, fixture: str) -> None:
         evidence_dir = ROOT / ".build/fluid3d-evidence"
