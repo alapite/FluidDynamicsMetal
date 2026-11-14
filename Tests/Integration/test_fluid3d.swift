@@ -611,7 +611,10 @@ private struct Fluid3DChecks {
         renderer.selectMode(.dyeAdvection3D)
         let first3DSimulation = renderer.simulation3D
         try require(renderer.simulation === originalTwoDSimulation,
-                    "3D entry must retain the committed 2D resources instead of reallocating them at the view size")
+                    "3D entry must retain the committed 2D resources instead of reallocating them at the view size "
+                        + "(same=\(renderer.simulation === originalTwoDSimulation), "
+                        + "mode=\(renderer.state.mode.title), outcome=\(String(describing: renderer.lastModeOutcome)), "
+                        + "drawable=\(view.drawableSize), bounds=\(view.bounds))")
         try require(first3DSimulation?.configuration == .production,
                     "Successful entry must commit the fixed production 64-cubed simulation")
         try require(renderer.state.mode == .dyeAdvection3D && renderer.state.userPaused
@@ -989,10 +992,16 @@ private struct Fluid3DChecks {
                     "Centre Slice must change only depth and preserve accepted work")
 
         renderer.draw(in: view)
+        let completionFence = metal.newCommandBuffer()
+        completionFence.commit()
+        completionFence.waitUntilCompleted()
         pumpRendererCallbacks()
         try require(renderer.state.stepCount == 1 && renderer.state.pendingSteps == 0
                     && renderer.encoded3DStepCount == 1 && renderer.completed3DStepCount == 1,
-                    "Ordinary drawing must later consume exactly one previously accepted request")
+                    "Ordinary drawing must later consume exactly one previously accepted request "
+                        + "(steps=\(renderer.state.stepCount), pending=\(renderer.state.pendingSteps), "
+                        + "encoded=\(renderer.encoded3DStepCount), completed=\(renderer.completed3DStepCount), "
+                        + "mode=\(renderer.state.mode.title), outcome=\(String(describing: renderer.lastModeOutcome)))")
 
         var restartChoices = renderer.state.inspection3D
         restartChoices.plane = .yz

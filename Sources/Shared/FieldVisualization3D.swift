@@ -236,6 +236,14 @@ final class FieldVisualization3D {
         encoder.endEncoding()
     }
 
+    /// Prepares the size-keyed presentation attachment before a candidate
+    /// renderer session is committed. Zero-sized drawables are a normal
+    /// transient layout state and defer allocation.
+    func prepareInspection(width: Int, height: Int) throws {
+        guard width > 0, height > 0 else { return }
+        _ = try depthAttachment(width: width, height: height)
+    }
+
     /// Encodes an opaque, two-sided fixed-world plane using continuous-depth
     /// cell-centred sampling and the same transfer function as the legacy path.
     /// It reads only the production dye texture and owns only presentation depth.

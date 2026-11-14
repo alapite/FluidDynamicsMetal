@@ -33,6 +33,11 @@ private struct RendererModeFailure: LocalizedError {
     var errorDescription: String? { "\(stage): \(reason)" }
 }
 
+private enum Renderer3DTransitionIntent {
+    case selection
+    case restart
+}
+
 private struct Renderer3DStepCompletion: Sendable {
     let generation: Int
     let failureMessage: String?
@@ -106,6 +111,23 @@ final class Renderer: NSObject, MTKViewDelegate {
     func nextSlab() { state.nextField(); redrawIfPaused(); stateDidChange?() }
     func selectField(_ field: DisplayField) { state.selectField(field); redrawIfPaused(); stateDidChange?() }
     func setDisplayOptions(_ options: DisplayOptions) { state.setDisplayOptions(options); redrawIfPaused(); stateDidChange?() }
+    func setInspection3D(_ inspection: InspectionState3D) {
+        let previous = state.inspection3D
+        state.setInspection3D(inspection)
+        guard state.inspection3D != previous else { return }
+        redrawIfPaused()
+        stateDidChange?()
+    }
+    func resetCamera3D() {
+        var inspection = state.inspection3D
+        inspection.resetCamera()
+        setInspection3D(inspection)
+    }
+    func centreSlice3D() {
+        var inspection = state.inspection3D
+        inspection.centreSlice()
+        setInspection3D(inspection)
+    }
     func togglePause() { state.togglePause(); clearInput(); updateScheduling(); stateDidChange?() }
     func setTuningPosition(_ position: Float, for control: TuningControl) {
         guard state.mode == .freePlay else { return }
@@ -113,7 +135,7 @@ final class Renderer: NSObject, MTKViewDelegate {
     }
     func selectMode(_ mode: SimulationMode) {
         if mode.is3D {
-            transitionTo3D(mode)
+            transitionTo3D(mode, intent: .selection)
             return
         }
         cancelStepDrain()
@@ -135,7 +157,7 @@ final class Renderer: NSObject, MTKViewDelegate {
     }
     func restartCurrentSimulation() {
         if state.mode.is3D {
-            transitionTo3D(.dyeAdvection3D)
+            transitionTo3D(.dyeAdvection3D, intent: .restart)
             return
         }
         cancelStepDrain()
@@ -177,8 +199,9 @@ final class Renderer: NSObject, MTKViewDelegate {
     private func updateScheduling() { metalView?.isPaused = !state.shouldAdvance }
     private func redrawIfPaused() {
         guard !state.shouldAdvance, !state.inactive, !state.resetting,
-              state.mode.is3D ? simulation3D != nil && visualization3D != nil : simulation != nil else { return }
-        metalView?.draw()
+              state.mode.is3D ? simulation3D != nil && visualization3D != nil : simulation != nil,
+              let view = metalView else { return }
+        drawPresentationOnly(in: view)
     }
     func clearInput() { mouseInput.clear(); touchContacts.removeAll(); pendingTapContacts.removeAll(); touchRadius = nil }
     func updateMouseInteraction(position: SIMD2<Float>?, in view: MTKView) {
@@ -222,7 +245,7 @@ final class Renderer: NSObject, MTKViewDelegate {
         updateScheduling(); redrawIfPaused()
     }
 
-    private func transitionTo3D(_ mode: SimulationMode) {
+    private func transitionTo3D(_ mode: SimulationMode, intent: Renderer3DTransitionIntent) {
         let wasAlready3D = state.mode.is3D
         cancelStepDrain()
         clearInput()
@@ -244,6 +267,18 @@ final class Renderer: NSObject, MTKViewDelegate {
                 let candidateVisualization: FieldVisualization3D
                 do { candidateVisualization = try threeDFactory.makeVisualization(metal) }
                 catch { throw RendererModeFailure(stage: "3D presentation pipeline", reason: Self.message(for: error)) }
+                let drawableSize = metalView.flatMap { Self.drawablePixelSize(for: $0) }
+                do {
+                    try candidateVisualization.prepareInspection(
+                        width: drawableSize?.width ?? 0,
+                        height: drawableSize?.height ?? 0
+                    )
+                } catch {
+                    throw RendererModeFailure(
+                        stage: "3D presentation depth",
+                        reason: Self.message(for: error)
+                    )
+                }
 
                 let command = metal.newCommandBuffer()
                 let status: PressureProjection3D.StatusSlot
@@ -273,7 +308,12 @@ final class Renderer: NSObject, MTKViewDelegate {
 
                 if !wasAlready3D { twoDRecoveryState = state }
                 var candidateState = state
-                candidateState.selectMode(mode)
+                switch intent {
+                case .selection:
+                    candidateState.selectMode(mode)
+                case .restart:
+                    candidateState.beginReset()
+                }
                 candidateState.finishReset()
                 simulation3D = candidate
                 visualization3D = candidateVisualization
@@ -337,17 +377,56 @@ final class Renderer: NSObject, MTKViewDelegate {
         return MTLViewport(originX: rect.minX * scaleX, originY: rect.minY * scaleY,
                            width: rect.width * scaleX, height: rect.height * scaleY, znear: 0, zfar: 1)
     }
+    private func spatialViewport(
+        in view: MTKView,
+        drawable: CAMetalDrawable
+    ) -> (viewport: MTLViewport, pointScale: Float)? {
+        let bounds = view.bounds
+        let width = drawable.texture.width
+        let height = drawable.texture.height
+        guard width > 0, height > 0,
+              bounds.width.isFinite, bounds.height.isFinite,
+              bounds.width > 0, bounds.height > 0 else { return nil }
+        let pointScale = Double(width) / Double(bounds.width)
+        guard pointScale.isFinite, pointScale > 0 else { return nil }
+        return (
+            MTLViewport(
+                originX: 0,
+                originY: 0,
+                width: Double(width),
+                height: Double(height),
+                znear: 0,
+                zfar: 1
+            ),
+            Float(pointScale)
+        )
+    }
     private func render(command: MTLCommandBuffer, drawable: CAMetalDrawable, view: MTKView) throws {
         if state.mode.is3D {
             guard let simulation3D, let visualization3D else {
                 throw RendererModeFailure(stage: "3D presentation", reason: "active 3D resources are unavailable")
             }
-            try visualization3D.encodeSlice(
-                command: command,
-                simulation: simulation3D,
-                destination: drawable.texture,
-                viewport: viewport(in: view)
-            )
+            guard let spatialViewport = spatialViewport(in: view, drawable: drawable) else { return }
+            do {
+                try visualization3D.encodeInspection(
+                    command: command,
+                    simulation: simulation3D,
+                    destination: drawable.texture,
+                    viewport: spatialViewport.viewport,
+                    inspection: state.inspection3D,
+                    pointScale: spatialViewport.pointScale,
+                    increaseContrast: false
+                )
+            } catch {
+                throw RendererModeFailure(
+                    stage: "3D presentation",
+                    reason: "\(Self.message(for: error)) "
+                        + "(drawable=\(drawable.texture.width)x\(drawable.texture.height), "
+                        + "viewDrawable=\(view.drawableSize), bounds=\(view.bounds), "
+                        + "viewport=\(spatialViewport.viewport.originX),\(spatialViewport.viewport.originY),"
+                        + "\(spatialViewport.viewport.width)x\(spatialViewport.viewport.height))"
+                )
+            }
             return
         }
         renderTwoD(command: command, drawable: drawable, view: view)
@@ -367,13 +446,34 @@ final class Renderer: NSObject, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
+        draw(in: view, presentationOnly: false)
+    }
+
+    func drawPresentationOnly(in view: MTKView) {
+        draw(in: view, presentationOnly: true)
+    }
+
+    private func draw(in view: MTKView, presentationOnly: Bool) {
         guard !state.inactive, !state.resetting,
               state.mode.is3D ? simulation3D != nil && visualization3D != nil : simulation != nil else { return }
         semaphore.wait()
+        let drawable: CAMetalDrawable?
+        if presentationOnly {
+            guard let currentDrawable = view.currentDrawable else {
+                semaphore.signal()
+                return
+            }
+            drawable = currentDrawable
+        } else {
+            drawable = nil
+        }
         let command = metal.newCommandBuffer()
         let step = state.stepCount
         var threeDStatus: PressureProjection3D.StatusSlot?
-        if state.mode.is3D {
+        if presentationOnly {
+            // Presentation-only frames deliberately preserve pending work and
+            // do not advance simulation or tracer state.
+        } else if state.mode.is3D {
             let eligible = state.shouldAdvance || (state.canStep && state.pendingSteps > 0)
             if eligible {
                 do {
@@ -408,10 +508,11 @@ final class Renderer: NSObject, MTKViewDelegate {
         } else {
             clearInput()
         }
-        if let drawable = view.currentDrawable {
+        let currentDrawable = drawable ?? view.currentDrawable
+        if let currentDrawable {
             do {
-                try render(command: command, drawable: drawable, view: view)
-                command.present(drawable)
+                try render(command: command, drawable: currentDrawable, view: view)
+                command.present(currentDrawable)
             } catch {
                 registerCommandCompletion(command, threeDStatus: threeDStatus, generation: sessionGeneration)
                 command.commit()
@@ -421,9 +522,10 @@ final class Renderer: NSObject, MTKViewDelegate {
         }
         registerCommandCompletion(command, threeDStatus: threeDStatus, generation: sessionGeneration)
         command.commit()
-        updateScheduling()
+        if !presentationOnly { updateScheduling() }
         // Live counters refresh at 10 Hz; paused steps/completion notify immediately.
-        if state.stepCount != step && (!state.shouldAdvance || state.stepCount % 6 == 0) { stateDidChange?() }
+        if !presentationOnly, state.stepCount != step,
+           (!state.shouldAdvance || state.stepCount % 6 == 0) { stateDidChange?() }
     }
 
     private func registerCommandCompletion(
@@ -495,7 +597,35 @@ final class Renderer: NSObject, MTKViewDelegate {
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         guard view.bounds.width.isFinite, view.bounds.height.isFinite, view.bounds.width > 0, view.bounds.height > 0 else { return }
         if state.mode == .freePlay { replaceSimulation(reset: false) }
+        if state.mode.is3D, let visualization3D,
+           let drawableSize = Self.drawablePixelSize(size) {
+            do {
+                try visualization3D.prepareInspection(width: drawableSize.width, height: drawableSize.height)
+            } catch {
+                failActiveThreeDSession(RendererModeFailure(
+                    stage: "3D presentation depth",
+                    reason: Self.message(for: error)
+                ))
+                return
+            }
+        }
         redrawIfPaused()
+    }
+    private static func drawablePixelSize(_ size: CGSize) -> (width: Int, height: Int)? {
+        guard size.width.isFinite, size.height.isFinite,
+              size.width > 0, size.height > 0,
+              size.width < CGFloat(Int.max), size.height < CGFloat(Int.max) else { return nil }
+        let width = Int(size.width.rounded(.down))
+        let height = Int(size.height.rounded(.down))
+        guard width > 0, height > 0 else { return nil }
+        return (width, height)
+    }
+    private static func drawablePixelSize(for view: MTKView) -> (width: Int, height: Int)? {
+        if let drawable = view.currentDrawable,
+           drawable.texture.width > 0, drawable.texture.height > 0 {
+            return (drawable.texture.width, drawable.texture.height)
+        }
+        return drawablePixelSize(view.drawableSize)
     }
     nonisolated static func contactBatches(_ contacts: [FluidContact]) -> [[FluidContact]] {
         return stride(from: 0, to: contacts.count, by: ContactCapacity).map {
