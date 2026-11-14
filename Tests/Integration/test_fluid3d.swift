@@ -86,6 +86,13 @@ private struct Fluid3DChecks {
         let identityError: [Float]
     }
 
+    private struct TracerFluidCapture {
+        let name: String
+        let field: VolumeField3D
+        let ping: MTLBuffer
+        let pong: MTLBuffer
+    }
+
     static func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
         guard condition() else { throw Fluid3DHarnessError.assertion(message) }
     }
@@ -142,7 +149,10 @@ private struct Fluid3DChecks {
         } else if fixture == "transitions-and-failures" {
             result = try rendererTransitionsAndFailures(device: device, metal: metal)
         } else if fixture == "tracer-evolution" {
-            result = try tracerEvolution(metal: metal)
+            result = try tracerEvolution(
+                metal: metal,
+                referenceDirectory: URL(fileURLWithPath: arguments[1], isDirectory: true)
+            )
         } else if fixture == "slice-palette" {
             result = try sliceAndPalette(
                 device: device,
@@ -5130,8 +5140,22 @@ private struct Fluid3DChecks {
         ]
     }
 
-    private static func tracerEvolution(metal: MetalDevice) throws -> [String: Any] {
-        let tracers = try TracerSystem3D(metal: metal)
+    private static func tracerEvolution(
+        metal: MetalDevice,
+        referenceDirectory: URL
+    ) throws -> [String: Any] {
+        let referenceURL = referenceDirectory.appendingPathComponent("manifest.json")
+        guard let reference = try JSONSerialization.jsonObject(
+            with: Data(contentsOf: referenceURL)
+        ) as? [String: Any],
+        reference["contractHash"] as? String == "7f793d4ecfff13e7138a96e354f7597a9da9db88853c657d47a23ae09955e0c7",
+        let forwardCases = reference["forwardRK2Cases"] as? [[String: Any]],
+        let boundaryProbes = reference["boundaryProbes"] as? [[String: Any]],
+        let affineProbes = reference["affineTracerProbes"] as? [[String: Any]],
+        let boundaryVelocity = reference["boundaryProbeVelocity"] as? [Double] else {
+            throw Fluid3DHarnessError.assertion("Independent tracer RK2 expectations are missing or stale")
+        }
+        let (tracers, privatePositionBuffer) = try makeTracerSystemCapturingStorage(metal: metal)
         let inventory = tracers.diagnosticResourceInventory
         try require(TracerSystem3D.count == 512, "Tracer count must remain exactly 512")
         try require(inventory.markerCount == 512, "Tracer inventory marker count mismatch")
@@ -5180,6 +5204,102 @@ private struct Fluid3DChecks {
         try expectTracerPipelineFailure(metal: metal)
         try expectTracerEncoderFailure(metal: metal)
 
+        let simulation = try FluidSimulation3D(metal: metal)
+        let resetStatus = try resetTracerSimulation(simulation, metal: metal)
+        var forwardCaseNames: [String] = []
+        var forwardComparedPositions = 0
+        var maximumForwardError = 0.0
+        for item in forwardCases {
+            guard let name = item["name"] as? String,
+                  let velocity = item["velocity"] as? [Double],
+                  velocity.count == 3,
+                  let expected = item["positions"] as? [[Double]],
+                  expected.count == TracerSystem3D.count else {
+                throw Fluid3DHarnessError.assertion("Malformed independent forward-RK2 case")
+            }
+            let actual = try runSyntheticTracerAdvance(
+                tracers: tracers,
+                privatePositionBuffer: privatePositionBuffer,
+                simulation: simulation,
+                status: resetStatus,
+                metal: metal,
+                velocity: velocity
+            )
+            maximumForwardError = max(
+                maximumForwardError,
+                try compareTracerPositions(actual, expected: expected, label: name)
+            )
+            forwardCaseNames.append(name)
+            forwardComparedPositions += actual.count
+        }
+        try require(forwardCaseNames.count == 8, "Forward-RK2 fixture omitted a sign/combined case")
+
+        let boundaryActual = try runSyntheticTracerAdvance(
+            tracers: tracers,
+            privatePositionBuffer: privatePositionBuffer,
+            simulation: simulation,
+            status: resetStatus,
+            metal: metal,
+            velocity: boundaryVelocity,
+            initialProbes: boundaryProbes.compactMap { $0["initial"] as? [Double] }
+        )
+        let boundaryExpected = try expectedPositions(boundaryProbes, label: "boundary")
+        _ = try compareTracerPositions(
+            Array(boundaryActual.prefix(boundaryProbes.count)),
+            expected: boundaryExpected,
+            label: "wall-edge-corner"
+        )
+        try require(boundaryExpected.count == 27, "Wall/edge/corner probe family is incomplete")
+
+        let affineActual = try runSyntheticTracerAdvance(
+            tracers: tracers,
+            privatePositionBuffer: privatePositionBuffer,
+            simulation: simulation,
+            status: resetStatus,
+            metal: metal,
+            affineMAC: true,
+            initialProbes: affineProbes.compactMap { $0["initial"] as? [Double] }
+        )
+        let affineExpected = try expectedPositions(affineProbes, label: "affine MAC")
+        _ = try compareTracerPositions(
+            Array(affineActual.prefix(affineProbes.count)),
+            expected: affineExpected,
+            label: "affine-mac"
+        )
+        try require(affineExpected.count == 28, "Affine staggered-MAC probe family is incomplete")
+
+        let productionResetStatus = try resetTracerSimulation(simulation, metal: metal)
+        try require(
+            productionResetStatus.diagnostics().failure == .none
+                && productionResetStatus.diagnostics().converged
+                && !productionResetStatus.diagnostics().capHit,
+            "Production tracer run did not start from accepted solver status"
+        )
+        _ = try resetAndReadTracers(tracers, metal: metal)
+        let productionRun = try runProductionTracerSteps(
+            tracers: tracers,
+            simulation: simulation,
+            metal: metal,
+            stepCount: 48
+        )
+        try require(productionRun.positions.count == TracerSystem3D.count,
+                    "48-step production tracer readback has the wrong marker count")
+        try require(
+            productionRun.positions.allSatisfy {
+                $0.x.isFinite && $0.y.isFinite && $0.z.isFinite
+                    && (0...1).contains($0.x) && (0...1).contains($0.y)
+                    && (0...1).contains($0.z) && $0.w == 1
+            },
+            "Production tracer positions or lane values escaped their finite bounded contract"
+        )
+
+        let failureGuards = try runTracerFailureGuards(
+            tracers: tracers,
+            simulationMetal: metal
+        )
+        try require(failureGuards.current && failureGuards.prior,
+                    "A current or prior failed projection changed passive tracer positions")
+
         return [
             "passed": true,
             "fixture": "tracer-evolution",
@@ -5195,8 +5315,407 @@ private struct Fluid3DChecks {
             "allocationFailureThrows": true,
             "pipelineFailureThrows": true,
             "encoderFailureThrows": true,
+            "forwardCaseNames": forwardCaseNames.sorted(),
+            "forwardComparedPositions": forwardComparedPositions,
+            "maximumForwardOracleError": maximumForwardError,
+            "boundaryProbeCount": boundaryExpected.count,
+            "affineProbeCount": affineExpected.count,
+            "productionStepCount": productionRun.stepCount,
+            "threeQueuedSubmissionsChecked": productionRun.maximumQueued == 3
+                && productionRun.firstBatchStatusSlots == 3,
+            "currentFailureGuarded": failureGuards.current,
+            "priorFailureGuarded": failureGuards.prior,
+            "noFluidFeedback": productionRun.noFluidFeedback,
+            "positionsInBounds": true,
             "finite": true,
         ]
+    }
+
+    private static func makeTracerSystemCapturingStorage(
+        metal: MetalDevice
+    ) throws -> (TracerSystem3D, MTLBuffer) {
+        var privatePositionBuffer: MTLBuffer?
+        let tracers = try TracerSystem3D(
+            metal: metal,
+            bufferFactory: { length, options in
+                guard let buffer = metal.device.makeBuffer(length: length, options: options) else {
+                    return nil
+                }
+                if privatePositionBuffer == nil {
+                    privatePositionBuffer = buffer
+                }
+                return buffer
+            }
+        )
+        guard let privatePositionBuffer else {
+            throw Fluid3DHarnessError.assertion("Tracer fixture did not capture its private position buffer")
+        }
+        return (tracers, privatePositionBuffer)
+    }
+
+    private static func resetTracerSimulation(
+        _ simulation: FluidSimulation3D,
+        metal: MetalDevice
+    ) throws -> PressureProjection3D.StatusSlot {
+        var status: PressureProjection3D.StatusSlot!
+        let commandBuffer = metal.newCommandBuffer()
+        status = try simulation.encodeReset(command: commandBuffer)
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        try require(commandBuffer.status == .completed,
+                    "Tracer fixture simulation reset failed: \(String(describing: commandBuffer.error))")
+        let diagnostics = status.diagnostics()
+        try require(diagnostics.failure == .none && diagnostics.converged && !diagnostics.capHit,
+                    "Tracer fixture reset did not produce accepted projection status")
+        return status
+    }
+
+    private static func runSyntheticTracerAdvance(
+        tracers: TracerSystem3D,
+        privatePositionBuffer: MTLBuffer,
+        simulation: FluidSimulation3D,
+        status: PressureProjection3D.StatusSlot,
+        metal: MetalDevice,
+        velocity: [Double]? = nil,
+        affineMAC: Bool = false,
+        initialProbes: [[Double]]? = nil
+    ) throws -> [SIMD4<Float>] {
+        let commandBuffer = metal.newCommandBuffer()
+        try tracers.encodeReset(command: commandBuffer)
+        for (component, field) in [
+            (0, simulation.u), (1, simulation.v), (2, simulation.w),
+        ] {
+            let values = makeMACVelocityValues(
+                component: component,
+                field: field,
+                configuration: simulation.configuration,
+                velocity: velocity,
+                affineMAC: affineMAC
+            )
+            try field.encodeUpload(values, to: field.ping, command: commandBuffer)
+        }
+
+        var positionUpload: MTLBuffer?
+        if let initialProbes {
+            let positions = tracerProbePositions(initialProbes)
+            positionUpload = try encodeTracerPositionUpload(
+                positions,
+                to: privatePositionBuffer,
+                metal: metal,
+                command: commandBuffer
+            )
+        }
+        try tracers.encodeAdvance(command: commandBuffer, simulation: simulation, status: status)
+        let readback = try tracers.encodeReadback(command: commandBuffer)
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        _ = positionUpload
+        try require(commandBuffer.status == .completed,
+                    "Synthetic tracer advance failed: \(String(describing: commandBuffer.error))")
+        return try tracers.decodeReadback(readback)
+    }
+
+    private static func makeMACVelocityValues(
+        component: Int,
+        field: VolumeField3D,
+        configuration: FluidSimulation3DConfiguration,
+        velocity: [Double]?,
+        affineMAC: Bool
+    ) -> [Float] {
+        let dimensions = [field.width, field.height, field.depth]
+        let extents = [configuration.nx, configuration.ny, configuration.nz]
+        let offsets: [[Double]] = [
+            [0, 0.5, 0.5],
+            [0.5, 0, 0.5],
+            [0.5, 0.5, 0],
+        ]
+        var values: [Float] = []
+        values.reserveCapacity(field.width * field.height * field.depth)
+        for z in 0..<dimensions[2] {
+            for y in 0..<dimensions[1] {
+                for x in 0..<dimensions[0] {
+                    let indices = [x, y, z]
+                    let normalFace = indices[component] == 0
+                        || indices[component] == extents[component]
+                    if normalFace {
+                        values.append(0)
+                        continue
+                    }
+                    let value: Double
+                    if affineMAC {
+                        let world = (0..<3).map {
+                            (Double(indices[$0]) + offsets[component][$0]) * Double(configuration.h)
+                        }
+                        value = Double(component + 1) * 0.01
+                            + 0.02 * world[0] - 0.03 * world[1] + 0.04 * world[2]
+                    } else {
+                        value = velocity?[component] ?? 0
+                    }
+                    values.append(Float(value))
+                }
+            }
+        }
+        return values
+    }
+
+    private static func tracerProbePositions(_ probes: [[Double]]) -> [SIMD4<Float>] {
+        var positions = tracerSeeds()
+        for (index, point) in probes.enumerated() where index < positions.count && point.count == 3 {
+            positions[index] = SIMD4<Float>(
+                Float(point[0]), Float(point[1]), Float(point[2]), 1
+            )
+        }
+        return positions
+    }
+
+    private static func tracerSeeds() -> [SIMD4<Float>] {
+        var positions: [SIMD4<Float>] = []
+        positions.reserveCapacity(TracerSystem3D.count)
+        for k in 0..<8 {
+            for j in 0..<8 {
+                for i in 0..<8 {
+                    positions.append(SIMD4<Float>(
+                        (Float(i) + 0.5) / 8,
+                        (Float(j) + 0.5) / 8,
+                        (Float(k) + 0.5) / 8,
+                        1
+                    ))
+                }
+            }
+        }
+        return positions
+    }
+
+    private static func encodeTracerPositionUpload(
+        _ positions: [SIMD4<Float>],
+        to destination: MTLBuffer,
+        metal: MetalDevice,
+        command: MTLCommandBuffer
+    ) throws -> MTLBuffer {
+        guard positions.count == TracerSystem3D.count else {
+            throw Fluid3DHarnessError.assertion("Tracer probe upload must contain exactly 512 positions")
+        }
+        let byteCount = TracerSystem3D.positionByteCount
+        guard let staging = positions.withUnsafeBytes({ bytes in
+            bytes.baseAddress.flatMap {
+                metal.device.makeBuffer(bytes: $0, length: byteCount, options: .storageModeShared)
+            }
+        }) else {
+            throw Fluid3DHarnessError.assertion("Could not allocate tracer probe staging buffer")
+        }
+        guard let encoder = command.makeBlitCommandEncoder() else {
+            throw Fluid3DHarnessError.assertion("Could not encode tracer probe positions")
+        }
+        encoder.copy(
+            from: staging,
+            sourceOffset: 0,
+            to: destination,
+            destinationOffset: 0,
+            size: byteCount
+        )
+        encoder.endEncoding()
+        return staging
+    }
+
+    private static func expectedPositions(
+        _ probes: [[String: Any]],
+        label: String
+    ) throws -> [[Double]] {
+        try probes.enumerated().map { index, probe in
+            guard let initial = probe["initial"] as? [Double],
+                  initial.count == 3,
+                  let expected = probe["expected"] as? [Double],
+                  expected.count == 3 else {
+                throw Fluid3DHarnessError.assertion("Malformed \(label) oracle probe \(index)")
+            }
+            return expected
+        }
+    }
+
+    private static func compareTracerPositions(
+        _ actual: [SIMD4<Float>],
+        expected: [[Double]],
+        label: String
+    ) throws -> Double {
+        try require(actual.count == expected.count,
+                    "\(label) tracer comparison count mismatch: \(actual.count) != \(expected.count)")
+        var maximumError = 0.0
+        for (index, position) in actual.enumerated() {
+            let values = [Double(position.x), Double(position.y), Double(position.z)]
+            try require(values.allSatisfy(\.isFinite) && position.w.isFinite,
+                        "\(label) tracer \(index) contains a nonfinite lane")
+            try require(values.allSatisfy { (0...1).contains($0) } && position.w == 1,
+                        "\(label) tracer \(index) escaped its bounded xyz/w=1 contract")
+            for axis in 0..<3 {
+                let reference = expected[index][axis]
+                let error = abs(values[axis] - reference)
+                let tolerance = 2e-5 + 2e-4 * abs(reference)
+                try require(error <= tolerance,
+                            "\(label) tracer \(index) axis \(axis) mismatch: "
+                            + "actual=\(values[axis]) expected=\(reference) error=\(error) limit=\(tolerance)")
+                maximumError = max(maximumError, error)
+            }
+        }
+        return maximumError
+    }
+
+    private static func encodeTracerFluidCaptures(
+        simulation: FluidSimulation3D,
+        command: MTLCommandBuffer
+    ) throws -> [TracerFluidCapture] {
+        let requiredNames: Set<String> = [
+            "u", "v", "w", "dye", "transport-u", "transport-v", "transport-w",
+        ]
+        return try simulation.diagnosticFields
+            .filter { requiredNames.contains($0.0) }
+            .map { name, field in
+                TracerFluidCapture(
+                    name: name,
+                    field: field,
+                    ping: try field.encodeReadback(from: field.ping, command: command),
+                    pong: try field.encodeReadback(from: field.pong, command: command)
+                )
+            }
+    }
+
+    private static func compareTracerFluidCaptures(
+        before: [TracerFluidCapture],
+        after: [TracerFluidCapture]
+    ) throws {
+        try require(before.map(\.name).sorted() == after.map(\.name).sorted(),
+                    "Tracer no-feedback capture omitted or added a fluid field")
+        let afterByName = Dictionary(uniqueKeysWithValues: after.map { ($0.name, $0) })
+        for original in before {
+            guard let changed = afterByName[original.name] else {
+                throw Fluid3DHarnessError.assertion("Tracer no-feedback capture is missing \(original.name)")
+            }
+            let originalPing = try original.field.decodeReadback(original.ping)
+            let changedPing = try changed.field.decodeReadback(changed.ping)
+            let originalPong = try original.field.decodeReadback(original.pong)
+            let changedPong = try changed.field.decodeReadback(changed.pong)
+            try require(originalPing == changedPing,
+                        "Tracer advancement changed \(original.name) ping")
+            try require(originalPong == changedPong,
+                        "Tracer advancement changed \(original.name) pong")
+        }
+    }
+
+    private static func runProductionTracerSteps(
+        tracers: TracerSystem3D,
+        simulation: FluidSimulation3D,
+        metal: MetalDevice,
+        stepCount: Int
+    ) throws -> (
+        positions: [SIMD4<Float>],
+        stepCount: Int,
+        maximumQueued: Int,
+        firstBatchStatusSlots: Int,
+        noFluidFeedback: Bool
+    ) {
+        var totalSteps = 0
+        var maximumQueued = 0
+        var firstBatchStatusIDs = Set<ObjectIdentifier>()
+        var noFluidFeedback = false
+        var finalReadback: MTLBuffer?
+        for batchStart in stride(from: 0, to: stepCount, by: 3) {
+            let batchEnd = min(stepCount, batchStart + 3)
+            var pending: [(MTLCommandBuffer, PressureProjection3D.StatusSlot)] = []
+            var firstBefore: [TracerFluidCapture] = []
+            var firstAfter: [TracerFluidCapture] = []
+            for step in batchStart..<batchEnd {
+                let commandBuffer = metal.newCommandBuffer()
+                let status = try simulation.encodeStep(command: commandBuffer)
+                let capturesBefore = step == 0
+                    ? try encodeTracerFluidCaptures(simulation: simulation, command: commandBuffer)
+                    : []
+                try tracers.encodeAdvance(command: commandBuffer, simulation: simulation, status: status)
+                let capturesAfter = step == 0
+                    ? try encodeTracerFluidCaptures(simulation: simulation, command: commandBuffer)
+                    : []
+                if step == 0 {
+                    firstBefore = capturesBefore
+                    firstAfter = capturesAfter
+                }
+                if step == stepCount - 1 {
+                    finalReadback = try tracers.encodeReadback(command: commandBuffer)
+                }
+                commandBuffer.commit()
+                pending.append((commandBuffer, status))
+                if batchStart == 0 {
+                    firstBatchStatusIDs.insert(ObjectIdentifier(status))
+                }
+                totalSteps += 1
+            }
+            maximumQueued = max(maximumQueued, pending.count)
+            for (commandBuffer, status) in pending {
+                commandBuffer.waitUntilCompleted()
+                try require(commandBuffer.status == .completed,
+                            "Production solver/tracer step failed: \(String(describing: commandBuffer.error))")
+                let diagnostics = status.diagnostics()
+                try require(
+                    diagnostics.failure == .none && diagnostics.converged && !diagnostics.capHit,
+                    "Production tracer step did not use an accepted solver projection"
+                )
+            }
+            if batchStart == 0 {
+                try compareTracerFluidCaptures(before: firstBefore, after: firstAfter)
+                noFluidFeedback = true
+            }
+        }
+        guard let finalReadback else {
+            throw Fluid3DHarnessError.assertion("Production tracer fixture did not produce its final readback")
+        }
+        return (
+            try tracers.decodeReadback(finalReadback),
+            totalSteps,
+            maximumQueued,
+            firstBatchStatusIDs.count,
+            noFluidFeedback
+        )
+    }
+
+    private static func runTracerFailureGuards(
+        tracers: TracerSystem3D,
+        simulationMetal: MetalDevice
+    ) throws -> (current: Bool, prior: Bool) {
+        let configuration = try FluidSimulation3DConfiguration.fixture(
+            nx: 64, ny: 64, nz: 64, h: 1.0 / 64.0, dt: 1.0 / 60.0
+        )
+        let simulation = try FluidSimulation3D(metal: simulationMetal, configuration: configuration)
+        _ = try resetTracerSimulation(simulation, metal: simulationMetal)
+        let before = try resetAndReadTracers(tracers, metal: simulationMetal)
+
+        let failedCommand = simulationMetal.newCommandBuffer()
+        let failedStatus = try simulation.encodeStep(
+            command: failedCommand,
+            failureInjection: .zeroSearchDenominator
+        )
+        try tracers.encodeAdvance(command: failedCommand, simulation: simulation, status: failedStatus)
+        let failedReadback = try tracers.encodeReadback(command: failedCommand)
+        failedCommand.commit()
+        failedCommand.waitUntilCompleted()
+        try require(failedCommand.status == .completed,
+                    "Current-failure tracer guard command failed: \(String(describing: failedCommand.error))")
+        try require(failedStatus.diagnostics().failure == .invalidSearchDenominator,
+                    "Current-failure guard did not receive the injected projection failure")
+        let afterCurrentFailure = try tracers.decodeReadback(failedReadback)
+        let currentGuarded = tracerPositionBytes(before) == tracerPositionBytes(afterCurrentFailure)
+        try require(currentGuarded, "Tracer positions changed after a failed current projection")
+
+        let priorCommand = simulationMetal.newCommandBuffer()
+        let priorStatus = try simulation.encodeStep(command: priorCommand)
+        try tracers.encodeAdvance(command: priorCommand, simulation: simulation, status: priorStatus)
+        let priorReadback = try tracers.encodeReadback(command: priorCommand)
+        priorCommand.commit()
+        priorCommand.waitUntilCompleted()
+        try require(priorCommand.status == .completed,
+                    "Prior-failure tracer guard command failed: \(String(describing: priorCommand.error))")
+        try require(priorStatus.diagnostics().failure == .priorSessionFailure,
+                    "Prior-failure guard did not receive the latched solver failure")
+        let afterPriorFailure = try tracers.decodeReadback(priorReadback)
+        let priorGuarded = tracerPositionBytes(afterCurrentFailure) == tracerPositionBytes(afterPriorFailure)
+        try require(priorGuarded, "Tracer positions changed after a prior session projection failure")
+        return (currentGuarded, priorGuarded)
     }
 
     private static func resetAndReadTracers(

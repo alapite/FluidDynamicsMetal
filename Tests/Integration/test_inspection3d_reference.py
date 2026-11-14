@@ -33,6 +33,56 @@ def validate_export(directory, contract_hash):
     return manifest, values
 
 
+def _fold_coordinate(value):
+    folded = value % 2.0
+    return (folded, 1.0) if folded <= 1.0 else (2.0 - folded, -1.0)
+
+
+def _sample_affine_mac(position, component):
+    offsets = [0.5, 0.5, 0.5]
+    offsets[component] = 0.0
+    folded = []
+    parity = []
+    for coordinate in position:
+        value, sign = _fold_coordinate(coordinate)
+        folded.append(value)
+        parity.append(sign)
+    lattice = [folded[axis] * 64 - offsets[axis] for axis in range(3)]
+    base = [math.floor(value) for value in lattice]
+    fraction = [lattice[axis] - base[axis] for axis in range(3)]
+    total = 0.0
+    for mask in range(8):
+        indices = []
+        weight = 1.0
+        wall_face = False
+        for axis in range(3):
+            upper = (mask >> axis) & 1
+            index = base[axis] + upper
+            weight *= fraction[axis] if upper else 1 - fraction[axis]
+            if axis == component:
+                index = min(64, max(0, index))
+                wall_face = wall_face or index in (0, 64)
+            elif index < 0:
+                index = -index - 1
+            elif index >= 64:
+                index = 127 - index
+            indices.append(index)
+        if wall_face:
+            sample = 0.0
+        else:
+            point = [(indices[axis] + offsets[axis]) / 64 for axis in range(3)]
+            sample = (component + 1) * 0.01 + 0.02 * point[0] - 0.03 * point[1] + 0.04 * point[2]
+        total += weight * sample
+    return total * parity[component]
+
+
+def _advance_affine_mac(position):
+    first = [_sample_affine_mac(position, component) for component in range(3)]
+    midpoint = [min(1.0, max(0.0, position[axis] + first[axis] / 120)) for axis in range(3)]
+    second = [_sample_affine_mac(midpoint, component) for component in range(3)]
+    return [min(1.0, max(0.0, position[axis] + second[axis] / 60)) for axis in range(3)]
+
+
 class InspectionReferenceTests(unittest.TestCase):
     def test_contract_and_oracle(self):
         self.assertTrue(CONTRACT.is_file(), "preregistered inspection contract missing")
@@ -83,6 +133,50 @@ class InspectionReferenceTests(unittest.TestCase):
         self.assertGreaterEqual(manifest["reflectionCases"], 26)
         self.assertLessEqual(manifest["reflectionError"], 1e-12)
         self.assertLessEqual(manifest["affineMACError"], 1e-12)
+        self.assertEqual(manifest["tracerGridCells"], 64)
+        forward_cases = {item["name"]: item for item in manifest["forwardRK2Cases"]}
+        expected_names = {
+            "positive_x", "negative_x", "positive_y", "negative_y",
+            "positive_z", "negative_z", "combined_xyz", "combined_mixed",
+        }
+        self.assertEqual(set(forward_cases), expected_names)
+        seed_positions = [
+            [seeds[offset], seeds[offset + 1], seeds[offset + 2]]
+            for offset in range(0, len(seeds), 4)
+        ]
+        for name, item in forward_cases.items():
+            self.assertEqual(len(item["positions"]), 512, name)
+            velocity = item["velocity"]
+            for start, actual in zip(seed_positions, item["positions"]):
+                self.assertEqual(len(actual), 3)
+                for axis in range(3):
+                    expected = start[axis] + velocity[axis] / 60
+                    self.assertAlmostEqual(actual[axis], expected, places=12, msg=name)
+                    self.assertTrue(math.isfinite(actual[axis]) and 0 <= actual[axis] <= 1)
+
+        self.assertEqual(len(manifest["boundaryProbes"]), 27)
+        boundary_velocity = manifest["boundaryProbeVelocity"]
+        for item in manifest["boundaryProbes"]:
+            point = item["initial"]
+            first = [
+                boundary_velocity[axis] * min(1.0, 64 * point[axis], 64 * (1 - point[axis]))
+                for axis in range(3)
+            ]
+            midpoint = [min(1.0, max(0.0, point[axis] + first[axis] / 120)) for axis in range(3)]
+            second = [
+                boundary_velocity[axis] * min(1.0, 64 * midpoint[axis], 64 * (1 - midpoint[axis]))
+                for axis in range(3)
+            ]
+            expected = [min(1.0, max(0.0, point[axis] + second[axis] / 60)) for axis in range(3)]
+            for actual, reference in zip(item["expected"], expected):
+                self.assertAlmostEqual(actual, reference, places=12)
+
+        self.assertEqual(len(manifest["affineTracerProbes"]), 28)
+        for item in manifest["affineTracerProbes"]:
+            expected = _advance_affine_mac(item["initial"])
+            for actual, reference in zip(item["expected"], expected):
+                self.assertAlmostEqual(actual, reference, places=12)
+
         self.assertEqual(len(manifest["trajectories"]), 9)
         for item in manifest["trajectories"]:
             self.assertEqual(len(item["positions"]), 49)

@@ -641,6 +641,31 @@ def _validate_fixture_metrics(fixture: str, report: dict) -> list[str]:
         ):
             if result.get(key) is not True:
                 errors.append(f"spatial-slices is missing required regression evidence: {key}")
+    elif fixture == "tracer-evolution":
+        if result.get("markerCount") != 512 or result.get("positionBufferBytes") != 8192:
+            errors.append("tracer-evolution marker storage inventory is incorrect")
+        expected_cases = {
+            "positive_x", "negative_x", "positive_y", "negative_y",
+            "positive_z", "negative_z", "combined_xyz", "combined_mixed",
+        }
+        if set(result.get("forwardCaseNames", [])) != expected_cases:
+            errors.append("tracer-evolution must compare every registered forward-RK2 velocity case")
+        if result.get("forwardComparedPositions") != 512 * len(expected_cases):
+            errors.append("tracer-evolution forward-RK2 position comparison count is incomplete")
+        if result.get("boundaryProbeCount") != 27 or result.get("affineProbeCount") != 28:
+            errors.append("tracer-evolution wall/edge/corner or affine-MAC probes are incomplete")
+        if result.get("productionStepCount") != 48:
+            errors.append("tracer-evolution must run exactly 48 production solver/tracer steps")
+        for key in (
+            "threeQueuedSubmissionsChecked",
+            "currentFailureGuarded",
+            "priorFailureGuarded",
+            "noFluidFeedback",
+            "finite",
+            "positionsInBounds",
+        ):
+            if result.get(key) is not True:
+                errors.append(f"tracer-evolution is missing required regression evidence: {key}")
     return errors
 
 
@@ -905,6 +930,37 @@ class Fluid3DTests(unittest.TestCase):
         self.assertIn("docs/3d-inspection-contract.md", SPATIAL_HASHED_SOURCES)
         self.assertNotIn("Tests/Integration/inspection3d_reference.swift", HASHED_SOURCES)
 
+    def test_tracer_fixture_evidence_requires_forward_rk2_and_failure_guards(self):
+        result = {
+            "passed": True,
+            "fixture": "tracer-evolution",
+            "markerCount": 512,
+            "positionBufferBytes": 8192,
+            "forwardCaseNames": [
+                "positive_x", "negative_x", "positive_y", "negative_y",
+                "positive_z", "negative_z", "combined_xyz", "combined_mixed",
+            ],
+            "forwardComparedPositions": 4096,
+            "boundaryProbeCount": 27,
+            "affineProbeCount": 28,
+            "productionStepCount": 48,
+            "threeQueuedSubmissionsChecked": True,
+            "currentFailureGuarded": True,
+            "priorFailureGuarded": True,
+            "noFluidFeedback": True,
+            "finite": True,
+            "positionsInBounds": True,
+        }
+        report = {"result": result}
+        self.assertEqual(_validate_fixture_metrics("tracer-evolution", report), [])
+
+        missing_prior_guard = copy.deepcopy(report)
+        del missing_prior_guard["result"]["priorFailureGuarded"]
+        self.assertIn(
+            "tracer-evolution is missing required regression evidence: priorFailureGuarded",
+            _validate_fixture_metrics("tracer-evolution", missing_prior_guard),
+        )
+
     def test_spatial_fixture_evidence_requires_cube_resource_and_camera_checks(self):
         report = {
             "result": {
@@ -985,7 +1041,7 @@ class Fluid3DTests(unittest.TestCase):
         missing = [str(ROOT / source) for source in fixture_sources if not (ROOT / source).is_file()]
         self.assertFalse(missing, "Missing required production/test sources:\n" + "\n".join(missing))
 
-        if fixture == "spatial-slices":
+        if fixture in {"spatial-slices", "tracer-evolution"}:
             reference_dir = ROOT / ".build/inspection3d-reference"
             reference_command = [
                 sys.executable,
@@ -1018,7 +1074,9 @@ class Fluid3DTests(unittest.TestCase):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(
             manifest.get("contractHash"),
-            INSPECTION_CONTRACT_HASH if fixture == "spatial-slices" else CONTRACT_HASH,
+            INSPECTION_CONTRACT_HASH
+            if fixture in {"spatial-slices", "tracer-evolution"}
+            else CONTRACT_HASH,
         )
         projection_fixtures = {
             "zero_rhs",

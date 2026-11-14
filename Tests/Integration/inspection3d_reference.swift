@@ -106,6 +106,50 @@ private func advance(_ p: [Double], _ v: [Double], affineMAC: Bool = false) -> [
             ("positive_z",[0,0,0.12]), ("negative_z",[0,0,-0.12]),
             ("combined_xyz",[0.13,-0.07,0.19]), ("combined_mixed",[-0.09,0.16,-0.05]),
             ("wall_edge_corner",[0.9,-0.7,0.8])]
+        let forwardVelocities: [(String, [Double])] = [
+            ("positive_x", [0.12, 0, 0]), ("negative_x", [-0.12, 0, 0]),
+            ("positive_y", [0, 0.12, 0]), ("negative_y", [0, -0.12, 0]),
+            ("positive_z", [0, 0, 0.12]), ("negative_z", [0, 0, -0.12]),
+            ("combined_xyz", [0.13, -0.07, 0.19]),
+            ("combined_mixed", [-0.09, 0.16, -0.05])
+        ]
+        var forwardRK2Cases: [[String: Any]] = []
+        for (name, v) in forwardVelocities {
+            var expected: [[Double]] = []
+            expected.reserveCapacity(512)
+            for offset in stride(from: 0, to: seeds.count, by: 4) {
+                let start = [seeds[offset], seeds[offset + 1], seeds[offset + 2]]
+                expected.append(advance(start, v))
+            }
+            forwardRK2Cases.append([
+                "name": name,
+                "velocity": v,
+                "positions": expected
+            ])
+        }
+        let boundaryProbeVelocity = [0.9, -0.7, 0.8]
+        var boundaryProbes: [[String: Any]] = []
+        var affineTracerProbes: [[String: Any]] = []
+        for x in [0.0, 0.5, 1.0] {
+            for y in [0.0, 0.5, 1.0] {
+                for z in [0.0, 0.5, 1.0] {
+                    let start = [x, y, z]
+                    boundaryProbes.append([
+                        "initial": start,
+                        "expected": advance(start, boundaryProbeVelocity)
+                    ])
+                    affineTracerProbes.append([
+                        "initial": start,
+                        "expected": advance(start, [0, 0, 0], affineMAC: true)
+                    ])
+                }
+            }
+        }
+        let affineInteriorStart = [0.31, 0.42, 0.57]
+        affineTracerProbes.append([
+            "initial": affineInteriorStart,
+            "expected": advance(affineInteriorStart, [0, 0, 0], affineMAC: true)
+        ])
         var trajectories: [[String: Any]] = []
         for (name,v) in cases {
             var p = name == "wall_edge_corner" ? [0.999,0.001,1.0] : [0.5,0.5,0.5]
@@ -151,7 +195,11 @@ private func advance(_ p: [Double], _ v: [Double], affineMAC: Bool = false) -> [
             "midpointError": midpointError, "trajectories": trajectories,
             "reflectionCases": reflectionCases, "reflectionError": reflectionError,
             "affineMACError": affineError, "wallTrajectories": wallTrajectories,
-            "affineTrajectory": affineTrajectory]
+            "affineTrajectory": affineTrajectory, "tracerGridCells": 64,
+            "forwardRK2Cases": forwardRK2Cases,
+            "boundaryProbeVelocity": boundaryProbeVelocity,
+            "boundaryProbes": boundaryProbes,
+            "affineTracerProbes": affineTracerProbes]
         try binary.write(to: directory.appendingPathComponent("expectations.f64le"), options: .atomic)
         try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys, .prettyPrinted])
             .write(to: directory.appendingPathComponent("manifest.json"), options: .atomic)
