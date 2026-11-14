@@ -761,6 +761,74 @@ private struct Fluid3DChecks {
             failureReports.append(point)
         }
 
+        var recoveredLessons: [String] = []
+        for lesson in ExperimentID.allCases {
+            let recoveryView = MTKView(frame: CGRect(x: 0, y: 0, width: 64, height: 48), device: device)
+            var failRestartReset = false
+            let recoveryFactory = Renderer3DSessionFactory(
+                encodeReset: { simulation, command in
+                    guard failRestartReset else {
+                        return try simulation.encodeReset(command: command)
+                    }
+                    failRestartReset = false
+                    let initialState = Fluid3DInitialState(
+                        u: Array(repeating: Float.greatestFiniteMagnitude, count: 65 * 64 * 64),
+                        v: Array(repeating: Float.greatestFiniteMagnitude, count: 64 * 65 * 64),
+                        w: Array(repeating: Float.greatestFiniteMagnitude, count: 64 * 64 * 65),
+                        dye: Array(repeating: 0, count: 64 * 64 * 64)
+                    )
+                    return try simulation.encodeReset(
+                        command: command,
+                        initialState: initialState
+                    )
+                }
+            )
+            let recoveryRenderer = Renderer(
+                metalView: recoveryView,
+                metal: metal,
+                threeDFactory: recoveryFactory
+            )
+            recoveryRenderer.setTuningPosition(0.73, for: .force)
+            recoveryRenderer.selectField(.velocity)
+            let retainedOptions = DisplayOptions(arrows: true, particles: false, trails: true)
+            recoveryRenderer.setDisplayOptions(retainedOptions)
+            let retainedTuning = recoveryRenderer.state.tuning
+            let retainedField = recoveryRenderer.state.field
+
+            recoveryRenderer.selectMode(.experiment(lesson))
+            recoveryRenderer.selectMode(.dyeAdvection3D)
+            try require(recoveryRenderer.state.mode == .dyeAdvection3D
+                        && recoveryRenderer.lastModeOutcome?.succeeded == true,
+                        "Could not enter 3D from the \(lesson.title) lesson for recovery coverage")
+
+            failRestartReset = true
+            recoveryRenderer.restartCurrentSimulation()
+            try require(recoveryRenderer.state.mode == .freePlay
+                        && recoveryRenderer.state.shouldAdvance
+                        && recoveryRenderer.state.stepCount == 0
+                        && recoveryRenderer.state.pendingSteps == 0
+                        && recoveryRenderer.simulation3D == nil
+                        && recoveryRenderer.lastModeOutcome?.committedMode == .freePlay
+                        && recoveryRenderer.lastModeOutcome?.succeeded == false,
+                        "A failed 3D Restart from \(lesson.title) must publish fresh running Free Play")
+            try require(recoveryRenderer.state.tuning == retainedTuning
+                        && recoveryRenderer.state.field == retainedField
+                        && recoveryRenderer.state.displayOptions == retainedOptions,
+                        "A failed 3D Restart from \(lesson.title) must retain Free Play preferences")
+
+            recoveryRenderer.selectMode(.dyeAdvection3D)
+            try require(recoveryRenderer.state.mode == .dyeAdvection3D
+                        && recoveryRenderer.lastModeOutcome?.succeeded == true
+                        && recoveryRenderer.simulation3D?.configuration == .production,
+                        "3D selection must retry after failed Restart from \(lesson.title)")
+            recoveryRenderer.selectMode(.freePlay)
+            try require(recoveryRenderer.state.tuning == retainedTuning
+                        && recoveryRenderer.state.field == retainedField
+                        && recoveryRenderer.state.displayOptions == retainedOptions,
+                        "Free Play preferences must survive the retry after \(lesson.title)")
+            recoveredLessons.append(lesson.title)
+        }
+
         return [
             "passed": true,
             "fixture": "transitions-and-failures",
@@ -768,6 +836,12 @@ private struct Fluid3DChecks {
             "retainedTwoDResources": true,
             "threeDToTwoDModes": twoDModes.map(\.title),
             "injectedFailures": failureReports,
+            "lessonFailureRecovery": [
+                "twoDLessons": recoveredLessons,
+                "allRecoveredToRunningFreePlay": recoveredLessons.count == ExperimentID.allCases.count,
+                "freePlayPreferencesRetained": true,
+                "failedRestartRetrySucceeded": true,
+            ],
             "semaphoreRetryAndFallbackStep": true,
         ]
     }
@@ -905,6 +979,16 @@ private struct Fluid3DChecks {
                     && staleRenderer.lastModeOutcome == committedTwoDOutcome
                     && staleRenderer.completed3DStepCount == 0,
                     "A delayed 3D completion must not mutate the new 2D session or its mode outcome")
+        staleRenderer.selectMode(.dyeAdvection3D)
+        let replacementThreeDSimulation = staleRenderer.simulation3D
+        let replacementThreeDOutcome = staleRenderer.lastModeOutcome
+        pumpRendererCallbacks()
+        try require(staleRenderer.state.mode == .dyeAdvection3D
+                    && staleRenderer.simulation3D === replacementThreeDSimulation
+                    && staleRenderer.lastModeOutcome == replacementThreeDOutcome
+                    && staleRenderer.lastModeOutcome?.succeeded == true
+                    && staleRenderer.completed3DStepCount == 0,
+                    "A delayed old completion must not affect a newly entered 3D session")
 
         return [
             "passed": true,
@@ -5299,6 +5383,7 @@ private struct Fluid3DChecks {
         )
         try require(failureGuards.current && failureGuards.prior,
                     "A current or prior failed projection changed passive tracer positions")
+        let rendererScheduling = try verifyRendererTracerScheduling(device: metal.device, metal: metal)
 
         return [
             "passed": true,
@@ -5328,7 +5413,135 @@ private struct Fluid3DChecks {
             "noFluidFeedback": productionRun.noFluidFeedback,
             "positionsInBounds": true,
             "finite": true,
+            "rendererScheduling": rendererScheduling,
         ]
+    }
+
+    private static func verifyRendererTracerScheduling(
+        device: MTLDevice,
+        metal: MetalDevice
+    ) throws -> [String: Any] {
+        let visibleView = MTKView(frame: .zero, device: device)
+        let hiddenView = MTKView(frame: .zero, device: device)
+        let visibleRenderer = Renderer(metalView: visibleView, metal: metal)
+        let hiddenRenderer = Renderer(metalView: hiddenView, metal: metal)
+        visibleRenderer.selectMode(.dyeAdvection3D)
+        hiddenRenderer.selectMode(.dyeAdvection3D)
+        try require(visibleView.currentDrawable == nil && hiddenView.currentDrawable == nil,
+                    "Tracer scheduler fixture must advance without a drawable")
+        try require(visibleRenderer.lastModeOutcome?.succeeded == true
+                    && hiddenRenderer.lastModeOutcome?.succeeded == true,
+                    "Tracer scheduler fixture could not create paired 3D sessions")
+
+        var hiddenInspection = hiddenRenderer.state.inspection3D
+        hiddenInspection.showTracers = false
+        hiddenInspection.plane = .xz
+        hiddenInspection.setDepth(0.31)
+        hiddenInspection.camera.setYawDegrees(-63)
+        hiddenInspection.camera.setElevationDegrees(24)
+        hiddenInspection.camera.setZoomPercent(112)
+        hiddenRenderer.setInspection3D(hiddenInspection)
+
+        let expectedSeeds = tracerSeeds()
+        let visibleInitial = try rendererTracerPositions(visibleRenderer, metal: metal)
+        let hiddenInitial = try rendererTracerPositions(hiddenRenderer, metal: metal)
+        try require(tracerPositionBytes(visibleInitial) == tracerPositionBytes(expectedSeeds)
+                    && tracerPositionBytes(hiddenInitial) == tracerPositionBytes(expectedSeeds),
+                    "Each committed renderer session must own exactly reset deterministic tracer seeds")
+        try require(tracerPositionBytes(visibleInitial) == tracerPositionBytes(hiddenInitial),
+                    "Paired visible/hidden renderer sessions must begin with identical tracer positions")
+
+        for _ in 0..<3 {
+            visibleRenderer.drawPresentationOnly(in: visibleView)
+            hiddenRenderer.drawPresentationOnly(in: hiddenView)
+        }
+        let visibleAfterPausedPresentations = try rendererTracerPositions(visibleRenderer, metal: metal)
+        let hiddenAfterPausedPresentations = try rendererTracerPositions(hiddenRenderer, metal: metal)
+        try require(tracerPositionBytes(visibleAfterPausedPresentations) == tracerPositionBytes(visibleInitial)
+                    && tracerPositionBytes(hiddenAfterPausedPresentations) == tracerPositionBytes(hiddenInitial),
+                    "Paused presentation-only redraws must leave visible and hidden tracer bytes unchanged")
+
+        for _ in 0..<3 {
+            visibleRenderer.requestSingleStep()
+            hiddenRenderer.requestSingleStep()
+        }
+        try require(visibleRenderer.state.pendingSteps == 3 && hiddenRenderer.state.pendingSteps == 3,
+                    "Three queued renderer commands must remain accepted before encoding")
+        for _ in 0..<3 {
+            visibleRenderer.draw(in: visibleView)
+            hiddenRenderer.draw(in: hiddenView)
+        }
+        let completionFence = metal.newCommandBuffer()
+        completionFence.commit()
+        completionFence.waitUntilCompleted()
+        try require(completionFence.status == .completed,
+                    "Tracer scheduling completion fence failed: \(String(describing: completionFence.error))")
+        pumpRendererCallbacks()
+
+        try require(visibleRenderer.state.stepCount == 3 && hiddenRenderer.state.stepCount == 3
+                    && visibleRenderer.state.pendingSteps == 0 && hiddenRenderer.state.pendingSteps == 0
+                    && visibleRenderer.encoded3DStepCount == 3 && hiddenRenderer.encoded3DStepCount == 3
+                    && visibleRenderer.completed3DStepCount == 3 && hiddenRenderer.completed3DStepCount == 3,
+                    "Three no-drawable solver commands must produce three validated renderer completions")
+        let visibleAfterSteps = try rendererTracerPositions(visibleRenderer, metal: metal)
+        let hiddenAfterSteps = try rendererTracerPositions(hiddenRenderer, metal: metal)
+        try require(tracerPositionBytes(visibleAfterSteps) == tracerPositionBytes(hiddenAfterSteps),
+                    "Tracer positions must match at equal logical steps regardless of visibility")
+        try require(tracerPositionBytes(visibleAfterSteps) != tracerPositionBytes(visibleInitial),
+                    "Accepted solver steps must advance the production renderer's tracer positions")
+
+        hiddenInspection = hiddenRenderer.state.inspection3D
+        hiddenInspection.showTracers = true
+        hiddenRenderer.setInspection3D(hiddenInspection)
+        hiddenRenderer.drawPresentationOnly(in: hiddenView)
+        let hiddenAfterReshow = try rendererTracerPositions(hiddenRenderer, metal: metal)
+        try require(tracerPositionBytes(hiddenAfterReshow) == tracerPositionBytes(hiddenAfterSteps),
+                    "Showing hidden tracers must reveal current positions without reseeding or catch-up")
+
+        hiddenInspection = hiddenRenderer.state.inspection3D
+        hiddenInspection.showTracers = false
+        hiddenRenderer.setInspection3D(hiddenInspection)
+        let retainedInspection = hiddenInspection
+        hiddenRenderer.restartCurrentSimulation()
+        let afterRestart = try rendererTracerPositions(hiddenRenderer, metal: metal)
+        try require(tracerPositionBytes(afterRestart) == tracerPositionBytes(expectedSeeds),
+                    "Restart must reset complete tracer evolution to deterministic seeds")
+        try require(hiddenRenderer.state.inspection3D == retainedInspection
+                    && hiddenRenderer.state.userPaused && hiddenRenderer.state.stepCount == 0
+                    && hiddenRenderer.state.pendingSteps == 0,
+                    "Restart must retain hidden visibility and inspection choices while resetting evolution")
+
+        return [
+            "nilDrawable": true,
+            "initialSeedsExact": true,
+            "pausedPresentationsUnchanged": true,
+            "threeQueuedCommands": true,
+            "acceptedStepCount": visibleRenderer.state.stepCount,
+            "validatedCompletionCount": visibleRenderer.completed3DStepCount,
+            "hiddenVisiblePositionsEqual": true,
+            "hiddenAdvanced": true,
+            "visibilityDoesNotReseed": true,
+            "restartRestoresSeeds": true,
+            "restartRetainsInspection": true,
+        ]
+    }
+
+    private static func rendererTracerPositions(
+        _ renderer: Renderer,
+        metal: MetalDevice
+    ) throws -> [SIMD4<Float>] {
+        let storedValue = Mirror(reflecting: renderer).children
+            .first(where: { $0.label == "tracers3D" })?.value
+        guard let tracers = storedValue as? TracerSystem3D else {
+            throw Fluid3DHarnessError.assertion(
+                "Renderer does not own a committed 3D tracer resource named tracers3D"
+            )
+        }
+        var readback: MTLBuffer!
+        try command(metal) { commandBuffer in
+            readback = try tracers.encodeReadback(command: commandBuffer)
+        }
+        return try tracers.decodeReadback(readback)
     }
 
     private static func makeTracerSystemCapturingStorage(

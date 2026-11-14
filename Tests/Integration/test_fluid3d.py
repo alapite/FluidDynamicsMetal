@@ -971,6 +971,19 @@ class Fluid3DTests(unittest.TestCase):
             "noFluidFeedback": True,
             "finite": True,
             "positionsInBounds": True,
+            "rendererScheduling": {
+                "nilDrawable": True,
+                "initialSeedsExact": True,
+                "pausedPresentationsUnchanged": True,
+                "threeQueuedCommands": True,
+                "acceptedStepCount": 3,
+                "validatedCompletionCount": 3,
+                "hiddenVisiblePositionsEqual": True,
+                "hiddenAdvanced": True,
+                "visibilityDoesNotReseed": True,
+                "restartRestoresSeeds": True,
+                "restartRetainsInspection": True,
+            },
         }
         report = {"result": result}
         self.assertEqual(_validate_fixture_metrics("tracer-evolution", report), [])
@@ -981,6 +994,51 @@ class Fluid3DTests(unittest.TestCase):
             "tracer-evolution is missing required regression evidence: priorFailureGuarded",
             _validate_fixture_metrics("tracer-evolution", missing_prior_guard),
         )
+
+        missing_scheduler_evidence = copy.deepcopy(report)
+        del missing_scheduler_evidence["result"]["rendererScheduling"]["hiddenAdvanced"]
+        self.assertIn(
+            "tracer-evolution renderer scheduling is missing required regression evidence: hiddenAdvanced",
+            _validate_fixture_metrics("tracer-evolution", missing_scheduler_evidence),
+        )
+
+    def test_transition_fixture_requires_free_play_recovery_from_each_2d_lesson(self):
+        report = {
+            "result": {
+                "passed": True,
+                "fixture": "transitions-and-failures",
+                "lessonFailureRecovery": {
+                    "twoDLessons": [
+                        "Dye carried by a flow",
+                        "Two interacting vortices",
+                        "Stretching dye by stirring",
+                    ],
+                    "allRecoveredToRunningFreePlay": True,
+                    "freePlayPreferencesRetained": True,
+                    "failedRestartRetrySucceeded": True,
+                },
+            }
+        }
+        self.assertEqual(_validate_fixture_metrics("transitions-and-failures", report), [])
+        del report["result"]["lessonFailureRecovery"]["freePlayPreferencesRetained"]
+        self.assertIn(
+            "transitions-and-failures is missing required regression evidence: freePlayPreferencesRetained",
+            _validate_fixture_metrics("transitions-and-failures", report),
+        )
+
+    def test_renderer_sources_and_fault_seams_cover_tracer_ownership(self):
+        renderer_source = (ROOT / "Sources/Shared/Renderer.swift").read_text(encoding="utf-8")
+        for seam in ("makeTracers", "encodeTracerReset", "encodeTracerAdvance"):
+            with self.subTest(seam=seam):
+                self.assertIn(seam, renderer_source)
+
+        for relative_path in (
+            "Tests/Integration/test_renderer_correctness.py",
+            "Tests/Integration/test_educational_release.py",
+        ):
+            with self.subTest(source_list=relative_path):
+                source = (ROOT / relative_path).read_text(encoding="utf-8")
+                self.assertIn("TracerSystem3D.swift", source)
 
     def test_tracer_evidence_uses_inspection_reference_and_source_inventory(self):
         inspection_reference = ROOT / ".build/inspection3d-reference/manifest.json"
