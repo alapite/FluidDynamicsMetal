@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: 3D Teaching Foundation
 status: executing
-stopped_at: Completed 08-05-PLAN.md; next 08-06 / Wave 6
-last_updated: "2026-11-14T19:09:10Z"
-last_activity: 2026-11-14 -- 08-05 / Wave 5 complete; next 08-06 / Wave 6
+stopped_at: Completed 08-06-PLAN.md; next 08-07 / Wave 7
+last_updated: "2026-11-14T22:17:03Z"
+last_activity: 2026-11-14 -- Phase 08 Wave 6 closed; next 08-07 / Wave 7
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 18
-  completed_plans: 14
+  completed_plans: 15
   percent: 25
 ---
 
@@ -26,11 +26,11 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 ## Current Position
 
 Phase: 08 (spatial-inspection) — EXECUTING
-Plan: 5 of 9 complete; next 08-06 / Wave 6
-Status: Phase 08 execution continues; Plan 08-05 complete
-Last activity: 2026-11-14 -- 08-05 / Wave 5 complete; next 08-06 / Wave 6
+Plan: 6 of 9
+Status: Wave 6 complete; Phase 08 remains executing
+Last activity: 2026-11-14 -- 08-06 / Wave 6 closed; next 08-07 / Wave 7
 
-Progress: [████████░░] 78% of currently planned v1.1 plans closed (14/18); Phase 8 is 5/9. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
+Progress: [████████░░] 83% of currently planned v1.1 plans closed (15/18); Phase 8 is 6/9. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
 
 ## Performance Metrics
 
@@ -66,11 +66,13 @@ Progress: [████████░░] 78% of currently planned v1.1 plans c
 - 2026-11-14: 08-03 separates inspection edits from evolution state, routes paused presentation through a no-advance draw path, and distinguishes Restart retention from explicit 3D-entry defaults. Depth resources are preflighted transactionally; 3D presentation uses actual drawable dimensions. No 2D solver or ABI changes.
 - 2026-11-14: 08-04 adds native plane/depth/camera controls, a hit-transparent rotation-following orientation guide, and canvas-owned paused orbit/zoom. Panel-originated keys/gestures stay separate; screenshots are evidence only. Phase 8 requirements remain pending until later plans and human acceptance.
 - 2026-11-14: 08-05 establishes exact passive tracer seeds and same-command forward RK2 advancement from post-projection MAC fields, guarded by a device-validated read-only per-submission status binding. Tracer advancement is not yet scheduled by the renderer; 08-06 owns that integration. No Phase 8 requirement is complete.
+- 2026-11-14: 08-06 schedules tracer evolution only with accepted renderer steps, adds opaque-sheet depth-tested discs and the native visibility checkbox, and verifies hidden/no-drawable scheduling, Restart retention, failure recovery, and image occlusion. Spatial evidence routing now consistently hashes the inspection contract and captures. All Phase 8 requirements remain pending; 08-09 remains the human-review checkpoint.
 
 ### Pending Todos
 
 - Optional follow-up when convenient: work through the unchecked manual-review checklist in `docs/3d-phase7-verification.md` and record actual observations. Until then, keep SIM-04, SIM-05, SIM-06, LES-01, LES-02, and LES-06 pending manual acceptance.
 - Phase 8 Plan 08-04 manual follow-up: perform VoiceOver review and physical mouse/trackpad direction/feel checks when available; screenshots and synthesized events are not substitutes.
+- Phase 8 Plan 08-09 remains the human visual/accessibility/input checkpoint. Automated UI and GPU checks do not constitute human acceptance.
 
 ### Blockers/Concerns
 
@@ -79,6 +81,7 @@ Progress: [████████░░] 78% of currently planned v1.1 plans c
 - 08-03 / Wave 3 closed: state-scope checks, the production inspection-routing fixture, existing renderer step/inactivity and transition/failure fixtures, and both established renderer harnesses passed (10 tests total). Fresh Mac and iOS Simulator builds passed. See `08-03-SUMMARY.md`; no later Phase 8 plan ran, all five Phase 8 requirements remain pending, and 08-09 remains the blocking human checkpoint.
 - 08-04 / Wave 4 closed: the full Mac state/HUD suite passed (25 state + 19 UI tests), both no-override app builds passed, and the spatial-slices and inspection-routing production fixtures passed. Light/Dark and Increase Contrast UI capture bundles are retained. VoiceOver, physical gesture direction/feel, and macOS 26 runtime remain NOT TESTED; no Phase 8 requirement is complete. See `08-04-SUMMARY.md`. Next is 08-05 / Wave 5; no later plan or phase-level verification ran.
 - 08-05 / Wave 5 closed: Task 1 and Task 2 retained separate RED/GREEN commits. Independent oracle/state checks and production tracer-evolution, advection-boundaries, and projection GPU fixtures passed; the tracer fixture verified 512 exact seeds, 4,096 forward-RK2 comparisons, all 55 boundary/affine probes, queued/current/prior failure guards, no fluid feedback, and 48 production solver/tracer steps. Both app builds passed and the Mac HUD UI suite passed 19/19. See `08-05-SUMMARY.md`. INS-03 still needs renderer scheduling/visibility, INS-04 needs complete-state presentation comparisons, and 08-09 human review remains ahead. No Phase 8 requirement or phase-level acceptance is complete; next is 08-06 / Wave 6.
+- 08-06 / Wave 6 closed: Task 1 renderer scheduling and Task 2 depth-occluded tracer presentation/native controls are implemented and committed (`075cc6a`, `26a37b6`), with the renderer state-test source wiring follow-up `e775df7`. Fast state/reference and evidence-routing checks, both app builds, Mac state tests (25/25), five focused macOS spatial UI tests, six 2D renderer/educational regressions, and fresh `inspection-routing`, `tracer-evolution`, `transitions-and-failures`, and `tracer-occlusion` production fixtures passed. See `08-06-SUMMARY.md` and `08-06-REVIEW.md`. The grouped-run `tracer-evolution` exit `-9` did not recur when run alone. Phase 8 requirements remain pending; no phase-level verification ran. Next is 08-07 / Wave 7, with 08-09 human review still blocking Phase 8 closeout.
 - Phase 8 has nine executable plans / nine sequential waves / seventeen tasks. Distinct inline plan review passed after correcting early standalone-source dependencies and active-failure Free Play recovery/copy. All five owned requirements and D-01–21 are covered; schema/structure/XML/dependency/decision checks passed. See `08-PLAN-CHECK.md`. No Phase 8 implementation, app build/test, GPU evidence, measured feedback latency or human acceptance was performed during planning. Plan 08-09 is a blocking future human-review checkpoint; no prior no-issues assumption auto-approves it.
 - Phase 6 VER-02 is verified on the available macOS 27 host and iOS 26.4 simulators. The user approved closing v1.0 on 2026-09-25 while deferring actual macOS 26 runtime launch/drag beyond this milestone; PLAT-01 remains NOT TESTED and unverified.
 - Phase 6 iPhone and iPad HUD UI-test runs timed out without results; they remain NOT TESTED for this run. The user approved the separate manual checklist on the three prepared targets.
@@ -129,11 +132,11 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 
 ## Session Continuity
 
-Last session: 2026-11-14T19:09:10Z
-Stopped at: Completed 08-05-PLAN.md; next 08-06 / Wave 6
-Resume file: .planning/phases/08-spatial-inspection/08-06-PLAN.md
+Last session: 2026-11-14T22:17:03Z
+Stopped at: Completed 08-06-PLAN.md; next 08-07 / Wave 7
+Resume file: .planning/phases/08-spatial-inspection/08-07-PLAN.md
 
 ## Operator Next Steps
 
-- Continue with 08-06 / Wave 6 only when authorized. Read `08-05-SUMMARY.md` for tracer reset/advance APIs and GPU evidence; read `08-04-SUMMARY.md` for native controls and pending manual checks, `08-03-SUMMARY.md` for renderer routing/state scopes, `08-02-SUMMARY.md` for the spatial renderer API, and `08-01-SUMMARY.md` for the foundation API and pinned contract. Five of nine plans are complete; plans 08-07 through 08-09 and phase-level verification remain pending. All Phase 8 requirements remain pending.
+- Continue with 08-07 / Wave 7 only. Read `08-06-SUMMARY.md` for renderer scheduling, tracer rendering, recovery and fresh GPU/UI evidence; read `08-05-SUMMARY.md` for tracer producer/reset APIs, `08-04-SUMMARY.md` for native camera controls and pending manual checks, `08-03-SUMMARY.md` for renderer routing/state scopes, `08-02-SUMMARY.md` for the spatial renderer API, and `08-01-SUMMARY.md` for the foundation API and pinned contract. Six of nine plans are complete; plans 08-07 through 08-09 and phase-level verification remain pending. Keep all Phase 8 requirements pending and preserve 08-09 as the human-review checkpoint.
 - No remaining Phase 7 plans. When convenient, the user may complete the unchecked manual-review checklist in `docs/3d-phase7-verification.md`; record only actual observations. Do not treat the user-directed no-issues assumption as visual/interaction approval. Keep the six user-facing requirements pending; actual macOS 26 runtime and physical-device checks remain NOT TESTED, and displayed frame pacing remains NOT MEASURED.
