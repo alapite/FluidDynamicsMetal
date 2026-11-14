@@ -5,18 +5,41 @@ import MetalKit
 struct Renderer3DSessionFactory {
     let makeSimulation: (MetalDevice) throws -> FluidSimulation3D
     let makeVisualization: (MetalDevice) throws -> FieldVisualization3D
+    let makeTracers: (MetalDevice) throws -> TracerSystem3D
     let encodeReset: (FluidSimulation3D, MTLCommandBuffer) throws -> PressureProjection3D.StatusSlot
+    let encodeTracerReset: (TracerSystem3D, MTLCommandBuffer) throws -> Void
+    let encodeTracerAdvance: (
+        TracerSystem3D,
+        FluidSimulation3D,
+        MTLCommandBuffer,
+        PressureProjection3D.StatusSlot
+    ) throws -> Void
 
     init(
         makeSimulation: @escaping (MetalDevice) throws -> FluidSimulation3D = { try FluidSimulation3D(metal: $0) },
         makeVisualization: @escaping (MetalDevice) throws -> FieldVisualization3D = { try FieldVisualization3D(metal: $0) },
+        makeTracers: @escaping (MetalDevice) throws -> TracerSystem3D = { try TracerSystem3D(metal: $0) },
         encodeReset: @escaping (FluidSimulation3D, MTLCommandBuffer) throws -> PressureProjection3D.StatusSlot = {
             try $0.encodeReset(command: $1)
+        },
+        encodeTracerReset: @escaping (TracerSystem3D, MTLCommandBuffer) throws -> Void = {
+            try $0.encodeReset(command: $1)
+        },
+        encodeTracerAdvance: @escaping (
+            TracerSystem3D,
+            FluidSimulation3D,
+            MTLCommandBuffer,
+            PressureProjection3D.StatusSlot
+        ) throws -> Void = {
+            try $0.encodeAdvance(command: $2, simulation: $1, status: $3)
         }
     ) {
         self.makeSimulation = makeSimulation
         self.makeVisualization = makeVisualization
+        self.makeTracers = makeTracers
         self.encodeReset = encodeReset
+        self.encodeTracerReset = encodeTracerReset
+        self.encodeTracerAdvance = encodeTracerAdvance
     }
 }
 
@@ -41,6 +64,7 @@ private enum Renderer3DTransitionIntent {
 private struct Renderer3DStepCompletion: Sendable {
     let generation: Int
     let failureMessage: String?
+    let status: PressureProjection3D.StatusSlot
 }
 
 private final class Renderer3DCompletionMailbox: @unchecked Sendable {
@@ -73,6 +97,8 @@ final class Renderer: NSObject, MTKViewDelegate {
     private(set) var simulation: FluidSimulation!
     private(set) var simulation3D: FluidSimulation3D?
     private(set) var visualization3D: FieldVisualization3D?
+    private(set) var tracers3D: TracerSystem3D?
+    private(set) var latestCompleted3DStatus: PressureProjection3D.StatusSlot?
     private(set) var state = SimulationState()
     private(set) var encoded3DStepCount = 0
     private(set) var completed3DStepCount = 0
@@ -89,7 +115,6 @@ final class Renderer: NSObject, MTKViewDelegate {
     private var sessionGeneration = 0
     private let visualization: FieldVisualization
     private let threeDFactory: Renderer3DSessionFactory
-    private var twoDRecoveryState: SimulationState?
     private let completionMailbox = Renderer3DCompletionMailbox()
 
     init(
@@ -145,7 +170,8 @@ final class Renderer: NSObject, MTKViewDelegate {
         replaceSimulation(reset: true)
         simulation3D = nil
         visualization3D = nil
-        twoDRecoveryState = nil
+        tracers3D = nil
+        latestCompleted3DStatus = nil
         encoded3DStepCount = 0
         completed3DStepCount = 0
         publishModeOutcome(requested: mode, error: nil)
@@ -199,7 +225,9 @@ final class Renderer: NSObject, MTKViewDelegate {
     private func updateScheduling() { metalView?.isPaused = !state.shouldAdvance }
     private func redrawIfPaused() {
         guard !state.shouldAdvance, !state.inactive, !state.resetting,
-              state.mode.is3D ? simulation3D != nil && visualization3D != nil : simulation != nil,
+              state.mode.is3D
+                ? simulation3D != nil && visualization3D != nil && tracers3D != nil
+                : simulation != nil,
               let view = metalView else { return }
         drawPresentationOnly(in: view)
     }
@@ -267,6 +295,9 @@ final class Renderer: NSObject, MTKViewDelegate {
                 let candidateVisualization: FieldVisualization3D
                 do { candidateVisualization = try threeDFactory.makeVisualization(metal) }
                 catch { throw RendererModeFailure(stage: "3D presentation pipeline", reason: Self.message(for: error)) }
+                let candidateTracers: TracerSystem3D
+                do { candidateTracers = try threeDFactory.makeTracers(metal) }
+                catch { throw RendererModeFailure(stage: "3D tracer resources", reason: Self.message(for: error)) }
                 let drawableSize = metalView.flatMap { Self.drawablePixelSize(for: $0) }
                 do {
                     try candidateVisualization.prepareInspection(
@@ -284,6 +315,13 @@ final class Renderer: NSObject, MTKViewDelegate {
                 let status: PressureProjection3D.StatusSlot
                 do { status = try threeDFactory.encodeReset(candidate, command) }
                 catch { throw RendererModeFailure(stage: "3D initial reset encoding", reason: Self.message(for: error)) }
+                do { try threeDFactory.encodeTracerReset(candidateTracers, command) }
+                catch {
+                    throw RendererModeFailure(
+                        stage: "3D initial tracer reset encoding",
+                        reason: Self.message(for: error)
+                    )
+                }
                 command.commit()
                 command.waitUntilCompleted()
                 guard command.status == .completed else {
@@ -306,7 +344,6 @@ final class Renderer: NSObject, MTKViewDelegate {
                     )
                 }
 
-                if !wasAlready3D { twoDRecoveryState = state }
                 var candidateState = state
                 switch intent {
                 case .selection:
@@ -317,6 +354,8 @@ final class Renderer: NSObject, MTKViewDelegate {
                 candidateState.finishReset()
                 simulation3D = candidate
                 visualization3D = candidateVisualization
+                tracers3D = candidateTracers
+                latestCompleted3DStatus = status
                 state = candidateState
                 encoded3DStepCount = 0
                 completed3DStepCount = 0
@@ -335,7 +374,8 @@ final class Renderer: NSObject, MTKViewDelegate {
     private func restoreUsableTwoDState() {
         guard let view = metalView else { return }
         let wasInactive = state.inactive
-        var recovered = twoDRecoveryState ?? SimulationState()
+        var recovered = state
+        recovered.selectMode(.freePlay)
         recovered.beginReset()
         let width = recovered.mode.experiment == nil ? max(1, Int(view.bounds.width)) : ExperimentRecipes.gridSize
         let height = recovered.mode.experiment == nil ? max(1, Int(view.bounds.height)) : ExperimentRecipes.gridSize
@@ -347,10 +387,11 @@ final class Renderer: NSObject, MTKViewDelegate {
         simulation = next
         simulation3D = nil
         visualization3D = nil
+        tracers3D = nil
+        latestCompleted3DStatus = nil
         recovered.finishReset()
         if wasInactive { recovered.resignActive() }
         state = recovered
-        twoDRecoveryState = nil
         encoded3DStepCount = 0
         completed3DStepCount = 0
     }
@@ -455,7 +496,9 @@ final class Renderer: NSObject, MTKViewDelegate {
 
     private func draw(in view: MTKView, presentationOnly: Bool) {
         guard !state.inactive, !state.resetting,
-              state.mode.is3D ? simulation3D != nil && visualization3D != nil : simulation != nil else { return }
+              state.mode.is3D
+                ? simulation3D != nil && visualization3D != nil && tracers3D != nil
+                : simulation != nil else { return }
         semaphore.wait()
         let drawable: CAMetalDrawable?
         if presentationOnly {
@@ -480,9 +523,19 @@ final class Renderer: NSObject, MTKViewDelegate {
                     guard let simulation3D else {
                         throw RendererModeFailure(stage: "3D advance", reason: "active 3D simulation is unavailable")
                     }
-                    threeDStatus = try simulation3D.encodeStep(command: command)
+                    guard let tracers3D else {
+                        throw RendererModeFailure(stage: "3D tracer advance", reason: "active 3D tracers are unavailable")
+                    }
+                    let status = try simulation3D.encodeStep(command: command)
+                    threeDStatus = status
+                    try threeDFactory.encodeTracerAdvance(
+                        tracers3D,
+                        simulation3D,
+                        command,
+                        status
+                    )
                 } catch {
-                    registerCommandCompletion(command, threeDStatus: nil, generation: sessionGeneration)
+                    registerCommandCompletion(command, threeDStatus: threeDStatus, generation: sessionGeneration)
                     command.commit()
                     failActiveThreeDSession(error)
                     return
@@ -540,7 +593,11 @@ final class Renderer: NSObject, MTKViewDelegate {
         let mailbox = completionMailbox
         command.addCompletedHandler { [weak self, semaphore] completedCommand in
             let failureMessage = Self.stepCompletionFailure(command: completedCommand, status: threeDStatus)
-            mailbox.enqueue(Renderer3DStepCompletion(generation: generation, failureMessage: failureMessage))
+            mailbox.enqueue(Renderer3DStepCompletion(
+                generation: generation,
+                failureMessage: failureMessage,
+                status: threeDStatus
+            ))
             semaphore.signal()
             DispatchQueue.main.async { [weak self] in self?.processCompleted3DSteps() }
         }
@@ -573,6 +630,7 @@ final class Renderer: NSObject, MTKViewDelegate {
                 failActiveThreeDSession(message: failureMessage)
                 return
             }
+            latestCompleted3DStatus = completion.status
             completed3DStepCount += 1
         }
     }

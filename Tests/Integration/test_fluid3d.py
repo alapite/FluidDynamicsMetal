@@ -683,6 +683,62 @@ def _validate_fixture_metrics(fixture: str, report: dict) -> list[str]:
         ):
             if result.get(key) is not True:
                 errors.append(f"tracer-evolution is missing required regression evidence: {key}")
+        scheduling = result.get("rendererScheduling")
+        if not isinstance(scheduling, dict):
+            errors.append("tracer-evolution renderer scheduling evidence is missing")
+        else:
+            for key in (
+                "nilDrawable",
+                "initialSeedsExact",
+                "pausedPresentationsUnchanged",
+                "threeQueuedCommands",
+                "hiddenVisiblePositionsEqual",
+                "hiddenAdvanced",
+                "visibilityDoesNotReseed",
+                "restartRestoresSeeds",
+                "restartRetainsInspection",
+                "latestCompletedStatusRetained",
+            ):
+                if scheduling.get(key) is not True:
+                    errors.append(
+                        f"tracer-evolution renderer scheduling is missing required regression evidence: {key}"
+                    )
+            for key in ("acceptedStepCount", "validatedCompletionCount"):
+                if scheduling.get(key) != 3:
+                    errors.append(
+                        f"tracer-evolution renderer scheduling must report exactly 3 {key}"
+                    )
+    elif fixture == "transitions-and-failures":
+        recovery = result.get("lessonFailureRecovery")
+        expected_lessons = {
+            "Dye carried by a flow",
+            "Two interacting vortices",
+            "Stretching dye by stirring",
+        }
+        if not isinstance(recovery, dict):
+            errors.append("transitions-and-failures lesson recovery evidence is missing")
+        else:
+            if set(recovery.get("twoDLessons", [])) != expected_lessons:
+                errors.append("transitions-and-failures must cover failed Restart from every 2D lesson")
+            for key in (
+                "allRecoveredToRunningFreePlay",
+                "freePlayPreferencesRetained",
+                "failedRestartRetrySucceeded",
+            ):
+                if recovery.get(key) is not True:
+                    errors.append(f"transitions-and-failures is missing required regression evidence: {key}")
+    elif fixture == "inspection-routing":
+        for key in (
+            "nilDrawablePresentation",
+            "pausedPendingStepsPreserved",
+            "tracerInitialSeedsExact",
+            "hiddenTracerStepAdvanced",
+            "restartRetainsInspection",
+            "restartRestoresTracerSeeds",
+            "reselectionRestoresDefaults",
+        ):
+            if result.get(key) is not True:
+                errors.append(f"inspection-routing is missing required regression evidence: {key}")
     return errors
 
 
@@ -978,6 +1034,7 @@ class Fluid3DTests(unittest.TestCase):
                 "threeQueuedCommands": True,
                 "acceptedStepCount": 3,
                 "validatedCompletionCount": 3,
+                "latestCompletedStatusRetained": True,
                 "hiddenVisiblePositionsEqual": True,
                 "hiddenAdvanced": True,
                 "visibilityDoesNotReseed": True,
@@ -1024,6 +1081,27 @@ class Fluid3DTests(unittest.TestCase):
         self.assertIn(
             "transitions-and-failures is missing required regression evidence: freePlayPreferencesRetained",
             _validate_fixture_metrics("transitions-and-failures", report),
+        )
+
+    def test_inspection_routing_requires_transactional_tracer_reset_and_step_evidence(self):
+        report = {
+            "result": {
+                "passed": True,
+                "fixture": "inspection-routing",
+                "nilDrawablePresentation": True,
+                "pausedPendingStepsPreserved": True,
+                "tracerInitialSeedsExact": True,
+                "hiddenTracerStepAdvanced": True,
+                "restartRetainsInspection": True,
+                "restartRestoresTracerSeeds": True,
+                "reselectionRestoresDefaults": True,
+            }
+        }
+        self.assertEqual(_validate_fixture_metrics("inspection-routing", report), [])
+        del report["result"]["restartRestoresTracerSeeds"]
+        self.assertIn(
+            "inspection-routing is missing required regression evidence: restartRestoresTracerSeeds",
+            _validate_fixture_metrics("inspection-routing", report),
         )
 
     def test_renderer_sources_and_fault_seams_cover_tracer_ownership(self):

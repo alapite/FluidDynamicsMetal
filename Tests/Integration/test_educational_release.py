@@ -25,7 +25,7 @@ class EducationalReleaseTests(unittest.TestCase):
             'Slab.swift', 'SimulationState.swift', 'SimulationTypes.swift', 'ExperimentRecipes.swift',
             'FluidSimulation.swift', 'FieldVisualization.swift', 'ParticleSystem.swift', 'Renderer.swift',
             'SimulationTypes3D.swift', 'VolumeField3D.swift', 'FluidSimulation3D.swift',
-            'PressureProjection3D.swift', 'ExperimentRecipes3D.swift', 'FieldVisualization3D.swift',
+            'PressureProjection3D.swift', 'TracerSystem3D.swift', 'ExperimentRecipes3D.swift', 'FieldVisualization3D.swift',
             'InspectionState3D.swift', 'Camera3D.swift']]
         with tempfile.TemporaryDirectory(prefix='fluid-education-') as directory:
             executable = Path(directory) / 'check'
