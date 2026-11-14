@@ -155,6 +155,7 @@ struct SimulationState {
     private(set) var mode: SimulationMode = .freePlay
     private(set) var adjustment: ExperimentAdjustment?
     private(set) var displayOptions = DisplayOptions()
+    private(set) var inspection3D = InspectionState3D()
     private(set) var stepCount = 0
     private(set) var pendingSteps = 0
     private(set) var resetting = false
@@ -179,6 +180,10 @@ struct SimulationState {
     mutating func setDisplayOptions(_ options: DisplayOptions) {
         guard !mode.is3D else { return }
         displayOptions = options
+    }
+    mutating func setInspection3D(_ inspection: InspectionState3D) {
+        guard mode.is3D else { return }
+        inspection3D = inspection
     }
     mutating func togglePause() {
         guard !complete else { return }
@@ -213,7 +218,7 @@ struct SimulationState {
             adjustment = lesson.defaultAdjustment; tuning = .lesson
             field = lesson.defaultField; displayOptions = .lesson; userPaused = true
         } else if mode.is3D {
-            adjustment = nil; userPaused = true
+            adjustment = nil; userPaused = true; inspection3D = InspectionState3D()
         } else {
             adjustment = nil; tuning = freePlayTuning; field = freePlayField; displayOptions = freePlayOptions; userPaused = false
         }
