@@ -109,6 +109,12 @@ None.
 - Mac HUD UI suite via `xcodebuild test`: **19/19 tests passed, 0 failures**.
 - `git diff --check`: **passed** before metadata closeout.
 
+## Self-Check: PASSED
+
+- `Sources/Shared/TracerSystem3D.swift` exists, and all 08-05 task and closeout commits are present.
+- Fresh post-wave Mac and iOS Simulator builds passed; the focused six-test acceptance run passed, including tracer evolution, read-only status, advection/boundaries, and projection.
+- `git diff --check 163cd40..HEAD` passed. The broader integration discovery run exceeded the 300-second post-wave gate timeout, so that run is inconclusive and is not reported as a full-suite pass.
+
 ## Next Plan Readiness
 
 - Plan 08-05 / Wave 5 is complete; Plan 08-06 / Wave 6 is next. It can integrate accepted-step scheduling, hidden advancement, visibility, and sheet occlusion using this advancement API.
