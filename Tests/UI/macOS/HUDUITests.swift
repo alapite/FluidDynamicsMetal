@@ -284,8 +284,8 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
 
         XCTAssertEqual(app.staticTexts["lesson3d.heading"].label, "3D Dye Advection")
-        XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "XY slice · halfway through Z")
-        XCTAssertEqual(app.staticTexts["lesson3d.slice"].label, "XY slice, halfway through Z")
+        XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "XY slice · Z depth: 50%")
+        XCTAssertEqual(app.staticTexts["lesson3d.slice"].label, "XY slice, Z depth 50 percent")
         XCTAssertEqual(app.staticTexts["lesson3d.concentration"].label, "Dye concentration")
         XCTAssertEqual(app.staticTexts["lesson3d.legend"].value as? String, "Less dye → More dye")
         XCTAssertEqual(app.staticTexts["lesson3d.legend"].label, "Dye concentration, less dye to more dye")
@@ -416,7 +416,7 @@ final class HUDUITests: XCTestCase {
 
         let panel = app.windows["Simulation Controls"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
-        let plane = app.segmentedControls["inspection3d.plane"]
+        let plane = app.radioGroups["inspection3d.plane"]
         let depth = app.sliders["inspection3d.depth"]
         let centreSlice = app.buttons["inspection3d.centreSlice"]
         let orbit = app.sliders["inspection3d.orbit"]
@@ -431,6 +431,13 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(elevation.exists)
         XCTAssertTrue(zoom.exists)
         XCTAssertTrue(resetCamera.exists)
+        XCTAssertEqual(plane.label, "Plane")
+        XCTAssertEqual(depth.label, "Z depth")
+        XCTAssertEqual(centreSlice.label, "Centre Slice")
+        XCTAssertEqual(orbit.label, "Horizontal Orbit")
+        XCTAssertEqual(elevation.label, "Elevation")
+        XCTAssertEqual(zoom.label, "Zoom")
+        XCTAssertEqual(resetCamera.label, "Reset Camera")
         XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "XY slice · Z depth: 50%")
         XCTAssertEqual(depth.value as? String, "50%")
         XCTAssertEqual(orbit.value as? String, "+25°")
@@ -452,25 +459,28 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Run"].exists)
         XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
 
-        plane.buttons["XZ"].click()
+        plane.radioButtons["XZ"].click()
         XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "XZ slice · Y depth: 50%")
+        XCTAssertEqual(depth.label, "Y depth")
         XCTAssertEqual(app.staticTexts["inspection3d.depthValue"].value as? String, "Y depth: 50%")
 
         // Camera slider arrows use their own increments, and Centre Slice changes
-        // only depth even after the camera and plane have changed.
-        orbit.click()
+        // only depth even after the camera and plane have changed. Choosing a
+        // plane by pointer leaves keyboard focus on Centre Slice; Tab enters Orbit.
+        app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
         app.typeKey(XCUIKeyboardKey.rightArrow, modifierFlags: [])
-        elevation.click()
+        app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
         app.typeKey(XCUIKeyboardKey.upArrow, modifierFlags: [])
-        zoom.click()
+        app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
         app.typeKey(XCUIKeyboardKey.rightArrow, modifierFlags: [])
         XCTAssertEqual(orbit.value as? String, "+30°")
         XCTAssertEqual(elevation.value as? String, "+21°")
         XCTAssertEqual(zoom.value as? String, "105%")
 
-        depth.click()
+        for _ in 0..<4 { app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [.shift]) }
         app.typeKey(XCUIKeyboardKey.leftArrow, modifierFlags: [])
-        centreSlice.click()
+        app.typeKey(XCUIKeyboardKey.tab, modifierFlags: [])
+        app.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
         XCTAssertEqual(depth.value as? String, "50%")
         XCTAssertEqual(orbit.value as? String, "+30°")
         XCTAssertEqual(elevation.value as? String, "+21°")
@@ -486,7 +496,8 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(depth.value as? String, "50%")
         XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "XZ slice · Y depth: 50%")
         XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 1")
-        XCTAssertTrue(app.buttons["Run"].exists, "Reset Camera must preserve the paused transport state")
+        XCTAssertTrue(app.buttons["Resume simulation"].exists,
+                      "Reset Camera must preserve the paused transport state at Step 1")
     }
 
     func testSpatialInspectionLayoutAndModeReturn() throws {
@@ -516,10 +527,12 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["inspection3d.resetCamera"].exists,
                       "Camera recovery must remain reachable in the scrolling body")
 
-        let plane = app.segmentedControls["inspection3d.plane"]
-        plane.buttons["YZ"].click()
-        let depth = app.sliders["inspection3d.depth"]
-        depth.click()
+        let plane = app.radioGroups["inspection3d.plane"]
+        plane.radioButtons["YZ"].click()
+        XCTAssertEqual(app.sliders["inspection3d.depth"].label, "X depth")
+        // The 3D menu selection retains the Experiments focus. Traverse through
+        // pinned controls and Plane to the offscreen Depth slider by keyboard.
+        for _ in 0..<5 { app.typeKey(XCUIKeyboardKey.tab, modifierFlags: []) }
         app.typeKey(XCUIKeyboardKey.leftArrow, modifierFlags: [])
         XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "YZ slice · X depth: 49%")
 

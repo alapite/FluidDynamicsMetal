@@ -10,6 +10,13 @@ import AppKit
 import MetalKit
 
 class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValidation {
+    private enum InspectionSliderKind: Int {
+        case depth
+        case orbit
+        case elevation
+        case zoom
+    }
+
     private static let selectableModes: [(identity: String, mode: SimulationMode)] = [
         ("freePlay", .freePlay),
         ("advection", .experiment(.advection)),
@@ -37,10 +44,25 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private let threeDIntroStack = NSStackView()
     private let threeDLegendStack = NSStackView()
     private let threeDHeading = NSTextField(wrappingLabelWithString: "3D Dye Advection")
-    private let threeDSlice = NSTextField(wrappingLabelWithString: "XY slice · halfway through Z")
+    private let threeDSlice = NSTextField(wrappingLabelWithString: "XY slice · Z depth: 50%")
     private let threeDConcentration = NSTextField(labelWithString: "Dye concentration")
     private let threeDLegend = NSTextField(wrappingLabelWithString: "Less dye → More dye")
-    private let threeDNote = NSTextField(wrappingLabelWithString: "This is a cross-section of dye carried by an evolving 3D flow. Brighter areas contain more dye. Dye can move out of this fixed plane. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
+    private let threeDNote = NSTextField(wrappingLabelWithString: "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; dye can move out of the plane. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
+    private let inspectionSliceStack = NSStackView()
+    private let inspectionCameraStack = NSStackView()
+    private let inspectionPlaneControl = NSSegmentedControl(
+        labels: ["XY", "XZ", "YZ"], trackingMode: .selectOne, target: nil, action: nil
+    )
+    private let inspectionDepthSlider = InspectionSlider3D(frame: .zero)
+    private let inspectionDepthValue = NSTextField(labelWithString: "Z depth: 50%")
+    private let inspectionCentreSliceButton = NSButton(title: "Centre Slice", target: nil, action: nil)
+    private let inspectionOrbitSlider = InspectionSlider3D(frame: .zero)
+    private let inspectionOrbitValue = NSTextField(labelWithString: "+25°")
+    private let inspectionElevationSlider = InspectionSlider3D(frame: .zero)
+    private let inspectionElevationValue = NSTextField(labelWithString: "+18°")
+    private let inspectionZoomSlider = InspectionSlider3D(frame: .zero)
+    private let inspectionZoomValue = NSTextField(labelWithString: "100%")
+    private let inspectionResetCameraButton = NSButton(title: "Reset Camera", target: nil, action: nil)
     private let aboutButton = NSButton(title: "About this simulation", target: nil, action: nil)
     private let aboutText = NSTextField(wrappingLabelWithString: LearningCopy.about)
     private var overlayButtons: [NSButton] = []
@@ -95,7 +117,10 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         metalView.delegate = renderer
 
         installControls()
-        renderer.stateDidChange = { [weak self] in self?.refreshTransport() }
+        renderer.stateDidChange = { [weak self] in
+            self?.refreshTransport()
+            self?.refreshInspectionControls()
+        }
         renderer.modeOutcomeDidChange = { [weak self] outcome in
             guard let self else { return }
             let sourceMode = self.modeTransitionSource
@@ -120,6 +145,10 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             // controller. Activate it here so that forwarding cannot also pause.
             if $0.keyCode == 0x31, let button = $0.window?.firstResponder as? NSButton {
                 button.performClick(nil); return nil
+            }
+            if $0.keyCode == 0x30 {
+                DispatchQueue.main.async { [weak self] in self?.revealFocusedInspectionControl() }
+                return $0
             }
             if $0.window?.firstResponder is NSControl || $0.window?.firstResponder is NSTextView { return $0 }
             if $0.keyCode == 0x31 || $0.keyCode == 0x01 {
@@ -414,7 +443,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         threeDHeading.setAccessibilityLabel("3D Dye Advection")
         threeDSlice.font = .systemFont(ofSize: 11, weight: .regular)
         threeDSlice.setAccessibilityIdentifier("lesson3d.slice")
-        threeDSlice.setAccessibilityLabel("XY slice, halfway through Z")
+        threeDSlice.setAccessibilityLabel("XY slice, Z depth 50 percent")
         threeDConcentration.font = .systemFont(ofSize: 11, weight: .semibold)
         threeDConcentration.setAccessibilityIdentifier("lesson3d.concentration")
         threeDConcentration.setAccessibilityLabel("Dye concentration")
@@ -442,8 +471,11 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         threeDLegendStack.addArrangedSubview(threeDConcentration)
         threeDLegendStack.addArrangedSubview(threeDColourLegend)
         threeDLegendStack.addArrangedSubview(threeDLegend)
+        configureInspectionControls()
         threeDBodyStack.addArrangedSubview(threeDIntroStack)
         threeDBodyStack.addArrangedSubview(threeDLegendStack)
+        threeDBodyStack.addArrangedSubview(inspectionSliceStack)
+        threeDBodyStack.addArrangedSubview(inspectionCameraStack)
         threeDBodyStack.addArrangedSubview(threeDNote)
         colourLegend.setAccessibilityElement(false)
         threeDColourLegend.setAccessibilityElement(false)
@@ -495,7 +527,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         bodyStack.addArrangedSubview(twoDBodyStack)
         bodyStack.addArrangedSubview(threeDBodyStack)
         for stack in [pinnedStack, bodyStack, twoDBodyStack, threeDBodyStack,
-                      threeDIntroStack, threeDLegendStack] {
+                      threeDIntroStack, threeDLegendStack, inspectionSliceStack, inspectionCameraStack] {
             stack.translatesAutoresizingMaskIntoConstraints = false
             for child in stack.arrangedSubviews { child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
         }
@@ -519,6 +551,262 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     private func fieldTitle(_ field: DisplayField) -> String { field.title }
+
+    private func configureInspectionControls() {
+        inspectionSliceStack.orientation = .vertical
+        inspectionSliceStack.alignment = .leading
+        inspectionSliceStack.spacing = 8
+        inspectionCameraStack.orientation = .vertical
+        inspectionCameraStack.alignment = .leading
+        inspectionCameraStack.spacing = 8
+
+        let sliceHeading = NSTextField(labelWithString: "Slice")
+        sliceHeading.font = .systemFont(ofSize: 13, weight: .semibold)
+        let cameraHeading = NSTextField(labelWithString: "Camera")
+        cameraHeading.font = .systemFont(ofSize: 13, weight: .semibold)
+
+        let planeLabel = NSTextField(labelWithString: "Plane")
+        planeLabel.setAccessibilityLabel("Plane")
+        planeLabel.setContentHuggingPriority(.required, for: .horizontal)
+        inspectionPlaneControl.setAccessibilityLabel("Plane")
+        inspectionPlaneControl.setAccessibilityIdentifier("inspection3d.plane")
+        inspectionPlaneControl.target = self
+        inspectionPlaneControl.action = #selector(changeInspectionPlane(_:))
+        for plane in InspectionPlane3D.allCases {
+            inspectionPlaneControl.setSelected(plane == .xy, forSegment: plane.rawValue)
+        }
+        inspectionPlaneControl.widthAnchor.constraint(greaterThanOrEqualToConstant: 150).isActive = true
+        inspectionPlaneControl.setAccessibilityValue("XY")
+        let planeRow = NSStackView(views: [planeLabel, inspectionPlaneControl])
+        planeRow.orientation = .horizontal
+        planeRow.alignment = .centerY
+        planeRow.distribution = .fill
+        planeRow.spacing = 8
+
+        let depthLabel = NSTextField(labelWithString: "Depth")
+        inspectionDepthSlider.minValue = 0
+        inspectionDepthSlider.maxValue = 100
+        inspectionDepthSlider.doubleValue = 50
+        inspectionDepthSlider.keyboardIncrement = 1
+        inspectionDepthSlider.isContinuous = true
+        inspectionDepthSlider.tag = InspectionSliderKind.depth.rawValue
+        inspectionDepthSlider.target = self
+        inspectionDepthSlider.action = #selector(changeInspectionSlider(_:))
+        inspectionDepthSlider.setAccessibilityLabel("Z depth")
+        inspectionDepthSlider.setAccessibilityIdentifier("inspection3d.depth")
+        inspectionDepthSlider.setAccessibilityHelp("Move the XY slice along Z. Centre Slice returns the depth to 50%.")
+        inspectionDepthSlider.setAccessibilityValue("50%")
+        inspectionDepthValue.alignment = .right
+        inspectionDepthValue.setAccessibilityIdentifier("inspection3d.depthValue")
+        inspectionDepthValue.setAccessibilityLabel("Z depth: 50%")
+        let depthRow = inspectionSliderRow(label: depthLabel, value: inspectionDepthValue,
+                                           slider: inspectionDepthSlider)
+
+        configureInspectionButton(inspectionCentreSliceButton, action: #selector(centreInspectionSlice(_:)),
+                                  identifier: "inspection3d.centreSlice")
+        inspectionCentreSliceButton.setAccessibilityHelp(
+            "Set the current slice depth to 50% without changing its plane or the camera."
+        )
+        inspectionSliceStack.addArrangedSubview(sliceHeading)
+        inspectionSliceStack.addArrangedSubview(planeRow)
+        inspectionSliceStack.addArrangedSubview(depthRow)
+        inspectionSliceStack.addArrangedSubview(inspectionCentreSliceButton)
+
+        let orbitLabel = NSTextField(labelWithString: "Horizontal Orbit")
+        inspectionOrbitSlider.minValue = -180
+        inspectionOrbitSlider.maxValue = 180
+        inspectionOrbitSlider.doubleValue = 25
+        inspectionOrbitSlider.keyboardIncrement = 5
+        inspectionOrbitSlider.isContinuous = true
+        inspectionOrbitSlider.tag = InspectionSliderKind.orbit.rawValue
+        inspectionOrbitSlider.target = self
+        inspectionOrbitSlider.action = #selector(changeInspectionSlider(_:))
+        inspectionOrbitSlider.setAccessibilityLabel("Horizontal Orbit")
+        inspectionOrbitSlider.setAccessibilityIdentifier("inspection3d.orbit")
+        inspectionOrbitValue.alignment = .right
+        inspectionOrbitValue.setAccessibilityIdentifier("inspection3d.orbitValue")
+        let orbitRow = inspectionSliderRow(label: orbitLabel, value: inspectionOrbitValue,
+                                           slider: inspectionOrbitSlider)
+
+        let elevationLabel = NSTextField(labelWithString: "Elevation")
+        inspectionElevationSlider.minValue = -75
+        inspectionElevationSlider.maxValue = 75
+        inspectionElevationSlider.doubleValue = 18
+        inspectionElevationSlider.keyboardIncrement = 3
+        inspectionElevationSlider.isContinuous = true
+        inspectionElevationSlider.tag = InspectionSliderKind.elevation.rawValue
+        inspectionElevationSlider.target = self
+        inspectionElevationSlider.action = #selector(changeInspectionSlider(_:))
+        inspectionElevationSlider.setAccessibilityLabel("Elevation")
+        inspectionElevationSlider.setAccessibilityIdentifier("inspection3d.elevation")
+        inspectionElevationValue.alignment = .right
+        inspectionElevationValue.setAccessibilityIdentifier("inspection3d.elevationValue")
+        let elevationRow = inspectionSliderRow(label: elevationLabel, value: inspectionElevationValue,
+                                               slider: inspectionElevationSlider)
+
+        let zoomLabel = NSTextField(labelWithString: "Zoom")
+        inspectionZoomSlider.minValue = 50
+        inspectionZoomSlider.maxValue = 150
+        inspectionZoomSlider.doubleValue = 100
+        inspectionZoomSlider.keyboardIncrement = 5
+        inspectionZoomSlider.isContinuous = true
+        inspectionZoomSlider.tag = InspectionSliderKind.zoom.rawValue
+        inspectionZoomSlider.target = self
+        inspectionZoomSlider.action = #selector(changeInspectionSlider(_:))
+        inspectionZoomSlider.setAccessibilityLabel("Zoom")
+        inspectionZoomSlider.setAccessibilityIdentifier("inspection3d.zoom")
+        inspectionZoomValue.alignment = .right
+        inspectionZoomValue.setAccessibilityIdentifier("inspection3d.zoomValue")
+        let zoomRow = inspectionSliderRow(label: zoomLabel, value: inspectionZoomValue,
+                                          slider: inspectionZoomSlider)
+
+        configureInspectionButton(inspectionResetCameraButton, action: #selector(resetInspectionCamera(_:)),
+                                  identifier: "inspection3d.resetCamera")
+        inspectionResetCameraButton.setAccessibilityHelp(
+            "Restore the starting camera view without changing the slice or experiment."
+        )
+        let gestureHelp = NSTextField(wrappingLabelWithString:
+            "Drag the canvas to orbit. Scroll to zoom. You can also use the camera sliders."
+        )
+        gestureHelp.font = .systemFont(ofSize: 11, weight: .regular)
+        gestureHelp.setAccessibilityLabel(gestureHelp.stringValue)
+
+        inspectionCameraStack.addArrangedSubview(cameraHeading)
+        inspectionCameraStack.addArrangedSubview(orbitRow)
+        inspectionCameraStack.addArrangedSubview(elevationRow)
+        inspectionCameraStack.addArrangedSubview(zoomRow)
+        inspectionCameraStack.addArrangedSubview(inspectionResetCameraButton)
+        inspectionCameraStack.addArrangedSubview(gestureHelp)
+
+        inspectionPlaneControl.nextKeyView = inspectionDepthSlider
+        inspectionDepthSlider.nextKeyView = inspectionCentreSliceButton
+        inspectionCentreSliceButton.nextKeyView = inspectionOrbitSlider
+        inspectionOrbitSlider.nextKeyView = inspectionElevationSlider
+        inspectionElevationSlider.nextKeyView = inspectionZoomSlider
+        inspectionZoomSlider.nextKeyView = inspectionResetCameraButton
+        inspectionResetCameraButton.nextKeyView = experimentSelector
+    }
+
+    private func configureInspectionButton(_ button: NSButton, action: Selector, identifier: String) {
+        button.target = self
+        button.action = action
+        button.bezelStyle = .rounded
+        button.setAccessibilityLabel(button.title)
+        button.setAccessibilityIdentifier(identifier)
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
+    }
+
+    private func inspectionSliderRow(
+        label: NSTextField,
+        value: NSTextField,
+        slider: InspectionSlider3D
+    ) -> NSStackView {
+        let heading = NSStackView(views: [label, value])
+        heading.orientation = .horizontal
+        heading.alignment = .centerY
+        heading.distribution = .fill
+        heading.spacing = 8
+        value.setContentHuggingPriority(.required, for: .horizontal)
+
+        let row = NSStackView(views: [heading, slider])
+        row.orientation = .vertical
+        row.alignment = .leading
+        row.spacing = 4
+        heading.widthAnchor.constraint(equalTo: row.widthAnchor).isActive = true
+        slider.widthAnchor.constraint(equalTo: row.widthAnchor).isActive = true
+        return row
+    }
+
+    @objc private func changeInspectionPlane(_ sender: NSSegmentedControl) {
+        guard renderer.state.mode.is3D,
+              let plane = InspectionPlane3D(rawValue: sender.selectedSegment) else { return }
+        var inspection = renderer.state.inspection3D
+        inspection.plane = plane
+        renderer.setInspection3D(inspection)
+        refreshInspectionControls()
+    }
+
+    @objc private func changeInspectionSlider(_ sender: InspectionSlider3D) {
+        guard renderer.state.mode.is3D,
+              let kind = InspectionSliderKind(rawValue: sender.tag) else { return }
+        var inspection = renderer.state.inspection3D
+        switch kind {
+        case .depth:
+            inspection.setDepth(sender.doubleValue / 100)
+        case .orbit:
+            inspection.camera.setYawDegrees(sender.doubleValue)
+        case .elevation:
+            inspection.camera.setElevationDegrees(sender.doubleValue)
+        case .zoom:
+            inspection.camera.setZoomPercent(sender.doubleValue)
+        }
+        renderer.setInspection3D(inspection)
+        refreshInspectionControls()
+    }
+
+    @objc private func centreInspectionSlice(_ sender: Any?) {
+        guard renderer.state.mode.is3D else { return }
+        renderer.centreSlice3D()
+        refreshInspectionControls()
+    }
+
+    @objc private func resetInspectionCamera(_ sender: Any?) {
+        guard renderer.state.mode.is3D else { return }
+        renderer.resetCamera3D()
+        refreshInspectionControls()
+    }
+
+    private func refreshInspectionControls() {
+        guard renderer.state.mode.is3D else { return }
+        let inspection = renderer.state.inspection3D
+        let planeName: String
+        let depthAxis: String
+        switch inspection.plane {
+        case .xy: planeName = "XY"; depthAxis = "Z"
+        case .xz: planeName = "XZ"; depthAxis = "Y"
+        case .yz: planeName = "YZ"; depthAxis = "X"
+        }
+        let percentage = Int((inspection.depth * 100).rounded())
+        let descriptor = "\(planeName) slice · \(depthAxis) depth: \(percentage)%"
+        threeDSlice.stringValue = descriptor
+        threeDSlice.setAccessibilityLabel("\(planeName) slice, \(depthAxis) depth \(percentage) percent")
+        inspectionPlaneControl.setSelected(true, forSegment: inspection.plane.rawValue)
+        inspectionPlaneControl.setAccessibilityValue(planeName)
+
+        inspectionDepthSlider.doubleValue = inspection.depth * 100
+        inspectionDepthSlider.setAccessibilityLabel("\(depthAxis) depth")
+        inspectionDepthSlider.setAccessibilityHelp(
+            "Move the \(planeName) slice along \(depthAxis). Centre Slice returns the depth to 50%."
+        )
+        inspectionDepthSlider.setAccessibilityValue("\(percentage)%")
+        inspectionDepthValue.stringValue = "\(depthAxis) depth: \(percentage)%"
+        inspectionDepthValue.setAccessibilityLabel(inspectionDepthValue.stringValue)
+
+        let yawValue = Self.signedDegrees(inspection.camera.yawDegrees)
+        let elevationValue = Self.signedDegrees(inspection.camera.elevationDegrees)
+        let zoomValue = "\(Int(inspection.camera.zoomPercent.rounded()))%"
+        inspectionOrbitSlider.doubleValue = inspection.camera.yawDegrees
+        inspectionOrbitSlider.setAccessibilityValue(yawValue)
+        inspectionOrbitValue.stringValue = yawValue
+        inspectionElevationSlider.doubleValue = inspection.camera.elevationDegrees
+        inspectionElevationSlider.setAccessibilityValue(elevationValue)
+        inspectionElevationValue.stringValue = elevationValue
+        inspectionZoomSlider.doubleValue = inspection.camera.zoomPercent
+        inspectionZoomSlider.setAccessibilityValue(zoomValue)
+        inspectionZoomValue.stringValue = zoomValue
+    }
+
+    private static func signedDegrees(_ value: Double) -> String {
+        let rounded = Int(value.rounded())
+        return "\(rounded >= 0 ? "+" : "")\(rounded)°"
+    }
+
+    private func revealFocusedInspectionControl() {
+        guard let window = controlsPanel,
+              let focusedView = window.firstResponder as? NSView,
+              focusedView.isDescendant(of: threeDBodyStack) else { return }
+        _ = focusedView.scrollToVisible(focusedView.bounds)
+    }
 
     @objc private func updateAppearance() {
         opaqueSurface.isHidden = !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
@@ -731,8 +1019,17 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         twoDBodyStack.isHidden = isThreeD
         threeDBodyStack.isHidden = !isThreeD
         threeDColourLegend.isThreeD = isThreeD
+        if isThreeD {
+            restartButton.nextKeyView = inspectionPlaneControl
+            updateInspectionFocusOrder()
+        } else {
+            restartButton.nextKeyView = nil
+        }
+        refreshInspectionControls()
         stepButton.setAccessibilityHelp(isThreeD ? "Advance the 3D simulation by one step" : nil)
-        restartButton.setAccessibilityHelp(isThreeD ? "Return the 3D experiment to step 0" : nil)
+        restartButton.setAccessibilityHelp(
+            isThreeD ? "Return the 3D experiment to step 0. Keep the camera, slice and tracer visibility." : nil
+        )
         metalView.setAccessibilityLabel(isThreeD ? "Fixed XY cross-section of 3D dye concentration" : nil)
         lessonGroup.isHidden = state.mode == .freePlay || state.mode.is3D
         if let lesson = state.mode.experiment {
@@ -752,6 +1049,10 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         tuningGroup.isHidden = state.mode != .freePlay || !isTuningExpanded
         refreshTuningValues()
         updateControlLayout()
+    }
+
+    private func updateInspectionFocusOrder() {
+        controlsPanel?.recalculateKeyViewLoop()
     }
 
     isolated deinit {
