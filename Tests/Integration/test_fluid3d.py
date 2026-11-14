@@ -44,6 +44,7 @@ SWIFT_SOURCES = [
     "Sources/Shared/InspectionState3D.swift",
     "Sources/Shared/Camera3D.swift",
     "Sources/Shared/PressureProjection3D.swift",
+    "Sources/Shared/TracerSystem3D.swift",
     "Tests/Integration/fluid3d_float32_pcg_diagnostic.swift",
     "Tests/Integration/test_fluid3d.swift",
 ]

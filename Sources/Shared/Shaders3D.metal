@@ -283,6 +283,19 @@ kernel void fluid3DClear(
     output.write(0.0f, position);
 }
 
+kernel void fluid3DResetTracers(
+    device float4 *positions [[buffer(0)]],
+    uint markerIndex [[thread_position_in_grid]]) {
+    if (markerIndex >= 512u) {
+        return;
+    }
+    uint i = markerIndex % 8u;
+    uint j = (markerIndex / 8u) % 8u;
+    uint k = markerIndex / 64u;
+    float3 seed = (float3(float(i), float(j), float(k)) + 0.5f) / 8.0f;
+    positions[markerIndex] = float4(seed, 1.0f);
+}
+
 inline float foldCoordinate(float coordinate, float extent, thread float &sign) {
     float folded = fmod(coordinate, 2.0f * extent);
     if (folded < 0.0f) {
