@@ -114,7 +114,7 @@ Plans:
 
 **Wave 5** *(ready after Wave 4 completion)*
 
-- [ ] 08-05-PLAN.md — Verify deterministic passive3D tracer reset, MAC RK2 and failure guards.
+- [x] 08-05-PLAN.md — Verify deterministic passive3D tracer reset, MAC RK2 and failure guards.
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -138,7 +138,7 @@ Plans:
 
 **Planning status (2026-11-13):** Existing research/UI-SPEC reused; pattern mapping and 17-task executable validation contract created. All five owned requirements and 21 context decisions pass structural/coverage checks and distinct inline plan review after one revision. See `08-PLAN-CHECK.md`. Final human review remains a blocking execution checkpoint. No Phase 8 implementation/build/test/human acceptance is claimed by planning.
 
-**Execution status (2026-11-14):** 08-01 / Wave 1 through 08-04 / Wave 4 complete, **4/9** plans closed; next **08-05 / Wave 5**. The full Mac state/HUD suite passed (25 state + 19 UI tests), both no-override app builds passed, and the `spatial-slices` and `inspection-routing` production fixtures passed. Light/Dark and Increase Contrast UI capture attachments are retained as evidence only. VoiceOver and physical gesture direction/feel checks remain NOT TESTED. See `08-01-SUMMARY.md` through `08-04-SUMMARY.md`. No Phase 8 requirement is complete; tracers, complete-state evidence, and the human acceptance plan remain pending. No later plan or phase-level verification ran.
+**Execution status (2026-11-14):** 08-01 / Wave 1 through 08-05 / Wave 5 complete, **5/9** plans closed; next **08-06 / Wave 6**. Plan 08-05's independent oracle/state checks and production `tracer-evolution`, `advection-boundaries`, and `projection` GPU fixtures passed; both no-override app builds passed, and the Mac HUD UI suite passed (19/19). Tracer reset, forward RK2, solver-status guards, no-fluid-feedback, and 48-step production evidence are recorded in `08-05-SUMMARY.md`. The tracer kernel is not yet integrated into renderer scheduling; complete-state comparisons and the human acceptance plan remain pending. VoiceOver, physical gesture direction/feel checks, actual macOS 26 runtime, and physical-device checks remain NOT TESTED. No Phase 8 requirement is complete, no later plan ran, and no phase-level verification is claimed.
 
 **UI hint**: yes
 
