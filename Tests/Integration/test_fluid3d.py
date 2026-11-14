@@ -70,6 +70,7 @@ PRODUCTION_FIXTURES = (
     "transitions-and-failures",
     "renderer-steps-and-inactivity",
     "inspection-routing",
+    "tracer-evolution",
 )
 REGRESSION_MATRIX_REQUIRED = (
     "macBuild",
@@ -966,13 +967,20 @@ class Fluid3DTests(unittest.TestCase):
     def test_inspection_routing(self):
         self.run_production_fixture("inspection-routing")
 
+    def test_tracer_evolution(self):
+        self.run_production_fixture("tracer-evolution")
+
     def run_production_fixture(self, fixture: str) -> None:
         evidence_dir = ROOT / ".build/fluid3d-evidence"
         reference_dir = ROOT / ".build/fluid3d-reference"
         evidence_dir.mkdir(parents=True, exist_ok=True)
         log_path = evidence_dir / f"{fixture}.log"
 
-        fixture_sources = SPATIAL_HASHED_SOURCES if fixture == "spatial-slices" else HASHED_SOURCES
+        fixture_sources = (
+            SPATIAL_HASHED_SOURCES
+            if fixture in {"spatial-slices", "tracer-evolution"}
+            else HASHED_SOURCES
+        )
         missing = [str(ROOT / source) for source in fixture_sources if not (ROOT / source).is_file()]
         self.assertFalse(missing, "Missing required production/test sources:\n" + "\n".join(missing))
 

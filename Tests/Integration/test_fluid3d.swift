@@ -128,7 +128,8 @@ private struct Fluid3DChecks {
                 || fixture == "evolution-visibility"
                 || fixture == "operators" || fixture == "projection" || fixture == "reset-finite"
                 || fixture == "inspection-routing"
-                || fixture == "transitions-and-failures" || fixture == "renderer-steps-and-inactivity" else {
+                || fixture == "transitions-and-failures" || fixture == "renderer-steps-and-inactivity"
+                || fixture == "tracer-evolution" else {
             throw Fluid3DHarnessError.usage("unknown fixture selector: \(fixture)")
         }
         let result: [String: Any]
@@ -140,6 +141,8 @@ private struct Fluid3DChecks {
             result = try rendererStepsAndInactivity(device: device, metal: metal)
         } else if fixture == "transitions-and-failures" {
             result = try rendererTransitionsAndFailures(device: device, metal: metal)
+        } else if fixture == "tracer-evolution" {
+            result = try tracerEvolution(metal: metal)
         } else if fixture == "slice-palette" {
             result = try sliceAndPalette(
                 device: device,
@@ -5125,6 +5128,122 @@ private struct Fluid3DChecks {
             "exactComparedValues": comparedValues,
             "finite": true,
         ]
+    }
+
+    private static func tracerEvolution(metal: MetalDevice) throws -> [String: Any] {
+        let tracers = try TracerSystem3D(metal: metal)
+        let inventory = tracers.diagnosticResourceInventory
+        try require(TracerSystem3D.count == 512, "Tracer count must remain exactly 512")
+        try require(inventory.markerCount == 512, "Tracer inventory marker count mismatch")
+        try require(inventory.positionBytes == 512 * 16, "Tracer position allocation must be exactly 8192 bytes")
+        try require(inventory.positionStride == 16, "Tracer positions must use a 16-byte SIMD4 stride")
+        try require(inventory.positionAlignment == 16, "Tracer positions must use 16-byte SIMD4 alignment")
+
+        let firstReset = try resetAndReadTracers(tracers, metal: metal)
+        let secondReset = try resetAndReadTracers(tracers, metal: metal)
+        var expected: [SIMD4<Float>] = []
+        expected.reserveCapacity(512)
+        for k in 0..<8 {
+            for j in 0..<8 {
+                for i in 0..<8 {
+                    expected.append(SIMD4<Float>(
+                        (Float(i) + 0.5) / 8,
+                        (Float(j) + 0.5) / 8,
+                        (Float(k) + 0.5) / 8,
+                        1
+                    ))
+                }
+            }
+        }
+        try require(firstReset.count == TracerSystem3D.count, "Tracer reset returned the wrong number of positions")
+        try require(firstReset == expected, "Tracer reset did not produce exact i-fastest 8-cubed seeds")
+        try require(secondReset == expected, "Repeated tracer reset changed a seed or lane")
+        try require(tracerPositionBytes(firstReset) == tracerPositionBytes(secondReset),
+                    "Repeated tracer reset was not byte-identical")
+        for (index, position) in firstReset.enumerated() {
+            try require(position.x.isFinite && position.y.isFinite && position.z.isFinite,
+                        "Tracer \(index) contains a nonfinite coordinate")
+            try require(position.x > 0 && position.x < 1,
+                        "Tracer \(index) x coordinate is outside the interior")
+            try require(position.y > 0 && position.y < 1,
+                        "Tracer \(index) y coordinate is outside the interior")
+            try require(position.z > 0 && position.z < 1,
+                        "Tracer \(index) z coordinate is outside the interior")
+            try require(position.w == 1, "Tracer \(index) w lane must remain exactly one")
+        }
+        let uniqueSeeds = Set(firstReset.map {
+            "\($0.x.bitPattern):\($0.y.bitPattern):\($0.z.bitPattern)"
+        })
+        try require(uniqueSeeds.count == 512, "Tracer reset did not cover 512 unique interior points")
+
+        try expectTracerAllocationFailure(metal: metal)
+        try expectTracerPipelineFailure(metal: metal)
+        try expectTracerEncoderFailure(metal: metal)
+
+        return [
+            "passed": true,
+            "fixture": "tracer-evolution",
+            "device": metal.device.name,
+            "os": ProcessInfo.processInfo.operatingSystemVersionString,
+            "markerCount": inventory.markerCount,
+            "positionBufferBytes": inventory.positionBytes,
+            "positionStride": inventory.positionStride,
+            "positionAlignment": inventory.positionAlignment,
+            "exactSeedValues": firstReset.count * 4,
+            "repeatResetByteIdentical": true,
+            "uniqueInteriorSeeds": uniqueSeeds.count,
+            "allocationFailureThrows": true,
+            "pipelineFailureThrows": true,
+            "encoderFailureThrows": true,
+            "finite": true,
+        ]
+    }
+
+    private static func resetAndReadTracers(
+        _ tracers: TracerSystem3D,
+        metal: MetalDevice
+    ) throws -> [SIMD4<Float>] {
+        var readback: MTLBuffer!
+        try command(metal) { commandBuffer in
+            try tracers.encodeReset(command: commandBuffer)
+            readback = try tracers.encodeReadback(command: commandBuffer)
+        }
+        return try tracers.decodeReadback(readback)
+    }
+
+    private static func tracerPositionBytes(_ positions: [SIMD4<Float>]) -> [UInt32] {
+        positions.flatMap { [$0.x.bitPattern, $0.y.bitPattern, $0.z.bitPattern, $0.w.bitPattern] }
+    }
+
+    private static func expectTracerAllocationFailure(metal: MetalDevice) throws {
+        do {
+            _ = try TracerSystem3D(metal: metal, bufferFactory: { _, _ in nil })
+            throw Fluid3DHarnessError.assertion("Tracer buffer allocation failure was accepted")
+        } catch is TracerSystem3DError {
+            return
+        }
+    }
+
+    private static func expectTracerPipelineFailure(metal: MetalDevice) throws {
+        do {
+            _ = try TracerSystem3D(
+                metal: metal,
+                pipelineFactory: { _ in throw SpatialAllocationFault.injected }
+            )
+            throw Fluid3DHarnessError.assertion("Tracer pipeline creation failure was accepted")
+        } catch is TracerSystem3DError {
+            return
+        }
+    }
+
+    private static func expectTracerEncoderFailure(metal: MetalDevice) throws {
+        let tracers = try TracerSystem3D(metal: metal, computeEncoderFactory: { _ in nil })
+        do {
+            try tracers.encodeReset(command: metal.newCommandBuffer())
+            throw Fluid3DHarnessError.assertion("Tracer reset encoder failure was accepted")
+        } catch is TracerSystem3DError {
+            return
+        }
     }
 
     private static func gpuABIRoundTrip(
