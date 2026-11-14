@@ -8,6 +8,7 @@ enum PressureProjection3DError: Error, LocalizedError {
     case reductionResultAllocationFailed(label: String)
     case invalidTexture(resource: String, expected: String)
     case reductionCapacityExceeded(required: Int, available: Int)
+    case incompatibleStatusDevice
 
     var errorDescription: String? {
         switch self {
@@ -23,6 +24,8 @@ enum PressureProjection3DError: Error, LocalizedError {
             "Invalid 3D pressure texture '\(resource)'; expected \(expected)"
         case .reductionCapacityExceeded(let required, let available):
             "3D reduction requires \(required) partials; workspace holds \(available)"
+        case .incompatibleStatusDevice:
+            "3D solver status belongs to a different Metal device"
         }
     }
 }
@@ -52,6 +55,20 @@ final class PressureProjection3D {
             self.buffer = buffer
             self.deviceRegistryID = deviceRegistryID
             self.pcgTraceBuffer = pcgTraceBuffer
+        }
+
+        /// Bind this submission's status as a read-only shader resource.
+        /// The buffer remains private to the slot and is only exposed through a
+        /// const Metal pointer after validating the consumer's device.
+        func encodeReadOnlyBinding(
+            to encoder: MTLComputeCommandEncoder,
+            index: Int,
+            expectedDevice: MTLDevice
+        ) throws {
+            guard deviceRegistryID == expectedDevice.registryID else {
+                throw PressureProjection3DError.incompatibleStatusDevice
+            }
+            encoder.setBuffer(buffer, offset: 0, index: index)
         }
 
         /// Call only after the owning command buffer has completed.

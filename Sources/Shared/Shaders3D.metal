@@ -386,6 +386,46 @@ inline float3 sampleVelocity(
         sampleLattice(w, position, float3(0.5f, 0.5f, 0.0f), spacing, domainCells, 2));
 }
 
+kernel void fluid3DAdvanceTracers(
+    constant Fluid3DUniforms &uniforms [[buffer(0)]],
+    device float4 *positions [[buffer(1)]],
+    device const float4 *solverStatus [[buffer(2)]],
+    texture3d<float, access::read> u [[texture(0)]],
+    texture3d<float, access::read> v [[texture(1)]],
+    texture3d<float, access::read> w [[texture(2)]],
+    uint markerIndex [[thread_position_in_grid]]) {
+    if (markerIndex >= uniforms.output.x || markerIndex >= 512u) {
+        return;
+    }
+
+    // The solver writes this status earlier in the same command buffer. Do not
+    // advance on failure, nonconvergence, cap hits, or malformed status.
+    float4 control = solverStatus[16];
+    float4 session = solverStatus[18];
+    if (!all(isfinite(control)) || !all(isfinite(session))
+        || control.y != 0.0f || control.z != 1.0f || control.w != 0.0f
+        || session.x != 1.0f) {
+        return;
+    }
+
+    float4 current = positions[markerIndex];
+    float3 maximum = uniforms.scale.x * float3(uniforms.grid.xyz);
+    if (!all(isfinite(current)) || current.w != 1.0f
+        || any(current.xyz < float3(0.0f)) || any(current.xyz > maximum)) {
+        return;
+    }
+
+    float3 domainCells = float3(uniforms.grid.xyz);
+    float spacing = uniforms.scale.x;
+    float dt = uniforms.scale.y;
+    float3 start = current.xyz;
+    float3 startVelocity = sampleVelocity(u, v, w, start, spacing, domainCells);
+    float3 midpoint = clamp(start + 0.5f * dt * startVelocity, float3(0.0f), maximum);
+    float3 midpointVelocity = sampleVelocity(u, v, w, midpoint, spacing, domainCells);
+    float3 next = clamp(start + dt * midpointVelocity, float3(0.0f), maximum);
+    positions[markerIndex] = float4(next, current.w);
+}
+
 inline float3 backtraceRK2(
     texture3d<float, access::read> u,
     texture3d<float, access::read> v,

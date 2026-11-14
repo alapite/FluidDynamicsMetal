@@ -8,6 +8,8 @@ enum TracerSystem3DError: Error, LocalizedError {
     case encoderUnavailable(operation: String)
     case invalidReadback(expectedByteCount: Int, actualByteCount: Int)
     case incompatibleReadbackStorageMode
+    case incompatibleSimulationDevice
+    case incompatibleSimulationDomain
 
     var errorDescription: String? {
         switch self {
@@ -23,6 +25,10 @@ enum TracerSystem3DError: Error, LocalizedError {
             "Invalid 3D tracer readback: expected at least \(expectedByteCount) bytes, got \(actualByteCount)"
         case .incompatibleReadbackStorageMode:
             "3D tracer readback buffer must use shared storage"
+        case .incompatibleSimulationDevice:
+            "3D tracer and fluid simulation must use the same Metal device"
+        case .incompatibleSimulationDomain:
+            "3D tracers require a unit-cube simulation domain"
         }
     }
 }
@@ -49,6 +55,9 @@ final class TracerSystem3D {
 
     private let positions: MTLBuffer
     private let resetPipeline: MTLComputePipelineState
+    private let advancePipeline: MTLComputePipelineState
+    private let metalDevice: MTLDevice
+    private let deviceRegistryID: UInt64
     private let bufferFactory: BufferFactory
     private let computeEncoderFactory: ComputeEncoderFactory
 
@@ -80,6 +89,8 @@ final class TracerSystem3D {
         let makePipeline = pipelineFactory ?? { name in
             try metal.createComputePipeline(computeFunctionName: name)
         }
+        metalDevice = metal.device
+        deviceRegistryID = metal.device.registryID
         self.bufferFactory = makeBuffer
         self.computeEncoderFactory = computeEncoderFactory ?? { command in
             command.makeComputeCommandEncoder()
@@ -102,6 +113,14 @@ final class TracerSystem3D {
                 reason: String(describing: error)
             )
         }
+        do {
+            advancePipeline = try makePipeline("fluid3DAdvanceTracers")
+        } catch {
+            throw TracerSystem3DError.pipelineCreationFailed(
+                function: "fluid3DAdvanceTracers",
+                reason: String(describing: error)
+            )
+        }
     }
 
     func encodeReset(command: MTLCommandBuffer) throws {
@@ -114,6 +133,55 @@ final class TracerSystem3D {
         encoder.dispatchThreads(
             MTLSize(width: Self.count, height: 1, depth: 1),
             threadsPerThreadgroup: Fluid3DDispatch.threadsPerThreadgroup(for: resetPipeline)
+        )
+        encoder.endEncoding()
+    }
+
+    /// Advance markers once from the solver's newly projected velocity
+    /// generation. Status and textures are consumed in command-buffer order;
+    /// no CPU status readback is performed before encoding the dependent pass.
+    func encodeAdvance(
+        command: MTLCommandBuffer,
+        simulation: FluidSimulation3D,
+        status: PressureProjection3D.StatusSlot
+    ) throws {
+        guard simulation.metal.device.registryID == deviceRegistryID else {
+            throw TracerSystem3DError.incompatibleSimulationDevice
+        }
+        let configuration = simulation.configuration
+        guard configuration.h * Float(configuration.nx) == 1,
+              configuration.h * Float(configuration.ny) == 1,
+              configuration.h * Float(configuration.nz) == 1 else {
+            throw TracerSystem3DError.incompatibleSimulationDomain
+        }
+        guard let encoder = computeEncoderFactory(command) else {
+            throw TracerSystem3DError.encoderUnavailable(operation: "advance compute")
+        }
+
+        var uniforms = Fluid3DUniforms(
+            grid: SIMD4(
+                UInt32(configuration.nx), UInt32(configuration.ny),
+                UInt32(configuration.nz), 0
+            ),
+            scale: SIMD4(configuration.h, configuration.dt, 0, 0),
+            output: SIMD4(UInt32(Self.count), 0, 0, 0)
+        )
+        encoder.label = "3D passive tracer forward RK2 advance"
+        encoder.setComputePipelineState(advancePipeline)
+        encoder.setBytes(&uniforms, length: MemoryLayout<Fluid3DUniforms>.stride, index: 0)
+        encoder.setBuffer(positions, offset: 0, index: 1)
+        do {
+            try status.encodeReadOnlyBinding(to: encoder, index: 2, expectedDevice: metalDevice)
+        } catch {
+            encoder.endEncoding()
+            throw error
+        }
+        encoder.setTexture(simulation.u.ping, index: 0)
+        encoder.setTexture(simulation.v.ping, index: 1)
+        encoder.setTexture(simulation.w.ping, index: 2)
+        encoder.dispatchThreads(
+            MTLSize(width: Self.count, height: 1, depth: 1),
+            threadsPerThreadgroup: Fluid3DDispatch.threadsPerThreadgroup(for: advancePipeline)
         )
         encoder.endEncoding()
     }

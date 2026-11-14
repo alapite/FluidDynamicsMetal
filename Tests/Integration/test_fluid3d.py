@@ -91,6 +91,23 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _fixture_reference_manifest_path(fixture: str) -> Path:
+    directory = (
+        ".build/inspection3d-reference"
+        if fixture in {"spatial-slices", "tracer-evolution"}
+        else ".build/fluid3d-reference"
+    )
+    return ROOT / directory / "manifest.json"
+
+
+def _fixture_source_inventory(fixture: str) -> list[str]:
+    return (
+        SPATIAL_HASHED_SOURCES
+        if fixture in {"spatial-slices", "tracer-evolution"}
+        else HASHED_SOURCES
+    )
+
+
 def validate_benchmark_manifest(manifest: object) -> list[str]:
     """Validate benchmark metadata and every measured solver/status sample."""
     errors: list[str] = []
@@ -718,9 +735,9 @@ def validate_evidence_bundle(evidence_dir: Path, *, quick: bool) -> list[str]:
         if report.get("schemaVersion") != 1 or report.get("fixture") != fixture:
             errors.append(f"{report_path.name} has an unsupported schema or fixture identity")
         fixture_sources = current_sources
-        if fixture == "spatial-slices":
+        if _fixture_source_inventory(fixture) == SPATIAL_HASHED_SOURCES:
             fixture_sources = {}
-            for source in SPATIAL_HASHED_SOURCES:
+            for source in _fixture_source_inventory(fixture):
                 path = ROOT / source
                 if not path.is_file():
                     errors.append(f"missing spatial hashed source: {source}")
@@ -730,8 +747,12 @@ def validate_evidence_bundle(evidence_dir: Path, *, quick: bool) -> list[str]:
             errors.append(f"{report_path.name} source hashes are stale")
         if metallib_hash and report.get("metallibSHA256") != metallib_hash:
             errors.append(f"{report_path.name} metallib hash is stale")
-        reference_hash = report.get("referenceManifestSHA256")
-        if reference_manifest.is_file() and reference_hash != sha256(reference_manifest):
+        fixture_reference_manifest = _fixture_reference_manifest_path(fixture)
+        if not fixture_reference_manifest.is_file():
+            errors.append(
+                f"missing {fixture} reference manifest: {fixture_reference_manifest}"
+            )
+        elif report.get("referenceManifestSHA256") != sha256(fixture_reference_manifest):
             errors.append(f"{report_path.name} reference manifest hash is stale")
         if not quick:
             errors.extend(_validate_fixture_metrics(fixture, report))
@@ -1052,7 +1073,7 @@ class Fluid3DTests(unittest.TestCase):
         self.assertFalse(missing, "Missing required production/test sources:\n" + "\n".join(missing))
 
         if fixture in {"spatial-slices", "tracer-evolution"}:
-            reference_dir = ROOT / ".build/inspection3d-reference"
+            reference_dir = _fixture_reference_manifest_path(fixture).parent
             reference_command = [
                 sys.executable,
                 "-m",
