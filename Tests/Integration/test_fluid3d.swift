@@ -1312,7 +1312,8 @@ private struct Fluid3DChecks {
             }
         }
         let mirror = Mirror(reflecting: object)
-        if mirror.displayStyle == .optional {
+        if mirror.displayStyle == .optional || mirror.displayStyle == .collection
+            || mirror.displayStyle == .dictionary || mirror.displayStyle == .tuple {
             return mirror.children.reduce(into: []) { $0.formUnion(ownedEvolutionAllocations($1.value)) }
         }
         return []
@@ -1412,6 +1413,7 @@ private struct Fluid3DChecks {
         metadata["grid"] = "\(grid.nx),\(grid.ny),\(grid.nz)"
         metadata["h/dt"] = "\(grid.h.bitPattern),\(grid.dt.bitPattern)"
         metadata["cap"] = "\(PressureProjection3D.maximumIterations)"
+        metadata["productionConfiguration"] = "\(grid.isProduction)"
         metadata["tracer-schema"] = "512 float4 stride16 w1 in-place"
         for (name, field) in simulation.diagnosticFields {
             metadata["generation/\(name)"] = "\(field.ping.label ?? "")|\(field.pong.label ?? "")"
@@ -1475,6 +1477,8 @@ private struct Fluid3DChecks {
             try require(requiresExactBytes ? byteMatch : maximum <= 2e-6,
                         "Evolution resource mismatch: \(a.name), maxError=\(maximum)")
             reports.append(["name": a.name, "shape": a.shape, "format": a.format,
+                            "scalar": a.floating ? "Float32" : "UInt32",
+                            "identityPreserved": exact && preserveIdentity,
                             "byteCount": a.bytes.count, "byteMatch": byteMatch, "maximumAbsoluteError": maximum])
         }
         return reports
@@ -1551,12 +1555,19 @@ private struct Fluid3DChecks {
             statuses: [("status/reset", status), ("status/traced", traceStatus)]
         )
         for index in traced.resources.indices where traced.resources[index].name.hasPrefix("status/traced") {
-            var changed = traced
-            changed.resources[index].bytes[0] ^= 1
-            var rejected = false
-            do { _ = try compareEvolution(changed, traced, exact: true) } catch { rejected = true }
-            try require(rejected, "Optional trace/status corruption was not detected")
-            negatives.append("byte/\(traced.resources[index].name)")
+            for mutation in ["byte", "omission", "rename", "resize"] {
+                var changed = traced
+                switch mutation {
+                case "byte": changed.resources[index].bytes[0] ^= 1
+                case "omission": changed.resources.remove(at: index)
+                case "rename": changed.resources[index].name += "-renamed"
+                default: changed.resources[index].shape[0] += 1
+                }
+                var rejected = false
+                do { _ = try compareEvolution(changed, traced, exact: true) } catch { rejected = true }
+                try require(rejected, "Optional trace/status \(mutation) was not detected")
+                negatives.append("\(mutation)/\(traced.resources[index].name)")
+            }
         }
         let schedules = try completeInspectionSchedules(device: device, metal: metal)
         return ["passed": true, "fixture": "inspection-independence", "device": device.name,
@@ -1652,6 +1663,7 @@ private struct Fluid3DChecks {
             renderer.drawPresentationOnly(in: view)
             let after = try rendererSnapshot(renderer)
             pausedCases.append(["case": label, "positivePresentationChange": positive,
+                                "metadata": after.metadata,
                                 "resources": try compareEvolution(after, pausedBaseline, exact: true)])
         }
         for plane in [InspectionPlane3D.xz, .yz, .xy] {
@@ -1690,7 +1702,7 @@ private struct Fluid3DChecks {
         try pausedCase("gesture-orbit-and-zoom") {
             let old = renderer.state.inspection3D
             var edited = old
-            edited.camera.setYawDegrees(-63)
+            edited.camera.setGestureYawDegrees(297)
             edited.camera.setElevationDegrees(24)
             edited.camera.setZoomPercent(112)
             renderer.setInspection3D(edited)
@@ -1702,12 +1714,14 @@ private struct Fluid3DChecks {
             return old.camera != renderer.state.inspection3D.camera
                 && renderer.state.inspection3D.camera == CameraState3D()
                 && old.plane == renderer.state.inspection3D.plane && old.depth == renderer.state.inspection3D.depth
+                && old.showTracers == renderer.state.inspection3D.showTracers
         }
         try pausedCase("centre-slice") {
             let old = renderer.state.inspection3D
             renderer.centreSlice3D()
             return old.depth != renderer.state.inspection3D.depth && renderer.state.inspection3D.depth == 0.5
                 && old.plane == renderer.state.inspection3D.plane && old.camera == renderer.state.inspection3D.camera
+                && old.showTracers == renderer.state.inspection3D.showTracers
         }
         for shown in [false, true] {
             try pausedCase("visibility-\(shown)") {
@@ -1724,6 +1738,7 @@ private struct Fluid3DChecks {
                 return oldPixels != newPixels && renderer.state.inspection3D.showTracers == shown
             }
         }
+        var previousResizePixels: [UInt8] = []
         for (width, height, scale) in [(640, 240, 1), (240, 640, 1), (320, 240, 1), (320, 240, 2)] {
             try pausedCase("resize-\(width)x\(height)-\(scale)x") {
                 view.frame = CGRect(x: 0, y: 0, width: width, height: height)
@@ -1734,8 +1749,12 @@ private struct Fluid3DChecks {
                     simulation: renderer.simulation3D!, tracers: renderer.tracers3D, destination: target,
                     inspection: renderer.state.inspection3D, width: width * scale, height: height * scale,
                     pointScale: Float(scale))
-                return pixels.count == width * height * scale * scale * 4
-                    && pixels.contains { $0 != 0 }
+                let changed = pixels != previousResizePixels
+                previousResizePixels = pixels
+                return changed && pixels.count == width * height * scale * scale * 4
+                    && stride(from: 0, to: pixels.count, by: 4).contains {
+                        pixels[$0] != 0 || pixels[$0 + 1] != 0 || pixels[$0 + 2] != 0
+                    }
             }
         }
         try pausedCase("zero-viewport-defers-presentation") {
@@ -1791,8 +1810,10 @@ private struct Fluid3DChecks {
             actual.selectMode(.dyeAdvection3D)
             try require(actual.lastModeOutcome?.succeeded == true, "Schedule entry failed: \(schedule)")
             var reports: [[String: Any]] = []
+            let initialActual = try rendererSnapshot(actual, semantic: true)
             reports.append(["step": 0, "resources": try compareEvolution(
-                try rendererSnapshot(actual, semantic: true), references[0]!, exact: true, preserveIdentity: false)])
+                initialActual, references[0]!, exact: true, preserveIdentity: false),
+                            "metadata": initialActual.metadata])
             var next = 1
             while next <= 48 {
                 // Do not cross a required checkpoint; elsewhere permit three
@@ -1824,13 +1845,20 @@ private struct Fluid3DChecks {
                     try require(slots.filter { $0.0.hasPrefix("status/submitted-") }.count == 3,
                                 "Three in-flight slots not accounted for before callback drain")
                     let queued = try rendererSnapshot(actual)
+                    try require(queued.resources.count == 41 && Set(slots.map { ObjectIdentifier($0.1) }).count == 5,
+                                "Reset/latest/three submitted slots were aliased or omitted")
+                    for (name, slot) in slots {
+                        try requireAcceptedBenchmarkDiagnostics(slot.diagnostics(), label: "\(schedule)/\(name)")
+                    }
                     inFlightCases.append(["schedule": schedule, "roles": slots.map(\.0),
+                                          "metadata": queued.metadata,
                                           "inventory": try compareEvolution(queued, queued, exact: true)])
                 }
                 try settleRenderer(actual, metal: metal)
                 if let expected = references[end] {
+                    let checkpoint = try rendererSnapshot(actual, semantic: true)
                     reports.append(["step": end, "resources": try compareEvolution(
-                        try rendererSnapshot(actual, semantic: true), expected, exact: false)])
+                        checkpoint, expected, exact: false), "metadata": checkpoint.metadata])
                 }
                 next = end + 1
             }
@@ -1941,10 +1969,12 @@ private struct Fluid3DChecks {
         let productionPipelineAllocator = productionResources.makePipeline
         let productionDepthAllocator = productionResources.makeDepthAttachment
         var pipelineAllocationCount = 0
+        var pipelineAllocationLabels: [String] = []
         var depthAllocationCount = 0
         var countedResources = productionResources
         countedResources.makePipeline = { device, library in
             pipelineAllocationCount += 1
+            pipelineAllocationLabels.append(library.label ?? "")
             return try productionPipelineAllocator(device, library)
         }
         countedResources.makeDepthAttachment = { device, descriptor in
@@ -1952,8 +1982,9 @@ private struct Fluid3DChecks {
             return productionDepthAllocator(device, descriptor)
         }
         let visualization = try FieldVisualization3D(metal: metal, resources: countedResources)
-        try require(pipelineAllocationCount == 2,
-                    "Spatial sheet and guide pipelines must each be allocated exactly once")
+        try require(pipelineAllocationCount == 3 && Set(pipelineAllocationLabels) == [
+            "3D spatial inspection sheet", "3D spatial passive tracers", "3D spatial cube guide",
+        ], "Spatial sheet, tracer and guide pipelines must each be allocated exactly once")
         let simulation = try FluidSimulation3D(metal: metal)
         let width = 512
         let height = 512
@@ -2267,7 +2298,7 @@ private struct Fluid3DChecks {
             label: "2x one-point guides"
         )
         try require(
-            pipelineAllocationCount == 2,
+            pipelineAllocationCount == 3,
             "Viewport changes must reuse the spatial pipeline instead of rebuilding it"
         )
         let guidePixelScaleRatio = Double(twoXGuideCount) / Double(oneXGuideCount)

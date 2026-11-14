@@ -641,8 +641,8 @@ def _validate_fixture_metrics(fixture: str, report: dict) -> list[str]:
             errors.append("spatial-slices guide-pixel coverage must scale with 1x/2x point size")
         if result.get("cubeDepthAttachmentReuseAllocations") != 2:
             errors.append("spatial-slices repeated-size checks must allocate one depth attachment per size")
-        if result.get("cubeSpatialPipelineAllocations") != 2:
-            errors.append("spatial-slices must reuse its sheet and guide pipelines across viewport changes")
+        if result.get("cubeSpatialPipelineAllocations") != 3:
+            errors.append("spatial-slices must reuse its sheet, tracer and guide pipelines across viewport changes")
         for key in (
             "checkedPipelineAllocationFailure",
             "checkedDepthAllocationFailure",
@@ -1229,7 +1229,7 @@ class Fluid3DTests(unittest.TestCase):
                 "cubeEdgesChecked": 12,
                 "cubeGuidePointScaleRatio": 4.0,
                 "cubeDepthAttachmentReuseAllocations": 2,
-                "cubeSpatialPipelineAllocations": 2,
+                "cubeSpatialPipelineAllocations": 3,
                 "checkedPipelineAllocationFailure": True,
                 "checkedDepthAllocationFailure": True,
                 "emptyDyeGuidesVisible": True,
