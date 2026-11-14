@@ -554,6 +554,150 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.checkBoxes["Vorticity"].exists)
     }
 
+    func testSpatialInspectionGestureIsolation() throws {
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        let orbit = app.sliders["inspection3d.orbit"]
+        let elevation = app.sliders["inspection3d.elevation"]
+        let zoom = app.sliders["inspection3d.zoom"]
+        let stepCount = app.staticTexts["stepCount"]
+
+        func number(_ slider: XCUIElement) -> Double {
+            let string = slider.value as? String ?? ""
+            let numeric = string.filter { "0123456789.-".contains($0) }
+            return Double(numeric) ?? .nan
+        }
+
+        let initialOrbit = number(orbit)
+        let initialElevation = number(elevation)
+        let initialZoom = number(zoom)
+        XCTAssertEqual(stepCount.value as? String, "Step 0")
+        XCTAssertTrue(app.buttons["Run"].exists)
+
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertFalse(panel.exists)
+
+        // A paused canvas drag changes only the committed camera, not transport.
+        let dragStart = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.42, dy: 0.56))
+        dragStart.click(forDuration: 0.2, thenDragTo: dragStart.withOffset(CGVector(dx: 80, dy: -40)))
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(number(orbit), initialOrbit, "Rightward drag must increase yaw")
+        XCTAssertGreaterThan(number(elevation), initialElevation, "Upward drag must increase elevation")
+        XCTAssertEqual(number(zoom), initialZoom, accuracy: 0.5)
+        XCTAssertEqual(stepCount.value as? String, "Step 0")
+        XCTAssertTrue(app.buttons["Run"].exists)
+        XCTAssertTrue((-180.0...180.0).contains(number(orbit)))
+        XCTAssertTrue((-75.0...75.0).contains(number(elevation)))
+
+        // The separate panel owns its scroll and title-bar drag exclusively.
+        let panelScroll = panel.scrollViews.firstMatch
+        XCTAssertTrue(panelScroll.waitForExistence(timeout: 5))
+        let panelOrbit = number(orbit)
+        let panelElevation = number(elevation)
+        let panelZoom = number(zoom)
+        panelScroll.swipeUp()
+        XCTAssertEqual(number(orbit), panelOrbit, accuracy: 0.5)
+        XCTAssertEqual(number(elevation), panelElevation, accuracy: 0.5)
+        XCTAssertEqual(number(zoom), panelZoom, accuracy: 0.5)
+        let oldPanelOrigin = panel.frame.origin
+        let titleBar = panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.03))
+        titleBar.click(forDuration: 0.2, thenDragTo: titleBar.withOffset(CGVector(dx: 40, dy: -20)))
+        XCTAssertNotEqual(panel.frame.origin, oldPanelOrigin)
+        XCTAssertEqual(number(orbit), panelOrbit, accuracy: 0.5)
+        XCTAssertEqual(number(elevation), panelElevation, accuracy: 0.5)
+        XCTAssertEqual(number(zoom), panelZoom, accuracy: 0.5)
+
+        // Canvas scroll zooms within both native bounds and does not advance.
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertFalse(panel.exists)
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .scroll(byDeltaX: 0, deltaY: 600)
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        let afterPositiveScroll = number(zoom)
+        XCTAssertTrue([50.0, 150.0].contains(afterPositiveScroll),
+                      "A vertical scroll must reach a zoom bound")
+        XCTAssertEqual(stepCount.value as? String, "Step 0")
+
+        panel.buttons["inspection3d.resetCamera"].click()
+        XCTAssertEqual(number(zoom), 100, accuracy: 0.5)
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .scroll(byDeltaX: 600, deltaY: 0)
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertEqual(number(zoom), 100, accuracy: 0.5,
+                       "Horizontal scrolling must not change camera zoom")
+
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .scroll(byDeltaX: 0, deltaY: -600)
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertEqual(number(zoom), afterPositiveScroll == 50 ? 150 : 50, accuracy: 0.5,
+                       "Opposite vertical scrolling must reach the opposite zoom bound")
+        XCTAssertEqual(stepCount.value as? String, "Step 0")
+
+        let guide = app.descendants(matching: .any)["orientationGuide3d"]
+        XCTAssertTrue(guide.waitForExistence(timeout: 5))
+        XCTAssertEqual(guide.label, "3D orientation guide: X, Y and Z axes")
+        let beforeGuideDrag = number(orbit)
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        let guideStart = guide.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        guideStart.click(forDuration: 0.2,
+                        thenDragTo: guideStart.withOffset(CGVector(dx: 40, dy: -20)))
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(number(orbit), beforeGuideDrag,
+                             "The hit-transparent guide must pass its drag to the canvas")
+        XCTAssertEqual(stepCount.value as? String, "Step 0")
+
+        // Focus the canvas: S stays inert in 3D, and Space toggles transport once.
+        let beforeDeactivationOrbit = number(orbit)
+        let beforeDeactivationElevation = number(elevation)
+        let beforeDeactivationZoom = number(zoom)
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.55)).click()
+        canvas.typeKey("s", modifierFlags: [])
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertEqual(stepCount.value as? String, "Step 0")
+        XCTAssertTrue(app.buttons["Run"].exists)
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.55)).click()
+        canvas.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"),
+                      "Canvas Space must toggle the paused 3D lesson exactly once")
+
+        // Losing and regaining app activation must leave the committed camera
+        // intact; choosing a 2D lesson then removes the guide and inspection UI.
+        let finder = XCUIApplication(bundleIdentifier: "com.apple.finder")
+        finder.activate()
+        app.activate()
+        if !panel.exists {
+            app.typeKey("k", modifierFlags: [.command, .option])
+        }
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertEqual(number(orbit), beforeDeactivationOrbit, accuracy: 0.5)
+        XCTAssertEqual(number(elevation), beforeDeactivationElevation, accuracy: 0.5)
+        XCTAssertEqual(number(zoom), beforeDeactivationZoom, accuracy: 0.5)
+
+        selector.click()
+        selector.menuItems["Dye carried by a flow"].click()
+        XCTAssertFalse(guide.exists, "The orientation guide must be absent in 2D")
+        XCTAssertFalse(app.sliders["inspection3d.zoom"].exists)
+        XCTAssertTrue(app.checkBoxes["Dye concentration"].exists)
+    }
+
     func testThreeDInitializationFailureRestoresTwoD() throws {
         app.terminate()
         app = XCUIApplication()
