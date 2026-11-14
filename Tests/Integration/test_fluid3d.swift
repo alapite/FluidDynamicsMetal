@@ -1483,6 +1483,8 @@ private struct Fluid3DChecks {
     private static func inspectionIndependence(device: MTLDevice, metal: MetalDevice) throws -> [String: Any] {
         let simulation = try FluidSimulation3D(metal: metal)
         let tracers = try TracerSystem3D(metal: metal)
+        try require(ownedEvolutionAllocations([tracers.positionBuffer]) == [ObjectIdentifier(tracers.positionBuffer)],
+                    "Ownership audit silently omitted a collection-held evolution allocation")
         var status: PressureProjection3D.StatusSlot!
         try command(metal) {
             status = try simulation.encodeReset(command: $0)

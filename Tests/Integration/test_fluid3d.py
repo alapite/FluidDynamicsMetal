@@ -1306,6 +1306,10 @@ class Fluid3DTests(unittest.TestCase):
                     self.assertLessEqual(resource["maximumAbsoluteError"], 2e-6)
                     if resource["name"].startswith("status/"):
                         self.assertTrue(resource["byteMatch"])
+                self.assertEqual(checkpoint["metadata"]["steps"], str(checkpoint["step"]))
+                self.assertEqual(checkpoint["metadata"]["pending"], "0")
+        for case in result["pausedCases"]:
+            self.assertEqual(case["metadata"]["pending"], "2")
 
     def run_production_fixture(self, fixture: str) -> dict:
         evidence_dir = ROOT / ".build/fluid3d-evidence"
