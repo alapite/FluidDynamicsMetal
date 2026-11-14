@@ -288,7 +288,7 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["lesson3d.legend"].value as? String, "Less dye → More dye")
         XCTAssertEqual(app.staticTexts["lesson3d.legend"].label, "Dye concentration, less dye to more dye")
         XCTAssertEqual(app.staticTexts["lesson3d.note"].label,
-                       "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; dye can move out of the plane. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
+                       "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; dye can move out of the plane. Pale-cyan dots are passive tracers. Tracers behind the opaque slice are hidden, even where the slice is black. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
         for hiddenIdentifier in ["field.0", "overlay.0", "tuning.toggle", "about.toggle", "fieldLegend"] {
             XCTAssertFalse(app.descendants(matching: .any)[hiddenIdentifier].exists,
                             "Unsupported 2D content must be absent in 3D: \(hiddenIdentifier)")
@@ -394,7 +394,10 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(step.value as? String, "Step 3", "Scrolling the body must not advance the solver")
 
         let originalPanelOrigin = panel.frame.origin
-        let titleBar = panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.03))
+        // Title-bar height is fixed in points; the Phase 8 scrolling body makes
+        // a percentage of total panel height land inside content instead.
+        let titleBar = panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
+            .withOffset(CGVector(dx: 0, dy: 8))
         titleBar.click(forDuration: 0.2, thenDragTo: titleBar.withOffset(CGVector(dx: 50, dy: -20)))
         XCTAssertNotEqual(panel.frame.origin, originalPanelOrigin, "The utility panel should remain movable")
         XCTAssertEqual(step.value as? String, "Step 3", "Moving the panel must not advance the solver")
