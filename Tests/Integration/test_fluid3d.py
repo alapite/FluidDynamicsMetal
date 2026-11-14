@@ -961,6 +961,16 @@ class Fluid3DTests(unittest.TestCase):
             _validate_fixture_metrics("tracer-evolution", missing_prior_guard),
         )
 
+    def test_tracer_evidence_uses_inspection_reference_and_source_inventory(self):
+        inspection_reference = ROOT / ".build/inspection3d-reference/manifest.json"
+        solver_reference = ROOT / ".build/fluid3d-reference/manifest.json"
+        self.assertEqual(_fixture_reference_manifest_path("tracer-evolution"), inspection_reference)
+        self.assertEqual(_fixture_reference_manifest_path("spatial-slices"), inspection_reference)
+        self.assertEqual(_fixture_reference_manifest_path("projection"), solver_reference)
+        self.assertEqual(_fixture_source_inventory("tracer-evolution"), SPATIAL_HASHED_SOURCES)
+        self.assertEqual(_fixture_source_inventory("spatial-slices"), SPATIAL_HASHED_SOURCES)
+        self.assertEqual(_fixture_source_inventory("projection"), HASHED_SOURCES)
+
     def test_spatial_fixture_evidence_requires_cube_resource_and_camera_checks(self):
         report = {
             "result": {
