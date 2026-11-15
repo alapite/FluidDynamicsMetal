@@ -883,6 +883,108 @@ def validate_evidence_bundle(evidence_dir: Path, *, quick: bool) -> list[str]:
 
 
 class Fluid3DTests(unittest.TestCase):
+    def test_inspection_evidence_schema(self):
+        # Explicitly synthetic: schema validity never constitutes an actual run.
+        self.assertIn("validate_inspection_manifest", globals(),
+                      "Phase 8 has no separately versioned evidence validator")
+        valid = synthetic_inspection_manifest()
+        self.assertEqual(validate_inspection_manifest(valid), [])
+        self.assertTrue(validate_inspection_manifest(valid, actual=True))
+        for key in valid:
+            changed = copy.deepcopy(valid)
+            del changed[key]
+            with self.subTest(omitted=key):
+                self.assertTrue(validate_inspection_manifest(changed))
+        for category in ("sourceSHA256", "environment", "configuration", "coverage",
+                         "tolerances", "fixtures", "regressionMatrix"):
+            for key in valid[category]:
+                changed = copy.deepcopy(valid)
+                del changed[category][key]
+                with self.subTest(category=category, omitted=key):
+                    self.assertTrue(validate_inspection_manifest(changed))
+        mutations = [
+            ("kind", "fluid3d-benchmark"),
+            ("workload", "solver-plus-fixed-slice"),
+            ("inspectionContractSHA256", "0" * 64),
+            ("completeContractSHA256", "0" * 64),
+            ("oracleSHA256", "0" * 64),
+            ("metallibSHA256", ""),
+        ]
+        for key, value in mutations:
+            changed = copy.deepcopy(valid)
+            changed[key] = value
+            with self.subTest(corrupted=key):
+                self.assertTrue(validate_inspection_manifest(changed))
+        for name, report in valid["fixtures"].items():
+            for key in report:
+                changed = copy.deepcopy(valid)
+                del changed["fixtures"][name][key]
+                with self.subTest(fixture=name, omitted=key):
+                    self.assertTrue(validate_inspection_manifest(changed))
+            for key in report["result"]:
+                changed = copy.deepcopy(valid)
+                del changed["fixtures"][name]["result"][key]
+                with self.subTest(fixture=name, result_omitted=key):
+                    self.assertTrue(validate_inspection_manifest(changed))
+        for name in REGRESSION_MATRIX_REQUIRED:
+            for key in valid["regressionMatrix"][name]:
+                changed = copy.deepcopy(valid)
+                del changed["regressionMatrix"][name][key]
+                with self.subTest(matrix=name, omitted=key):
+                    self.assertTrue(validate_inspection_manifest(changed))
+            changed = copy.deepcopy(valid)
+            changed["regressionMatrix"][name]["status"] = "NOT TESTED"
+            self.assertTrue(validate_inspection_manifest(changed))
+        for key in valid["tolerances"]:
+            changed = copy.deepcopy(valid)
+            changed["tolerances"][key] *= 10
+            self.assertTrue(validate_inspection_manifest(changed))
+        for key in valid["coverage"]:
+            changed = copy.deepcopy(valid)
+            changed["coverage"][key] = "PASS"
+            self.assertTrue(validate_inspection_manifest(changed))
+        for key in valid["sourceSHA256"]:
+            changed = copy.deepcopy(valid)
+            changed["sourceSHA256"][key] = "0" * 64
+            self.assertTrue(validate_inspection_manifest(changed))
+        independence = valid["fixtures"]["inspection-independence"]["result"]
+        for key in ("inventory", "negativeChecks", "pausedCases", "equalStepCases",
+                    "threeInFlight", "restartComparisons", "failureEvidence"):
+            changed = copy.deepcopy(valid)
+            value = changed["fixtures"]["inspection-independence"]["result"][key]
+            if isinstance(value, list):
+                value.pop()
+            else:
+                value.pop(next(iter(value)))
+            with self.subTest(incomplete=key):
+                self.assertTrue(validate_inspection_manifest(changed))
+        for mutation in ("missing-resource", "renamed", "resized", "nonfinite", "error",
+                         "status-bytes", "pending", "step", "drawable", "failure"):
+            changed = copy.deepcopy(valid)
+            result = changed["fixtures"]["inspection-independence"]["result"]
+            resource = result["equalStepCases"][0]["checkpoints"][1]["resources"][0]
+            if mutation == "missing-resource":
+                result["equalStepCases"][0]["checkpoints"][1]["resources"].pop()
+            elif mutation == "renamed":
+                resource["name"] = "unexpected"
+            elif mutation == "resized":
+                resource["byteCount"] += 4
+            elif mutation in {"nonfinite", "error"}:
+                resource["maximumAbsoluteError"] = math.nan if mutation == "nonfinite" else 3e-6
+            elif mutation == "status-bytes":
+                result["equalStepCases"][0]["checkpoints"][1]["resources"][-1]["byteMatch"] = False
+            elif mutation == "pending":
+                result["pausedCases"][0]["metadata"]["pending"] = "0"
+            elif mutation == "step":
+                result["equalStepCases"][0]["checkpoints"].pop()
+            elif mutation == "drawable":
+                result["equalStepCases"][-1]["usableDrawableReads"] = 1
+            else:
+                result["failureEvidence"]["active-depth-recovery"]["retrySucceeded"] = False
+            with self.subTest(corruption=mutation):
+                self.assertTrue(validate_inspection_manifest(changed))
+        self.assertEqual(len(independence["inventory"]), 37)
+
     def test_evidence_schema(self):
         def sample():
             return {
