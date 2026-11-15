@@ -19,6 +19,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 
@@ -58,6 +59,13 @@ SPATIAL_HASHED_SOURCES = HASHED_SOURCES + [
     "Tests/Integration/inspection3d_reference.swift",
     "Tests/Integration/test_inspection3d_reference.py",
     "docs/3d-inspection-contract.md",
+    "Sources/macOS/RenderViewController.swift",
+    "Sources/iOS/RenderViewController.swift",
+    "FluidDynamicsMetal.xcodeproj/project.pbxproj",
+    "Tests/UI/macOS/HUDUITests.swift",
+    "Tests/UI/iOS/HUDUITests.swift",
+    "Tests/Integration/test_inspection3d_state.swift",
+    "Tests/Integration/test_inspection3d_state.py",
 ]
 PRODUCTION_FIXTURES = (
     "storage-abi",
@@ -771,6 +779,344 @@ def _validate_fixture_metrics(fixture: str, report: dict) -> list[str]:
     return errors
 
 
+INSPECTION_FIXTURES = (
+    "spatial-slices", "inspection-routing", "tracer-evolution",
+    "tracer-occlusion", "inspection-independence",
+)
+INSPECTION_COVERAGE = {
+    "manualVisualReview": "PENDING", "voiceOver": "NOT TESTED",
+    "physicalPointerFeel": "NOT TESTED", "macOS26Runtime": "NOT TESTED",
+    "physicalMultitouch": "NOT TESTED", "displayedFramePacing": "NOT MEASURED",
+    "phase7ManualAcceptance": "PENDING",
+}
+INSPECTION_TOLERANCES = {
+    "oracleAbsolute": 2e-5, "oracleRelative": 2e-4, "equalStepAbsolute": 2e-6,
+    "paletteCodes": 1, "pressureDTInf": 1e-5, "pressureIterationCap": 320,
+}
+INSPECTION_CONFIGURATION = {
+    "grid": [64, 64, 64], "dt": 1 / 60, "markerCount": 512,
+    "seed": "i-fastest float4((i+.5)/8,(j+.5)/8,(k+.5)/8,1)",
+}
+INSPECTION_FLAGS = {
+    "spatial-slices": (
+        "abiRoundTrip", "backsideGeometry", "edgeOnRemainsThin",
+        "legacyFixedSliceRetained", "simulationTexturesUnchanged",
+        "checkedPipelineAllocationFailure", "checkedDepthAllocationFailure",
+        "emptyDyeGuidesVisible", "cameraMatrixChanged", "cameraChangesProjectedImage",
+        "resizePreservesInspectionState", "resizePreservesBothSimulationGenerations",
+        "invalidDestinationFormatRejected", "invalidViewportRejected",
+        "zeroExtentDeferredWithoutDepthAllocation",
+    ),
+    "inspection-routing": (
+        "nilDrawablePresentation", "pausedPendingStepsPreserved",
+        "presentationFieldsBitwiseUnchanged", "cameraMatrixChanged",
+        "presentationImageChanged", "ordinaryStepDrainRetained",
+        "restartRetainsInspection", "tracerInitialSeedsExact", "hiddenTracerStepAdvanced",
+        "restartRestoresTracerSeeds", "reselectionRestoresDefaults",
+        "zeroSizeDepthDeferred", "fullCanvasViewport", "depthFailureRecoveryAndRetry",
+    ),
+    "tracer-evolution": (
+        "repeatResetByteIdentical", "allocationFailureThrows", "pipelineFailureThrows",
+        "encoderFailureThrows", "threeQueuedSubmissionsChecked",
+        "currentFailureGuarded", "priorFailureGuarded", "noFluidFeedback",
+        "positionsInBounds", "finite",
+    ),
+    "tracer-occlusion": (
+        "frontMarkersVisibleInBlack", "behindMarkersHiddenInBlack",
+        "frontMarkersVisibleInDyed", "behindMarkersHiddenInDyed",
+        "outsideFootprintVisible", "oppositeSideOcclusionReversed",
+        "discCornersDiscarded", "edgeOnMarkersRemainCircular",
+        "oneXThreePointDiameter", "twoXThreePointDiameter", "markerColorIsExact",
+        "blackSheetRemainsOpaque", "dyedSheetRemainsOpaque",
+    ),
+    "inspection-independence": ("restartCompleteInventoryMatched",),
+}
+INSPECTION_PAUSED = (
+    [f"{kind}-{plane}{suffix}" for plane in ("xz", "yz", "xy")
+     for kind, suffix in [("plane", ""), *[("depth", f"-{d}") for d in ("0.0", "0.3", "0.5", "1.0")]]]
+    + ["camera-0.0-0.0-50.0", "camera-180.0-0.0-150.0", "camera-90.0-0.0-100.0",
+       "camera--71.0-75.0-115.0", "gesture-orbit-and-zoom", "reset-camera", "centre-slice",
+       "visibility-false", "visibility-true", "resize-640x240-1x", "resize-240x640-1x",
+       "resize-320x240-1x", "resize-320x240-2x", "zero-viewport-defers-presentation"]
+)
+
+
+def inspection_inventory(statuses=("reset",)) -> list[dict]:
+    """Independent named production layout, not inferred from submitted evidence."""
+    records = []
+    for field in ("u", "v", "w", "dye", "transport-u", "transport-v", "transport-w",
+                  "q-high-low", "divergence", "rhs", "Aq", "true-residual", "identity",
+                  "recursive-residual", "preconditioned", "search"):
+        component = field.removeprefix("transport-")
+        shape = [64 + int(component == axis) for axis in ("u", "v", "w")]
+        for role in ("ping", "pong"):
+            records.append({"name": f"{field}/{role}", "shape": shape,
+                            "byteCount": math.prod(shape) * 4, "format": "r32Float", "scalar": "Float32"})
+    for name, size in [
+        ("simulation/failure-latch", 4), ("projection/reduction-partials", 16640),
+        ("projection/standalone-latch", 4), ("tracer/positions", 8192),
+        *[(f"status/{role}/state", 304) for role in statuses],
+    ]:
+        records.append({"name": name, "shape": [size], "byteCount": size, "format": "buffer",
+                        "scalar": "UInt32" if "latch" in name else "Float32"})
+    return records
+
+
+def validate_inspection_manifest(manifest: object, *, actual: bool = False) -> list[str]:
+    """Schema/freshness validation; synthetic manifests are never acceptance runs."""
+    errors = []
+    if not isinstance(manifest, dict):
+        return ["inspection manifest must be an object"]
+
+    def require(ok, label):
+        if not ok:
+            errors.append(label)
+
+    def finite(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+    def artifact(item, path_key, hash_key):
+        path = _resolve_artifact_path(item.get(path_key))
+        require(path is not None and path.exists(), f"missing artifact: {path_key}")
+        if path is not None and path.is_file():
+            require(item.get(hash_key) == sha256(path), f"stale artifact: {path_key}")
+
+    require(manifest.get("schemaVersion") == 1, "unsupported inspection schema")
+    require(manifest.get("kind") == "fluid3d-inspection", "wrong inspection kind")
+    require(manifest.get("evidenceClass") in {"synthetic-schema-fixture", "actual-production-run"},
+            "explicit evidenceClass required")
+    if actual:
+        require(manifest.get("evidenceClass") == "actual-production-run", "synthetic evidence is not an actual run")
+    require(manifest.get("workload") == "offscreen-spatial-inspection-not-fps", "spatial workload mislabeled")
+    require(isinstance(manifest.get("generatedAtUTC"), str) and bool(manifest["generatedAtUTC"]),
+            "timestamp required")
+    require(manifest.get("coverage") == INSPECTION_COVERAGE, "explicit pending/manual/runtime/pacing statuses required")
+    require(manifest.get("configuration") == INSPECTION_CONFIGURATION, "exact grid/dt/seed configuration required")
+    require(manifest.get("tolerances") == INSPECTION_TOLERANCES, "contracted tolerances required")
+    require(manifest.get("sourceSHA256") == {p: sha256(ROOT / p) for p in SPATIAL_HASHED_SOURCES},
+            "source inventory or hashes stale")
+    for key, path in [
+        ("completeContractSHA256", "docs/3d-numerical-contract.md"),
+        ("inspectionContractSHA256", "docs/3d-inspection-contract.md"),
+        ("oracleSHA256", "Tests/Integration/inspection3d_reference.swift"),
+    ]:
+        require(manifest.get(key) == sha256(ROOT / path), f"stale {key}")
+    require(manifest.get("inspectionContractSHA256") == INSPECTION_CONTRACT_HASH, "inspection contract not pinned")
+    require(isinstance(manifest.get("metallibSHA256"), str)
+            and re.fullmatch("[0-9a-f]{64}", manifest["metallibSHA256"]) is not None, "metallib hash required")
+    require(isinstance(manifest.get("metallibPath"), str) and bool(manifest["metallibPath"]), "metallib path required")
+    environment = manifest.get("environment", {})
+    for key in ("device", "hostModel", "os", "xcode", "swift", "metalToolchain", "configuration", "architecture"):
+        require(isinstance(environment.get(key), str) and bool(environment[key].strip()), f"environment.{key} required")
+    if actual:
+        artifact(manifest, "metallibPath", "metallibSHA256")
+    fixtures = manifest.get("fixtures", {})
+    require(isinstance(fixtures, dict) and set(fixtures) == set(INSPECTION_FIXTURES), "complete fixture inventory required")
+    if not isinstance(fixtures, dict):
+        return errors
+    for name in INSPECTION_FIXTURES:
+        report = fixtures.get(name, {})
+        require(report.get("fixture") == name and report.get("schemaVersion") == 1, f"{name}: report identity")
+        for key in ("sourceSHA256", "metallibSHA256", "completeContractSHA256"):
+            expected = manifest.get(key)
+            if key == "sourceSHA256" and name == "inspection-routing":
+                expected = {p: sha256(ROOT / p) for p in HASHED_SOURCES}
+            require(report.get(key) == expected, f"{name}: stale {key}")
+        require(report.get("referenceContractSHA256") == (
+            CONTRACT_HASH if name == "inspection-routing" else INSPECTION_CONTRACT_HASH), f"{name}: reference contract")
+        reference = _fixture_reference_manifest_path(name)
+        require(isinstance(report.get("referenceManifestSHA256"), str)
+                and re.fullmatch("[0-9a-f]{64}", report["referenceManifestSHA256"]) is not None,
+                f"{name}: reference hash required")
+        commands = report.get("commands", {})
+        for command in ("referenceExport", "swiftCompile", "buildSettings", "fixture"):
+            require(isinstance(commands.get(command), list) and bool(commands[command]), f"{name}: {command} required")
+        run = report.get("execution", {})
+        require(run.get("exitCode") == 0 and run.get("status") == "PASS"
+                and finite(run.get("durationSeconds")) and run["durationSeconds"] > 0,
+                f"{name}: passing measured execution required")
+        require(isinstance(run.get("logPath"), str) and bool(run["logPath"])
+                and isinstance(run.get("logSHA256"), str), f"{name}: log identity required")
+        if actual:
+            artifact(run, "logPath", "logSHA256")
+            require(reference.is_file() and report.get("referenceManifestSHA256") == sha256(reference),
+                    f"{name}: stale reference manifest")
+        result = report.get("result", {})
+        errors.extend(_validate_fixture_metrics(name, report))
+        for key in INSPECTION_FLAGS[name]:
+            require(result.get(key) is True, f"{name}: required {key}")
+        if name in {"spatial-slices", "tracer-occlusion"}:
+            captures = result.get("captures")
+            require(isinstance(captures, list) and len(captures) > 0, f"{name}: captures required")
+            if actual and isinstance(captures, list):
+                for capture in captures:
+                    require(isinstance(capture, str) and (ROOT / ".build/inspection3d-evidence" / capture).is_file(),
+                            f"{name}: missing capture")
+        if name == "spatial-slices":
+            for key, value in {"planes": ["xy", "xz", "yz"], "depths": [0, .3, .5, 1],
+                               "checkedAsymmetricSamples": 24}.items():
+                require(result.get(key) == value, f"{name}: incomplete {key}")
+            require(isinstance(result.get("independentPayloadSHA256"), str), f"{name}: payload hash required")
+            require(set(result.get("cubeGuidePixelCounts", {})) == {"1x", "2x"}, f"{name}: scale counts required")
+        if name == "tracer-evolution":
+            for key, value in {"positionStride": 16, "positionAlignment": 16,
+                               "exactSeedValues": 2048, "uniqueInteriorSeeds": 512}.items():
+                require(result.get(key) == value, f"{name}: {key}")
+            require(finite(result.get("maximumForwardOracleError"))
+                    and 0 <= result["maximumForwardOracleError"] <= 2e-5, f"{name}: oracle error")
+        if name == "inspection-independence":
+            errors.extend(_validate_inspection_independence(result))
+    matrix = manifest.get("regressionMatrix", {})
+    require(isinstance(matrix, dict) and set(matrix) == set(REGRESSION_MATRIX_REQUIRED), "full fresh matrix required")
+    if isinstance(matrix, dict):
+        for name in REGRESSION_MATRIX_REQUIRED:
+            item = matrix.get(name, {})
+            require(item.get("status") == "PASS" and item.get("exitCode") == 0, f"{name}: required PASS")
+            require(finite(item.get("durationSeconds")) and item["durationSeconds"] > 0, f"{name}: measured duration")
+            require(isinstance(item.get("command"), list) and bool(item["command"]), f"{name}: command required")
+            for key in ("logPath", "logSHA256"):
+                require(isinstance(item.get(key), str) and bool(item[key]), f"{name}: {key} required")
+            if name not in {"macBuild", "iosBuild"}:
+                require(isinstance(item.get("testCount"), int) and item["testCount"] > 0, f"{name}: test count required")
+            if name in {"macTests", "iphoneHUD", "ipadHUD"}:
+                require(isinstance(item.get("xcresultPath"), str) and bool(item["xcresultPath"]), f"{name}: bundle required")
+                if actual:
+                    path = _resolve_artifact_path(item.get("xcresultPath"))
+                    require(path is not None and path.is_dir(), f"{name}: missing xcresult")
+            if actual:
+                artifact(item, "logPath", "logSHA256")
+    return errors
+
+
+def _validate_inspection_independence(result: dict) -> list[str]:
+    errors = []
+
+    def require(ok, label):
+        if not ok:
+            errors.append("inspection-independence: " + label)
+
+    def inventory(records, statuses, exact=False, traced=False):
+        expected = inspection_inventory(statuses)
+        if traced:
+            expected.append({"name": "status/traced/trace", "shape": [10240], "byteCount": 10240,
+                             "format": "buffer", "scalar": "Float32"})
+        require(isinstance(records, list) and len(records) == len(expected), "incomplete resource count")
+        if not isinstance(records, list):
+            return
+        require({r.get("name") for r in records} == {r["name"] for r in expected}, "resource names")
+        for wanted in expected:
+            found = next((r for r in records if r.get("name") == wanted["name"]), {})
+            require(all(found.get(k) == v for k, v in wanted.items()), "resource shape/bytes/type: " + wanted["name"])
+            value = found.get("maximumAbsoluteError")
+            require(isinstance(value, (int, float)) and math.isfinite(value) and 0 <= value <= 2e-6,
+                    "finite per-resource error: " + wanted["name"])
+            if exact or wanted["name"].startswith("status/") or "latch" in wanted["name"]:
+                require(found.get("byteMatch") is True, "exact bytes: " + wanted["name"])
+            if exact:
+                require(found.get("identityPreserved") is True, "paused allocation identity")
+
+    def metadata(record, *, session=False):
+        keys = {"grid", "h/dt", "cap", "productionConfiguration", "tracer-schema",
+                "mode", "steps", "encoded", "completed", "pending", "paused", "inactive",
+                "resetting", "complete", "failure", "drainScheduled", "mouseInput",
+                "tapCount", "touchCount", "touchRadius", "statusRoles"}
+        keys |= {"generation/" + r["name"].split("/")[0]
+                 for r in inspection_inventory() if r["format"] == "r32Float"}
+        if session:
+            keys.add("sessionGeneration")
+        require(all(isinstance(record.get(k), str) and bool(record[k]) for k in keys), "complete discrete metadata")
+        for key, value in {"grid": "64,64,64", "cap": "320", "productionConfiguration": "true",
+                           "h/dt": "1015021568,1015580809", "mode": "3D Dye Advection",
+                           "failure": "false", "tapCount": "0", "touchCount": "0", "touchRadius": "nil",
+                           "tracer-schema": "512 float4 stride16 w1 in-place"}.items():
+            require(record.get(key) == value, "discrete configuration: " + key)
+
+    inventory(result.get("inventory"), ("reset",), True)
+    inventory(result.get("traceInventory"), ("reset", "traced"), True, True)
+    require(result.get("byteCount") == 33776184, "reset payload bytes")
+    negatives = {f"{kind}/{r['name']}" for r in inspection_inventory()
+                 for kind in ("byte", "omission", "rename", "resize")}
+    negatives |= {f"{kind}/status/traced/{role}" for kind in ("byte", "omission", "rename", "resize")
+                  for role in ("state", "trace")}
+    negatives |= {"finite-first", "extra-duplicate", "discrete-metadata", "allocation-role"}
+    require(set(result.get("negativeChecks", [])) == negatives, "complete detector negative cases")
+    paused = result.get("pausedCases", [])
+    require(len(paused) == 29 and {c.get("case") for c in paused} == set(INSPECTION_PAUSED), "paused coverage")
+    for case in paused:
+        require(case.get("positivePresentationChange") is True, "inert presentation edit")
+        state = case.get("metadata", {})
+        metadata(state, session=True)
+        require(state.get("pending") == "2" and state.get("steps") == "2", "paused pending/steps")
+        inventory(case.get("resources"), ("reset", "latest"), True)
+    schedules = ("shown", "hidden", "alternating", "nil-drawable")
+    equal = result.get("equalStepCases", [])
+    require(len(equal) == 4 and {c.get("schedule") for c in equal} == set(schedules), "visibility/drawable schedules")
+    for case in equal:
+        require(case.get("redrawCounts") == [0, 1, 2] and case.get("backingScales") == [1, 2]
+                and case.get("reshowNoCatchUp") is True, "redraw/scale/reshow schedule")
+        require(case.get("viewports") == ["wide", "tall", "zero in nil-drawable schedule"], "viewport schedule")
+        reads = case.get("usableDrawableReads", -1)
+        require(isinstance(reads, int) and (reads == 0 if case.get("schedule") == "nil-drawable" else reads > 0),
+                "actual drawable schedule")
+        checkpoints = case.get("checkpoints", [])
+        require([c.get("step") for c in checkpoints] == [0, 1, 24, 48], "equal-step checkpoints")
+        for checkpoint in checkpoints:
+            step = checkpoint.get("step")
+            state = checkpoint.get("metadata", {})
+            metadata(state)
+            require(all(state.get(k) == str(step) for k in ("steps", "encoded", "completed"))
+                    and state.get("pending") == "0", "equal-step metadata")
+            inventory(checkpoint.get("resources"), ("reset",) if step == 0 else ("reset", "latest"))
+    queued = result.get("threeInFlight", [])
+    require(len(queued) == 4 and {c.get("schedule") for c in queued} == set(schedules), "in-flight coverage")
+    roles = ("reset", "latest", "submitted-2", "submitted-3", "submitted-4")
+    for case in queued:
+        metadata(case.get("metadata", {}), session=True)
+        require(case.get("roles") == [f"status/{r}" for r in roles], "queued status ownership")
+        require(case.get("metadata", {}).get("encoded") == "4"
+                and case.get("metadata", {}).get("completed") == "1", "queued counters")
+        inventory(case.get("inventory"), roles, True)
+    restart = result.get("restartComparisons", [])
+    require([c.get("step") for c in restart] == [0, 1], "restart checkpoints")
+    for case in restart:
+        inventory(case.get("resources"), ("reset",) if case.get("step") == 0 else ("reset", "latest"))
+    failures = result.get("failureEvidence", {})
+    require(set(failures) == {"active-depth-recovery", "inspection-routing",
+                             "transitions-and-failures", "renderer-steps-and-inactivity"}, "failure inventory")
+    depth = failures.get("active-depth-recovery", {})
+    require(all(depth.get(k) is True for k in ("fallbackAdvanced", "recoveredToRunningFreePlay", "retrySucceeded")),
+            "active depth failure/retry")
+    for name in ("inspection-routing", "transitions-and-failures", "renderer-steps-and-inactivity"):
+        errors.extend(_validate_fixture_metrics(name, {"result": failures.get(name)}))
+    transitions = failures.get("transitions-and-failures", {})
+    require(set(transitions.get("injectedFailures", [])) == {
+        "allocation", "pipeline", "reset", "wrong-grid", "tracer-allocation", "tracer-reset", "tracer-advance"},
+        "injected failures")
+    renderer = failures.get("renderer-steps-and-inactivity", {})
+    for key in ("solverFaultRecoveredToTwoD", "staleCompletionIgnoredAfterModeTransition",
+                "pausedAndRunningInactivityFrozen", "redrawAndResizeNoOp", "referenceFieldsMatched", "nilDrawable"):
+        require(renderer.get(key) is True, "renderer failure/schedule: " + key)
+    require(renderer.get("reactivationCatchUp") is False and renderer.get("exactRendererSteps") == [1, 31],
+            "renderer exact step/catch-up")
+    return errors
+
+
+def validate_inspection_bundle(directory: Path) -> list[str]:
+    try:
+        manifest = json.loads((directory / "manifest.json").read_text())
+        matrix = json.loads((directory / "regression-matrix.json").read_text())
+        errors = validate_inspection_manifest(manifest, actual=True)
+        if matrix.get("results") != manifest.get("regressionMatrix"):
+            errors.append("regression matrix does not match inspection manifest")
+        for name in INSPECTION_FIXTURES:
+            report = json.loads((directory / f"{name}.json").read_text())
+            if report != manifest.get("fixtures", {}).get(name):
+                errors.append(f"manifest differs from {name}.json")
+        return errors
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        return [f"missing/malformed inspection evidence: {error}"]
+
+
 def validate_evidence_bundle(evidence_dir: Path, *, quick: bool) -> list[str]:
     errors: list[str] = []
     benchmark_path = evidence_dir / "benchmark.json"
@@ -882,6 +1228,138 @@ def validate_evidence_bundle(evidence_dir: Path, *, quick: bool) -> list[str]:
     return errors
 
 
+def synthetic_inspection_manifest() -> dict:
+    """In-memory schema test data only; never written to the evidence namespace."""
+    def resources(statuses=("reset",), traced=False):
+        records = inspection_inventory(statuses)
+        if traced:
+            records.append({"name": "status/traced/trace", "shape": [10240],
+                            "byteCount": 10240, "format": "buffer", "scalar": "Float32"})
+        return [{**r, "byteMatch": True, "maximumAbsoluteError": 0, "identityPreserved": True} for r in records]
+
+    def metadata(step=0, pending=0):
+        return {"steps": str(step), "encoded": str(step), "completed": str(step),
+                "pending": str(pending), "grid": "64,64,64", "cap": "320",
+                "h/dt": "1015021568,1015580809", "productionConfiguration": "true",
+                "tracer-schema": "512 float4 stride16 w1 in-place", "mode": "3D Dye Advection",
+                "paused": "true", "inactive": "false", "resetting": "false", "complete": "false",
+                "failure": "false", "drainScheduled": "false", "mouseInput": "nil",
+                "tapCount": "0", "touchCount": "0", "touchRadius": "nil",
+                "statusRoles": "status/reset", "sessionGeneration": "synthetic",
+                **{"generation/" + r["name"].split("/")[0]: "synthetic-ping|synthetic-pong"
+                   for r in inspection_inventory() if r["format"] == "r32Float"}}
+
+    def checkpoint(step):
+        return {"step": step, "metadata": metadata(step),
+                "resources": resources(("reset",) if step == 0 else ("reset", "latest"))}
+
+    fixtures = {}
+    for name in INSPECTION_FIXTURES:
+        fixtures[name] = {
+            "schemaVersion": 1, "fixture": name,
+            "sourceSHA256": {p: sha256(ROOT / p) for p in _fixture_source_inventory(name)},
+            "metallibSHA256": "a" * 64,
+            "completeContractSHA256": sha256(ROOT / "docs/3d-numerical-contract.md"),
+            "referenceContractSHA256": CONTRACT_HASH if name == "inspection-routing" else INSPECTION_CONTRACT_HASH,
+            "referenceManifestSHA256": "b" * 64,
+            "commands": {key: ["synthetic-not-executed"] for key in
+                         ("referenceExport", "swiftCompile", "buildSettings", "fixture")},
+            "execution": {"status": "PASS", "exitCode": 0, "durationSeconds": 1,
+                          "logPath": "synthetic-not-a-log", "logSHA256": "c" * 64},
+            "result": {"fixture": name, "passed": True, **{key: True for key in INSPECTION_FLAGS[name]}},
+        }
+    fixtures["spatial-slices"]["result"].update({
+        "planes": ["xy", "xz", "yz"], "depths": [0, .3, .5, 1], "checkedAsymmetricSamples": 24,
+        "cubeEdgesChecked": 12, "cubeGuidePointScaleRatio": 4, "cubeDepthAttachmentReuseAllocations": 2,
+        "cubeSpatialPipelineAllocations": 3, "captures": ["synthetic.ppm"],
+        "independentPayloadSHA256": "d" * 64, "cubeGuidePixelCounts": {"1x": 1, "2x": 4},
+    })
+    fixtures["tracer-evolution"]["result"].update({
+        "markerCount": 512, "positionBufferBytes": 8192, "positionStride": 16,
+        "positionAlignment": 16, "exactSeedValues": 2048, "uniqueInteriorSeeds": 512,
+        "maximumForwardOracleError": 0, "forwardComparedPositions": 4096,
+        "boundaryProbeCount": 27, "affineProbeCount": 28, "productionStepCount": 48,
+        "forwardCaseNames": ["positive_x", "negative_x", "positive_y", "negative_y",
+                             "positive_z", "negative_z", "combined_xyz", "combined_mixed"],
+        "rendererScheduling": {
+            **{key: True for key in ("nilDrawable", "initialSeedsExact", "pausedPresentationsUnchanged",
+                "threeQueuedCommands", "hiddenVisiblePositionsEqual", "hiddenAdvanced", "visibilityDoesNotReseed",
+                "restartRestoresSeeds", "restartRetainsInspection", "latestCompletedStatusRetained")},
+            "acceptedStepCount": 3, "validatedCompletionCount": 3,
+        },
+    })
+    fixtures["tracer-occlusion"]["result"].update({
+        "captures": ["synthetic.ppm"], "measurements": {
+            "oneXDiameterPixels": 3, "twoXDiameterPixels": 6,
+            "oneXDiameterPoints": 3, "twoXDiameterPoints": 3,
+        },
+    })
+    statuses = ("reset", "latest", "submitted-2", "submitted-3", "submitted-4")
+    fixtures["inspection-independence"]["result"].update({
+        "inventory": resources(), "traceInventory": resources(("reset", "traced"), True),
+        "byteCount": 33776184,
+        "negativeChecks": [
+            *[f"{kind}/{r['name']}" for r in inspection_inventory() for kind in ("byte", "omission", "rename", "resize")],
+            *[f"{kind}/status/traced/{role}" for kind in ("byte", "omission", "rename", "resize") for role in ("state", "trace")],
+            "finite-first", "extra-duplicate", "discrete-metadata", "allocation-role",
+        ],
+        "pausedCases": [{"case": label, "positivePresentationChange": True, "metadata": metadata(2, 2),
+                         "resources": resources(("reset", "latest"))} for label in INSPECTION_PAUSED],
+        "equalStepCases": [
+            {"schedule": schedule, "checkpoints": [checkpoint(s) for s in (0, 1, 24, 48)],
+             "usableDrawableReads": 0 if schedule == "nil-drawable" else 1,
+             "redrawCounts": [0, 1, 2], "backingScales": [1, 2],
+             "viewports": ["wide", "tall", "zero in nil-drawable schedule"], "reshowNoCatchUp": True}
+            for schedule in ("shown", "hidden", "alternating", "nil-drawable")
+        ],
+        "threeInFlight": [
+            {"schedule": schedule, "roles": [f"status/{r}" for r in statuses],
+             "metadata": {**metadata(4), "completed": "1"}, "inventory": resources(statuses)}
+            for schedule in ("shown", "hidden", "alternating", "nil-drawable")
+        ],
+        "restartComparisons": [checkpoint(0), checkpoint(1)],
+        "failureEvidence": {
+            "active-depth-recovery": {"fallbackAdvanced": True, "recoveredToRunningFreePlay": True, "retrySucceeded": True},
+            "inspection-routing": copy.deepcopy(fixtures["inspection-routing"]["result"]),
+            "transitions-and-failures": {
+                "fixture": "transitions-and-failures", "passed": True,
+                "injectedFailures": ["allocation", "pipeline", "reset", "wrong-grid",
+                                     "tracer-allocation", "tracer-reset", "tracer-advance"],
+                "lessonFailureRecovery": {
+                    "twoDLessons": ["Dye carried by a flow", "Two interacting vortices", "Stretching dye by stirring"],
+                    "allRecoveredToRunningFreePlay": True, "freePlayPreferencesRetained": True, "failedRestartRetrySucceeded": True,
+                },
+            },
+            "renderer-steps-and-inactivity": {
+                "fixture": "renderer-steps-and-inactivity", "passed": True, "exactRendererSteps": [1, 31],
+                "reactivationCatchUp": False,
+                **{key: True for key in ("solverFaultRecoveredToTwoD", "staleCompletionIgnoredAfterModeTransition",
+                   "pausedAndRunningInactivityFrozen", "redrawAndResizeNoOp", "referenceFieldsMatched", "nilDrawable")},
+            },
+        },
+    })
+    return {
+        "schemaVersion": 1, "kind": "fluid3d-inspection", "evidenceClass": "synthetic-schema-fixture",
+        "workload": "offscreen-spatial-inspection-not-fps", "generatedAtUTC": "synthetic-not-run",
+        "sourceSHA256": {p: sha256(ROOT / p) for p in SPATIAL_HASHED_SOURCES},
+        "completeContractSHA256": sha256(ROOT / "docs/3d-numerical-contract.md"),
+        "inspectionContractSHA256": INSPECTION_CONTRACT_HASH,
+        "oracleSHA256": sha256(ROOT / "Tests/Integration/inspection3d_reference.swift"),
+        "metallibSHA256": "a" * 64, "metallibPath": "synthetic-not-a-metallib",
+        "environment": {key: "synthetic" for key in ("device", "hostModel", "os", "xcode", "swift",
+                                                   "metalToolchain", "configuration", "architecture")},
+        "coverage": copy.deepcopy(INSPECTION_COVERAGE), "configuration": copy.deepcopy(INSPECTION_CONFIGURATION),
+        "tolerances": copy.deepcopy(INSPECTION_TOLERANCES), "fixtures": fixtures,
+        "regressionMatrix": {
+            name: {"status": "PASS", "exitCode": 0, "durationSeconds": 1, "command": ["synthetic-not-run"],
+                   "logPath": "synthetic.log", "logSHA256": "a" * 64,
+                   **({"testCount": 1} if name not in {"macBuild", "iosBuild"} else {}),
+                   **({"xcresultPath": "synthetic.xcresult"} if name in {"macTests", "iphoneHUD", "ipadHUD"} else {})}
+            for name in REGRESSION_MATRIX_REQUIRED
+        },
+    }
+
+
 class Fluid3DTests(unittest.TestCase):
     def test_inspection_evidence_schema(self):
         # Explicitly synthetic: schema validity never constitutes an actual run.
@@ -948,6 +1426,17 @@ class Fluid3DTests(unittest.TestCase):
             changed["sourceSHA256"][key] = "0" * 64
             self.assertTrue(validate_inspection_manifest(changed))
         independence = valid["fixtures"]["inspection-independence"]["result"]
+        for key in independence["pausedCases"][0]["metadata"]:
+            changed = copy.deepcopy(valid)
+            del changed["fixtures"]["inspection-independence"]["result"]["pausedCases"][0]["metadata"][key]
+            with self.subTest(metadata_omission=key):
+                self.assertTrue(validate_inspection_manifest(changed))
+        for name, flags in INSPECTION_FLAGS.items():
+            for flag in flags:
+                changed = copy.deepcopy(valid)
+                changed["fixtures"][name]["result"][flag] = False
+                with self.subTest(failed_flag=f"{name}/{flag}"):
+                    self.assertTrue(validate_inspection_manifest(changed))
         for key in ("inventory", "negativeChecks", "pausedCases", "equalStepCases",
                     "threeInFlight", "restartComparisons", "failureEvidence"):
             changed = copy.deepcopy(valid)
@@ -1414,10 +1903,13 @@ class Fluid3DTests(unittest.TestCase):
             self.assertEqual(case["metadata"]["pending"], "2")
 
     def run_production_fixture(self, fixture: str) -> dict:
+        started = time.monotonic()
         evidence_dir = ROOT / ".build/fluid3d-evidence"
         reference_dir = ROOT / ".build/fluid3d-reference"
         evidence_dir.mkdir(parents=True, exist_ok=True)
         log_path = evidence_dir / f"{fixture}.log"
+        if log_path.exists():
+            log_path.rename(log_path.with_name(f"{fixture}.previous-{time.time_ns()}.log"))
 
         fixture_sources = _fixture_source_inventory(fixture)
         missing = [str(ROOT / source) for source in fixture_sources if not (ROOT / source).is_file()]
@@ -1658,14 +2150,19 @@ class Fluid3DTests(unittest.TestCase):
                     "fixture": run_command,
                 },
                 "metalToolchain": (toolchain_result.stdout + toolchain_result.stderr).strip(),
+                "execution": {
+                    "status": "PASS", "exitCode": run_result.returncode,
+                    "durationSeconds": time.monotonic() - started,
+                    "logPath": str(log_path.relative_to(ROOT)), "logSHA256": sha256(log_path),
+                },
                 "result": result,
             }
             report_path = evidence_dir / f"{fixture}.json"
             report_path.write_text(
                 json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
             )
-            if fixture == "inspection-independence":
-                inspection_report = ROOT / ".build/inspection3d-evidence/inspection-independence.json"
+            if fixture in INSPECTION_FIXTURES:
+                inspection_report = ROOT / ".build/inspection3d-evidence" / f"{fixture}.json"
                 inspection_report.parent.mkdir(parents=True, exist_ok=True)
                 inspection_report.write_text(
                     json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n",
@@ -1698,6 +2195,8 @@ def main() -> int:
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--benchmark", action="store_true", help="run solver-only and solver-plus-slice baselines")
     actions.add_argument("--check-evidence", action="store_true", help="validate current 3D evidence artifacts")
+    actions.add_argument("--verify-inspection-evidence", type=Path,
+                         help="validate separately versioned actual Phase 8 evidence")
     parser.add_argument("--quick", action="store_true", help="check schema, hashes, and required files only")
     parser.add_argument(
         "--evidence-dir",
@@ -1706,6 +2205,13 @@ def main() -> int:
         help="evidence directory (default: .build/fluid3d-evidence)",
     )
     args, unittest_args = parser.parse_known_args()
+    if args.verify_inspection_evidence:
+        errors = validate_inspection_bundle(args.verify_inspection_evidence.resolve())
+        if errors:
+            print("FAIL: inspection evidence:\n- " + "\n- ".join(errors))
+            return 1
+        print("PASS: fresh actual inspection evidence and full matrix; human review PENDING; pacing NOT MEASURED.")
+        return 0
     if args.quick and not args.check_evidence:
         parser.error("--quick is valid only with --check-evidence")
     if args.benchmark:
