@@ -124,11 +124,11 @@ Plans:
 
 - [x] 08-07-PLAN.md — Prove complete-state independence across presentation and step schedules.
 
-**Wave 8** *(ready after Wave 7 completion)*
+**Wave 8** *(complete after Wave 7 completion)*
 
-- [ ] 08-08-PLAN.md — Record fresh regression evidence and accurate spatial-inspection usage.
+- [x] 08-08-PLAN.md — Record fresh regression evidence and accurate spatial-inspection usage.
 
-**Wave 9** *(blocked on Wave 8 completion)*
+**Wave 9** *(next — mandatory actual human-review checkpoint, not auto-approved)*
 
 - [ ] 08-09-PLAN.md — Obtain actual human visual/accessibility/input review without assumption-based PASS claims.
 
@@ -138,7 +138,7 @@ Plans:
 
 **Planning status (2026-11-13):** Existing research/UI-SPEC reused; pattern mapping and 17-task executable validation contract created. All five owned requirements and 21 context decisions pass structural/coverage checks and distinct inline plan review after one revision. See `08-PLAN-CHECK.md`. Final human review remains a blocking execution checkpoint. No Phase 8 implementation/build/test/human acceptance is claimed by planning.
 
-**Execution status (2026-11-14):** 08-01 / Wave 1 through 08-07 / Wave 7 complete, **7/9** plans closed; next **08-08 / Wave 8**. Renderer scheduling, hidden/no-drawable advancement, depth-occluded tracers, native visibility and complete-state comparisons are implemented. Plan 08-07 verifies 37 reset resources, 160 negative checks, 29 exact paused-preservation cases and independent shown/hidden/alternating/nil-drawable schedules at 0/1/24/48 with maximum error 0. Both no-override app builds, 47 Mac state/HUD tests, 19 targeted integration tests and source/reference freshness for 11 GPU reports pass; see `08-07-SUMMARY.md` and its distinct inline review. VoiceOver, physical gesture direction/feel, actual macOS 26 runtime and physical-device checks remain NOT TESTED. No Phase 8 requirement is complete, 08-08/09 remain unexecuted, no phase-level verification is claimed, and 08-09 human review remains mandatory.
+**Execution status (2026-11-15):** 08-01 / Wave 1 through 08-08 / Wave 8 complete, **8/9** plans closed; next **08-09 / Wave 9 mandatory actual human review**. Plan 08-08 adds a separate fail-closed inspection schema/CLI and fresh passing exact Mac/iOS builds, full Mac 47/47, full integration 45/45 and discovered iPhone/iPad HUD 11/11 each. Initial Mac 45/47 and iPhone 9/11 failures plus full unchanged-source retries are retained; all matrix attempts total 2,950.717 s. Complete state remains 37 reset resources, 160 negatives, 29 exact paused cases and independent shown/hidden/alternating/nil schedules at 0/1/24/48, maximum error 0. Actual evidence CLI, 14-report freshness and prepared root app-metallib match pass; see `08-08-SUMMARY.md`, its distinct inline review and `docs/3d-phase8-verification.md`. All five Phase 8 requirements remain pending. VoiceOver, physical gesture feel, actual macOS 26 and physical-device checks remain NOT TESTED; displayed pacing remains NOT MEASURED. No 08-09, phase-level verification/completion or auto-advance ran.
 
 **UI hint**: yes
 
@@ -184,7 +184,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 7. First 3D Fluid Vertical Slice | 9/9 | Plans closed; acceptance incomplete | — (plans closed 2026-11-13) |
-| 8. Spatial Inspection | 7/9 | In Progress — next 08-08 / Wave 8 | — |
+| 8. Spatial Inspection | 8/9 | In Progress — next 08-09 / Wave 9 mandatory human review | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |
 
