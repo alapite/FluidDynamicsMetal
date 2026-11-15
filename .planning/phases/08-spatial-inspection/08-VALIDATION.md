@@ -3,13 +3,13 @@ phase: 8
 slug: spatial-inspection
 status: approved
 nyquist_compliant: true
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-11-13
 ---
 
 # Phase 8 — Validation Strategy
 
-> Executable validation contract for nine plans / nine waves / seventeen tasks. Approved UI-SPEC is present. `nyquist_compliant: true` records checked **planning coverage**, not passing implementation tests; `wave_0_complete: false` records that the new harnesses/fixtures have not been built. All implementation/test/runtime results remain pending.
+> Executable validation contract for nine plans / nine waves / seventeen tasks. Approved UI-SPEC is present. `nyquist_compliant: true` records checked **planning coverage**, not human acceptance. Producer outcomes are recorded below and in 08-01 through 08-08 summaries; the mandatory 08-09 actual human review remains pending.
 
 ## Test Infrastructure
 
@@ -23,7 +23,7 @@ created: 2026-11-13
 | Focused state run | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO -only-testing:FluidDynamicsMetalStateTests` |
 | Full integration | `python3 -m unittest discover -s Tests/Integration` after a fresh Mac build |
 | Full Mac tests | `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO` |
-| Estimated runtime | NOT MEASURED for Phase 8. Historical full integration: 572 s; do not promise full GPU/Xcode feedback under 30 s. |
+| Measured runtime | 08-08 full integration 45/45 in 1,044.623 s; full Mac final command 402.944 s; all matrix attempts 2,950.717 s total. Full GPU/Xcode feedback is not under 30 s. |
 
 Quick existing tests protect schema/source constraints only; they cannot establish INS-01–04 or CTRL-08. New fast modules provide oracle/math/state feedback; mandatory supplemental production GPU and native UI commands in each plan establish integration. Running only the fast modules does not complete a GPU/UI task. No library/framework installation is needed.
 
@@ -45,7 +45,7 @@ Aliases (each expands to an exact runnable command after the scheduled producer 
 - **U(name):** `xcodebuild test -project FluidDynamicsMetal.xcodeproj -scheme FluidDynamicsMetalOSX -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO -only-testing:FluidDynamicsMetalOSXUITests/HUDUITests/NAME`, replacing NAME with the named case.
 - **E:** `python3 Tests/Integration/test_fluid3d.py --verify-inspection-evidence .build/inspection3d-evidence`
 
-Rows for Waves 1–3 are complete; later rows remain **pending execution**. “Create here” means failing behavioral tests are written and run in that task before implementation, not that an absent test is currently runnable. Supplemental G/U/E gates are mandatory, not alternatives to fast feedback.
+Waves 1–7 have execution summaries; Wave 8 schema RED/GREEN is recorded in `08-08-SUMMARY.md`. The fresh full matrix and evidence gate are tracked in `docs/3d-phase8-verification.md`. Wave 9 remains **pending actual human review**. “Create here” in the planning-time availability column identifies the owning producer task, not an absent method today. Supplemental G/U/E gates are mandatory, not alternatives to fast feedback.
 
 | Task ID | Plan / Wave | Requirements | Threat refs / secure behavior | Fast automated feedback | Required supplemental gate | Test availability at planning |
 |---|---|---|---|---|---|---|
@@ -87,11 +87,11 @@ Task dependencies are explicit in PLAN frontmatter; each producer runs before it
 - [x] 08-01-02: production `test_inspection3d_state.swift` / `.py`, shared values/math and Xcode membership.
 - [x] 08-02-01: spatial fixture registration/ABI assertions and all three standalone source lists, at first camera-dependent compile (not deferred until Renderer integration).
 - [x] 08-03-01/02: state-scope and no-advance renderer routing assertions.
-- [ ] 08-04-01/02: native keyboard/focus/gesture/guide and negative side-effect UI cases.
-- [ ] 08-05-01/02: tracer reset/RK2/guard/no-feedback production fixture and independent expected positions.
-- [ ] 08-06-01/02: hidden/nil-drawable schedule, occlusion and native tracer/restart/failure cases.
-- [ ] 08-07-01/02: complete staging/inventory including workspace/status/latches/tracers plus negative detector checks and paired runs.
-- [ ] 08-08-01: separate Phase8 evidence schema/CLI and negative manifests.
+- [x] 08-04-01/02: native keyboard/focus/gesture/guide and negative side-effect UI cases — `08-04-SUMMARY.md`; actual VoiceOver/physical feel remains untested.
+- [x] 08-05-01/02: tracer reset/RK2/guard/no-feedback production fixture and independent expected positions — `08-05-SUMMARY.md`.
+- [x] 08-06-01/02: hidden/nil-drawable schedule, occlusion and native tracer/restart/failure cases — `08-06-SUMMARY.md`.
+- [x] 08-07-01/02: complete staging/inventory including workspace/status/latches/tracers plus negative detector checks and paired runs — `08-07-SUMMARY.md`.
+- [x] 08-08-01: separate Phase8 evidence schema/CLI and negative manifests — observed RED/GREEN, `.build/08-08-task1-red-assertion.log` and `.build/08-08-task1-green.log`; synthetic schema validity is not an actual GPU run.
 - [x] All17 tasks have automated feedback plus assigned feature-specific integration gates; every producer/dependency is scheduled and numerical/2D regression gates are preserved.
 
 No framework installation is proposed. Do not create passing-only test stubs or mark absent methods as runnable verification.
@@ -123,7 +123,25 @@ Phase 7 unperformed manual review remains pending. Actual macOS 26 runtime and p
 - [x] Sampling continuity checked against final plans: 17/17 automated entries; no unverified three-task window
 - [x] Every absent test reference has an owning producer task; no passing-only scaffolds
 - [x] No watch-mode flags proposed
-- [ ] Focused feedback latency measured and acceptable
+- [x] Focused feedback latency measured and acceptable — 08-01 summary records final four-test fast command 2.955 s including compilation; full matrix/GPU/XCTest latency is separate, not promised under 30 s.
 - [x] `nyquist_compliant: true` records checked executable plan contract, not implementation success
 
-**Approval:** Planning contract approved2026-11-13 after distinct inline review. New harnesses/fixtures, actual latency and all feature acceptance remain unexecuted; keep `wave_0_complete: false` until their producer tasks genuinely pass. No app build, GPU test or human review was performed by plan-phase.
+**Approval:** Planning contract approved 2026-11-13 after distinct inline review. Producer execution is now documented separately above; this does not rewrite planning as implementation evidence. All five Phase 8 requirements remain pending mandatory 08-09 human acceptance. No human review was performed by plan-phase or inferred from automation.
+
+## 08-08 Fresh Automated Gate — 2026-11-15
+
+- [x] Both exact no-override Debug builds: Mac arm64 and generic iOS Simulator.
+- [x] Full Mac 47/47 (25 state + 22 HUD); initial 45/47 failure and full unchanged-source retry retained.
+- [x] Full integration 45/45, including all 14 production 3D fixtures and established 2D/GPU/educational/bundle checks.
+- [x] Discovered iPhone 17 Pro and iPad Pro 13-inch (M5), both iOS 26.4: full HUD 11/11 each. Initial iPhone 9/11, reboot and full retry retained.
+- [x] New/legacy schema tests and focused schema/state command; actual evidence CLI exits 0.
+- [x] Launchable root Mac app prepared; copied metallib matches actual GPU evidence.
+- [x] Distinct inline review against 08-08 original plan; not independent-agent verification.
+- [ ] Actual 08-09 human visual/accessibility/input review — mandatory and not auto-approved.
+
+Evidence: `.build/inspection3d-evidence/{manifest,regression-matrix}.json`,
+all attempt logs/xcresults in that namespace, `.build/08-08-evidence-final.log`,
+and `docs/3d-phase8-verification.md`. `wave_0_complete: true` now records genuinely
+produced/tested harness infrastructure, not phase acceptance. Actual macOS 26,
+physical multitouch and VoiceOver/real input feel remain NOT TESTED; displayed
+frame pacing remains NOT MEASURED. Phase 7 historical/pending claims are unchanged.

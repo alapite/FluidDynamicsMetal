@@ -82,23 +82,49 @@ These are two-dimensional qualitative demonstrations using the existing solver a
 
 ### Mac 3D dye-advection preview
 
-On Mac, the Experiments selector and Simulation menu group the established modes under **2D** and the current preview under **3D**. Choose **3D Dye Advection** from either; it opens seeded, paused at **Step 0**. Use **Run**, **Pause/Resume**, **Step**, and **Restart experiment** to inspect the fixed-slice lesson. The 3D lesson is not assigned a direct ⌘1–4 shortcut; those shortcuts retain their established 2D meanings.
+On Mac, the Experiments selector and Simulation menu group the established modes under **2D** and the current preview under **3D**. Choose **3D Dye Advection** from either; it opens seeded, paused at **Step 0**. Use **Run**, **Pause/Resume**, **Step**, and **Restart experiment** to inspect the flow. The 3D lesson is not assigned a direct ⌘1–4 shortcut; those shortcuts retain their established 2D meanings.
 
-The black square shows one face-on **XY cross-section halfway through Z** from a genuine 64³ simulation. Its central sample averages Z planes 31 and 32. Black means no dye; amber through pale cream means increasing local dye concentration. This is not a projection of the whole volume. There is no explicit dye fading or per-frame brightness adjustment: dye may move out of the fixed plane, and numerical advection can smooth it. A step is one solver advance, not a second or display frame.
+The initial slightly angled view shows an **XY cross-section at Z depth 50%** inside a subdued wireframe cube, with a corner X/Y/Z orientation guide. The genuine 64³ simulation keeps its fixed grid when the window changes size. Black means no dye; amber through pale cream means increasing local dye concentration. This is a cut through the fluid, not a projection of the whole volume. There is no explicit dye fading or per-frame brightness adjustment: dye may move out of the plane, and numerical advection can smooth it. A step is one solver advance, not a second or display frame.
 
-In 3D, 2D-only field views, overlays, and tuning controls are hidden and restored on return to 2D. **S** does nothing and canvas-focused **Space** toggles Run/Pause; focused native controls keep their normal keyboard actions. Canvas pointer input does not inject dye in this lesson. If 3D preparation fails, a native message offers a safe return to 2D and retry. Returning to 2D restores the existing controls; returning to Free Play creates a fresh running canvas with this session's Free Play preferences.
+The separate **Simulation Controls** panel provides native inspection controls:
 
-This is the scoped Phase 7 slice, not the later spatial-inspection/completion feature set. Camera controls and 3D tracers are later work; 3D speed comparisons and the complete 600-step teaching flow are also later work; volume rendering is later work. iPhone and iPad remain 2D-only. Human visual/interaction review for the current Mac slice is tracked separately in the [Phase 7 verification report](docs/3d-phase7-verification.md).
+| Control | Effect |
+|---|---|
+| **Plane: XY / XZ / YZ** | Select one two-sided sheet fixed in world space. The depth label becomes Z / Y / X respectively. Changing plane preserves the camera and the one shared depth percentage. |
+| **Depth** | Move continuously from 0% to 100% along that plane's depth axis. At 50%, cell planes 31 and 32 contribute equally. Display rounding does not snap the sample. |
+| **Centre Slice** | Set only depth to 50%; retain plane, camera, visibility and experiment progress. |
+| **Show Tracers** | Show/hide 512 sparse pale-cyan passive dots. They follow the three-component flow on every logical step, even while hidden or without a drawable; re-showing never reseeds or catches up. |
+| **Horizontal Orbit / Elevation / Zoom** | Inspect from different directions without changing the simulation, including while paused. The upright camera has no pan/roll; a sheet can legitimately become thin edge-on. |
+| **Reset Camera** | Restore the initial 25° horizontal orbit, 18° elevation and fitted 100% zoom only; retain slice, visibility, progress and pending steps. |
+
+Plain primary **canvas drag orbits**; **mouse wheel/two-finger scroll zooms**. These are additional routes, not requirements: use Tab/Shift-Tab (with Full Keyboard Access as needed), segment arrow selection and the labelled sliders. Focused slider arrows adjust depth by 1 percentage point, horizontal orbit by 5°, elevation by 3°, and zoom by 5 percentage points. Orbit is bounded to −180°…180° in the slider (canvas dragging wraps), elevation to ±75°, and zoom to 50%…150%. Plane changes never auto-face the camera.
+
+Dots do not deposit dye or exert force and have no trails/speed colours. The slice is **opaque even where black**: markers behind its footprint are hidden, not visible as X-ray dots. Orbiting to the opposite side changes which dots are hidden. Cube edges are orientation overlays, not opaque container walls.
+
+**Restart experiment** resets complete fluid/tracer evolution, clears pending work/input and returns paused to Step 0 while retaining camera, plane, shared depth and tracer visibility. Selecting/reselecting the 3D lesson instead restores initial inspection defaults. Inspection edits and resize do not advance or reset the experiment.
+
+In 3D, 2D-only field views, overlays, and tuning controls are hidden and restored on return to 2D. **S** does nothing and canvas-focused **Space** toggles Run/Pause; focused native controls keep their normal keyboard actions. Space on a focused checkbox/button operates that control once, not transport as well. Panel-originated drag/scroll never orbits/zooms the canvas; camera gestures never activate transport or inject dye/force. The corner guide is noninteractive and passes pointer input through to the canvas. If preparation or an active 3D resource update fails, a native message offers **Continue in 2D** and retry after safe recovery. Returning to 2D restores the existing controls; returning to Free Play creates a fresh running canvas with this session's Free Play preferences.
+
+This is the scoped spatial-inspection preview. **3D speed comparison, full 600-step teaching/completion and all-speed repeatability qualification remain Phase 9 work; transparent volume rendering and integrated performance qualification remain Phase 10 work.** iPhone and iPad remain 2D-only with their established controls/input. Human review is not implied by tests or screenshots: the [Phase 8 verification report](docs/3d-phase8-verification.md) retains the mandatory unchecked visual/accessibility/input checklist. The historical [Phase 7 verification report](docs/3d-phase7-verification.md) and its six pending user-facing requirements are unchanged.
 
 After a fresh Mac Debug build, run the 3D reference/production checks and baseline with:
 
 ```bash
 python3 -m unittest Tests.Integration.test_fluid3d_reference Tests.Integration.test_fluid3d
+python3 -m unittest Tests.Integration.test_inspection3d_reference Tests.Integration.test_inspection3d_state
+python3 Tests/Integration/test_fluid3d.py --verify-inspection-evidence .build/inspection3d-evidence
+```
+
+The Phase 8 checker requires current source/metallib/contracts/oracle identities, complete spatial/state/failure evidence, and passing builds/full Mac/full integration/iPhone+iPad HUD results with real logs/result bundles. Missing evidence is an error, not a skip. Schema unit tests use explicitly synthetic in-memory fixtures; those are not acceptance runs. The evidence index documents exact commands, durations, inventories and real captures.
+
+The separate historical solver/fixed-slice baseline can still be run with:
+
+```bash
 python3 Tests/Integration/test_fluid3d.py --benchmark
 python3 Tests/Integration/test_fluid3d.py --check-evidence
 ```
 
-The full evidence check validates numerical fixtures and the recorded build/test matrix. Add `--quick` to check required files, schema, and hashes only; it does **not** assert a new numerical PASS. Benchmark timings are offscreen solver and solver-plus-slice measurements, not displayed FPS. Displayed frame pacing remains **NOT MEASURED**; the later 30 fps qualification is not part of this preview. See the [Phase 7 verification report](docs/3d-phase7-verification.md) for actual results and coverage limits.
+That legacy checker/benchmark retains its own namespace and workload labels; historical passing evidence is not a fresh Phase 8 result. Add `--quick` to the legacy check to inspect required files, schema, and hashes only, not assert a new numerical PASS. Both fixed-slice baseline timings and new offscreen spatial images are **not displayed FPS**. Displayed frame pacing remains **NOT MEASURED**; the later 30 fps qualification is not part of this preview. Actual macOS 26 runtime and physical iPhone/iPad multitouch remain **NOT TESTED**.
 
 ## Controls and manual checks
 
