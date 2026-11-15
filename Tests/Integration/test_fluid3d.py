@@ -957,6 +957,10 @@ def validate_inspection_manifest(manifest: object, *, actual: bool = False) -> l
                                "checkedAsymmetricSamples": 24}.items():
                 require(result.get(key) == value, f"{name}: incomplete {key}")
             require(isinstance(result.get("independentPayloadSHA256"), str), f"{name}: payload hash required")
+            if actual:
+                payload = ROOT / ".build/inspection3d-reference/expectations.f64le"
+                require(payload.is_file() and result.get("independentPayloadSHA256") == sha256(payload),
+                        f"{name}: stale oracle payload")
             require(set(result.get("cubeGuidePixelCounts", {})) == {"1x", "2x"}, f"{name}: scale counts required")
         if name == "tracer-evolution":
             for key, value in {"positionStride": 16, "positionAlignment": 16,
@@ -1106,14 +1110,18 @@ def validate_inspection_bundle(directory: Path) -> list[str]:
         manifest = json.loads((directory / "manifest.json").read_text())
         matrix = json.loads((directory / "regression-matrix.json").read_text())
         errors = validate_inspection_manifest(manifest, actual=True)
-        if matrix.get("results") != manifest.get("regressionMatrix"):
+        if {n: matrix.get("results", {}).get(n) for n in REGRESSION_MATRIX_REQUIRED} != manifest.get("regressionMatrix"):
             errors.append("regression matrix does not match inspection manifest")
+        if matrix.get("sourceSHA256") != manifest.get("sourceSHA256"):
+            errors.append("regression matrix source identity differs from manifest")
+        if matrix.get("environment") != manifest.get("environment") or matrix.get("coverage") != INSPECTION_COVERAGE:
+            errors.append("regression matrix environment/coverage differs from manifest")
         for name in INSPECTION_FIXTURES:
             report = json.loads((directory / f"{name}.json").read_text())
             if report != manifest.get("fixtures", {}).get(name):
                 errors.append(f"manifest differs from {name}.json")
         return errors
-    except (OSError, ValueError, TypeError, KeyError) as error:
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
         return [f"missing/malformed inspection evidence: {error}"]
 
 
