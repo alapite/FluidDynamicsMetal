@@ -123,7 +123,12 @@ final class Renderer: NSObject, MTKViewDelegate {
     private var drawingQueuedStep = false
     private var inspectionRedrawPending = false
     private var inspectionRedrawScheduled = false
-    private var interactive3DFrameInFlight = false
+    /// Live 3D frames submitted from the display loop and not yet completed.
+    /// Running frames may pipeline two deep so CPU encoding overlaps the
+    /// previous frame's GPU work; paused inspection redraws wait for zero so
+    /// camera changes are never queued behind stale frames.
+    private var interactive3DFramesInFlight = 0
+    private static let maximumRunning3DFramesInFlight = 2
     private var sessionGeneration = 0
     private let visualization: FieldVisualization
     private let threeDFactory: Renderer3DSessionFactory
@@ -285,13 +290,13 @@ final class Renderer: NSObject, MTKViewDelegate {
     }
 
     private func scheduleInspectionRedraw() {
-        guard inspectionRedrawPending, !inspectionRedrawScheduled, !interactive3DFrameInFlight else { return }
+        guard inspectionRedrawPending, !inspectionRedrawScheduled, interactive3DFramesInFlight == 0 else { return }
         inspectionRedrawScheduled = true
         RunLoop.main.perform(inModes: [.common]) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.inspectionRedrawScheduled = false
-                guard self.inspectionRedrawPending, !self.interactive3DFrameInFlight else { return }
+                guard self.inspectionRedrawPending, self.interactive3DFramesInFlight == 0 else { return }
                 self.inspectionRedrawPending = false
                 guard self.state.mode.is3D, !self.state.shouldAdvance, let view = self.metalView else { return }
                 if view.delegate === self {
@@ -605,7 +610,11 @@ final class Renderer: NSObject, MTKViewDelegate {
                 ? simulation3D != nil && visualization3D != nil && tracers3D != nil
                 : simulation != nil else { return }
         if interactive3D {
-            guard !interactive3DFrameInFlight else { return }
+            let limit = presentationOnly ? 1 : Self.maximumRunning3DFramesInFlight
+            guard interactive3DFramesInFlight < limit else {
+                if presentationOnly { inspectionRedrawPending = true }
+                return
+            }
             guard semaphore.wait(timeout: .now()) == .success else {
                 if presentationOnly { inspectionRedrawPending = true }
                 return
@@ -625,12 +634,13 @@ final class Renderer: NSObject, MTKViewDelegate {
         }
         let command = metal.newCommandBuffer()
         if interactive3D {
-            interactive3DFrameInFlight = true
+            interactive3DFramesInFlight += 1
             command.addCompletedHandler { [weak self] _ in
                 RunLoop.main.perform(inModes: [.common]) { [weak self] in
                     MainActor.assumeIsolated {
-                        self?.interactive3DFrameInFlight = false
-                        self?.scheduleInspectionRedraw()
+                        guard let self else { return }
+                        self.interactive3DFramesInFlight = max(0, self.interactive3DFramesInFlight - 1)
+                        self.scheduleInspectionRedraw()
                     }
                 }
             }
