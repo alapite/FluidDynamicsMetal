@@ -854,11 +854,13 @@ def inspection_inventory(statuses=("reset",)) -> list[dict]:
                             "byteCount": math.prod(shape) * 4, "format": "r32Float", "scalar": "Float32"})
     for name, size in [
         ("simulation/failure-latch", 4), ("projection/reduction-partials", 16640),
-        ("projection/standalone-latch", 4), ("tracer/positions", 8192),
+        ("projection/standalone-latch", 4), ("projection/iteration-gate", 48),
+        ("tracer/positions", 8192),
         *[(f"status/{role}/state", 304) for role in statuses],
     ]:
         records.append({"name": name, "shape": [size], "byteCount": size, "format": "buffer",
-                        "scalar": "UInt32" if "latch" in name else "Float32"})
+                        "scalar": "UInt32" if "latch" in name or name.endswith("iteration-gate")
+                        else "Float32"})
     return records
 
 
@@ -1014,7 +1016,8 @@ def _validate_inspection_independence(result: dict) -> list[str]:
             value = found.get("maximumAbsoluteError")
             require(isinstance(value, (int, float)) and math.isfinite(value) and 0 <= value <= 2e-6,
                     "finite per-resource error: " + wanted["name"])
-            if exact or wanted["name"].startswith("status/") or "latch" in wanted["name"]:
+            if (exact or wanted["name"].startswith("status/") or "latch" in wanted["name"]
+                    or wanted["name"].endswith("iteration-gate")):
                 require(found.get("byteMatch") is True, "exact bytes: " + wanted["name"])
             if exact:
                 require(found.get("identityPreserved") is True, "paused allocation identity")
@@ -1480,7 +1483,7 @@ class Fluid3DTests(unittest.TestCase):
                 result["failureEvidence"]["active-depth-recovery"]["retrySucceeded"] = False
             with self.subTest(corruption=mutation):
                 self.assertTrue(validate_inspection_manifest(changed))
-        self.assertEqual(len(independence["inventory"]), 37)
+        self.assertEqual(len(independence["inventory"]), 38)
 
     def test_evidence_schema(self):
         def sample():
@@ -1899,7 +1902,7 @@ class Fluid3DTests(unittest.TestCase):
             self.assertEqual([item["step"] for item in case["checkpoints"]], [0, 1, 24, 48])
             for checkpoint in case["checkpoints"]:
                 resources = checkpoint["resources"]
-                self.assertEqual(len(resources), 37 if checkpoint["step"] == 0 else 38)
+                self.assertEqual(len(resources), 38 if checkpoint["step"] == 0 else 39)
                 for resource in resources:
                     self.assertTrue(math.isfinite(resource["maximumAbsoluteError"]))
                     self.assertLessEqual(resource["maximumAbsoluteError"], 2e-6)

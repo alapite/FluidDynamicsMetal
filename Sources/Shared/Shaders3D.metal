@@ -1194,6 +1194,24 @@ kernel void fluid3DProjectDirection(
     direction.write(direction.read(position).x - state[8].x / float(count), position);
 }
 
+// Evaluated once at the start of every encoded PCG iteration. While the solve
+// is active it copies the host-computed dispatch sizes into the indirect
+// argument buffer; once it has converged or failed it writes zero threadgroups,
+// so the remaining encoded iterations launch no work. An inactive iteration only
+// rewrites scratch fields that the post-loop acceptance recomputes or ignores.
+kernel void fluid3DGatePCGIteration(
+    device const float4 *state [[buffer(0)]],
+    constant uint *activeArguments [[buffer(1)]],
+    device uint *gatedArguments [[buffer(2)]],
+    constant uint &wordCount [[buffer(3)]],
+    uint3 position [[thread_position_in_grid]]) {
+    if (any(position != uint3(0))) { return; }
+    bool active = pcgActive(state);
+    for (uint index = 0; index < wordCount; ++index) {
+        gatedArguments[index] = active ? activeArguments[index] : 0u;
+    }
+}
+
 kernel void fluid3DNormalizePressureGauge(
     constant Fluid3DUniforms &uniforms [[buffer(0)]],
     device const float4 *state [[buffer(1)]],

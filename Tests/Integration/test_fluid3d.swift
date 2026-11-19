@@ -1351,7 +1351,8 @@ private struct Fluid3DChecks {
         }
         var registered = registeredEvolutionBuffers(simulation)
         try require(registered.map(\.0).sorted() == [
-            "projection/reduction-partials", "projection/standalone-latch", "simulation/failure-latch",
+            "projection/iteration-gate", "projection/reduction-partials", "projection/standalone-latch",
+            "simulation/failure-latch",
         ], "Registered evolution buffer was missing/extra/renamed")
         let maximumFaceValues = max((grid.nx + 1) * grid.ny * grid.nz,
                                     grid.nx * (grid.ny + 1) * grid.nz,
@@ -1362,7 +1363,11 @@ private struct Fluid3DChecks {
         // actual production layout rather than accepting whatever it receives.
         let expectedWorkspaceBytes = ((maximumValues + 255) / 256) * 16
         for (name, resource) in registered {
-            try require(resource.length == (name.contains("latch") ? 4 : expectedWorkspaceBytes),
+            // The PCG iteration gate holds four indirect dispatch-argument triples.
+            let expectedBytes = name.contains("latch") ? 4
+                : name.hasSuffix("iteration-gate") ? 4 * MemoryLayout<MTLDispatchThreadgroupsIndirectArguments>.stride
+                : expectedWorkspaceBytes
+            try require(resource.length == expectedBytes,
                         "Registered evolution buffer resized: \(name)")
         }
         try require(tracers.positionBuffer.length == 8192, "Tracer position allocation resized")
@@ -1407,7 +1412,7 @@ private struct Fluid3DChecks {
             EvolutionResource(name: name, shape: [source.length], format: "buffer",
                               identity: ObjectIdentifier(source),
                               bytes: Data(bytes: staging.contents(), count: staging.length),
-                              floating: !name.contains("latch"))
+                              floating: !name.contains("latch") && !name.hasSuffix("iteration-gate"))
         }
         var metadata = metadata
         metadata["grid"] = "\(grid.nx),\(grid.ny),\(grid.nz)"
@@ -1845,7 +1850,7 @@ private struct Fluid3DChecks {
                     try require(slots.filter { $0.0.hasPrefix("status/submitted-") }.count == 3,
                                 "Three in-flight slots not accounted for before callback drain")
                     let queued = try rendererSnapshot(actual)
-                    try require(queued.resources.count == 41 && Set(slots.map { ObjectIdentifier($0.1) }).count == 5,
+                    try require(queued.resources.count == 42 && Set(slots.map { ObjectIdentifier($0.1) }).count == 5,
                                 "Reset/latest/three submitted slots were aliased or omitted")
                     for (name, slot) in slots {
                         try requireAcceptedBenchmarkDiagnostics(slot.diagnostics(), label: "\(schedule)/\(name)")

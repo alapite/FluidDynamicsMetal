@@ -187,6 +187,24 @@ final class PressureProjection3D {
     private let finalReductionGroupSize: MTLSize
     private let reductionPartialCapacity: Int
     private let standaloneLatch: MTLBuffer
+    private let gatePCGIterationPipeline: MTLComputePipelineState
+    /// Indirect threadgroup counts for every dispatch inside a PCG iteration.
+    /// `fluid3DGatePCGIteration` rewrites it at the start of each iteration and
+    /// zeroes it once the solve has stopped, so unused iterations launch nothing.
+    private let iterationGate: MTLBuffer
+    private let activeIterationGateArguments: [UInt32]
+    private let gatedCellThreadgroupSize: MTLSize
+    private let cellReductionGroupCount: Int
+    private var gatingIteration = false
+
+    private enum GatedDispatch: Int, CaseIterable {
+        case cells = 0
+        case single = 1
+        case reductionPartials = 2
+        case reductionFinal = 3
+
+        var byteOffset: Int { rawValue * MemoryLayout<MTLDispatchThreadgroupsIndirectArguments>.stride }
+    }
 
     private enum StateLane: Int {
         case recurrence = 0
@@ -262,6 +280,7 @@ final class PressureProjection3D {
         finalizeProjectionDiagnosticsPipeline = try Self.makePipeline("fluid3DFinalizeProjectionDiagnostics", metal: metal)
         capturePCGTracePipeline = try Self.makePipeline("fluid3DCapturePCGTrace", metal: metal)
         enforceWallsPipeline = try Self.makePipeline("fluid3DEnforceWalls", metal: metal)
+        gatePCGIterationPipeline = try Self.makePipeline("fluid3DGatePCGIteration", metal: metal)
 
         let partialWidth = min(256, reduceFieldPipeline.maxTotalThreadsPerThreadgroup)
         reductionGroupSize = MTLSize(width: partialWidth, height: 1, depth: 1)
@@ -298,6 +317,81 @@ final class PressureProjection3D {
         }
         latch.contents().storeBytes(of: UInt32(0), as: UInt32.self)
         standaloneLatch = latch
+
+        // Gated cell dispatches use whole threadgroups that tile the grid
+        // exactly, so kernels without bounds checks never see extra threads.
+        let gatedCellPipelines = [
+            applySearchPipeline, updatePCGPipeline, projectPressureResidualPipeline,
+            applyCandidatePipeline, computeCandidateResidualPipeline, prepareRestartPipeline,
+            preconditionVectorPipeline, projectPreconditionerPipeline, updateDirectionPipeline,
+            projectDirectionPipeline
+        ]
+        let cellWidthLimit = gatedCellPipelines
+            .map { Fluid3DDispatch.threadsPerThreadgroup(for: $0).width }
+            .min() ?? 1
+        let cellWidth = (1...max(1, cellWidthLimit)).last { configuration.nx % $0 == 0 } ?? 1
+        gatedCellThreadgroupSize = MTLSize(width: cellWidth, height: 1, depth: 1)
+        let cellGroups = (maxCells + reductionGroupSize.width - 1) / reductionGroupSize.width
+        cellReductionGroupCount = cellGroups
+        activeIterationGateArguments = [
+            UInt32(configuration.nx / cellWidth), UInt32(configuration.ny), UInt32(configuration.nz),
+            1, 1, 1,
+            UInt32(cellGroups), 1, 1,
+            1, 1, 1
+        ]
+        let gateLength = GatedDispatch.allCases.count
+            * MemoryLayout<MTLDispatchThreadgroupsIndirectArguments>.stride
+        guard activeIterationGateArguments.count * MemoryLayout<UInt32>.stride == gateLength,
+              let gate = metal.device.makeBuffer(length: gateLength, options: .storageModePrivate) else {
+            throw PressureProjection3DError.reductionResultAllocationFailed(label: "PCG iteration gate")
+        }
+        gate.label = "3D PCG iteration indirect gate"
+        iterationGate = gate
+    }
+
+    /// Writes this iteration's indirect dispatch sizes, or zeros once the
+    /// solve recorded convergence or failure in `status`.
+    private func encodeIterationGate(command: MTLCommandBuffer, status: StatusSlot) throws {
+        guard let encoder = command.makeComputeCommandEncoder() else {
+            throw PressureProjection3DError.encoderUnavailable(operation: "gate PCG iteration")
+        }
+        encoder.label = "3D gate PCG iteration"
+        encoder.setComputePipelineState(gatePCGIterationPipeline)
+        encoder.setBuffer(status.buffer, offset: 0, index: 0)
+        activeIterationGateArguments.withUnsafeBytes { bytes in
+            encoder.setBytes(bytes.baseAddress!, length: bytes.count, index: 1)
+        }
+        encoder.setBuffer(iterationGate, offset: 0, index: 2)
+        var wordCount = UInt32(activeIterationGateArguments.count)
+        encoder.setBytes(&wordCount, length: MemoryLayout<UInt32>.stride, index: 3)
+        encoder.dispatchThreadgroups(
+            MTLSize(width: 1, height: 1, depth: 1),
+            threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1)
+        )
+        encoder.endEncoding()
+    }
+
+    private func dispatchGated(
+        _ encoder: MTLComputeCommandEncoder,
+        _ kind: GatedDispatch,
+        threadsPerThreadgroup: MTLSize
+    ) {
+        encoder.dispatchThreadgroups(
+            indirectBuffer: iterationGate,
+            indirectBufferOffset: kind.byteOffset,
+            threadsPerThreadgroup: threadsPerThreadgroup
+        )
+    }
+
+    private func gatedKind(for extent: MTLSize, operation: String) throws -> GatedDispatch {
+        if extent.width == 1, extent.height == 1, extent.depth == 1 { return .single }
+        if extent.width == configuration.nx, extent.height == configuration.ny, extent.depth == configuration.nz {
+            return .cells
+        }
+        throw PressureProjection3DError.invalidTexture(
+            resource: "\(operation) gated dispatch",
+            expected: "a single thread or the cell extent inside a PCG iteration"
+        )
     }
 
     /// Encodes D(u) on every cell, including all six boundary-adjacent slabs.
@@ -581,10 +675,18 @@ final class PressureProjection3D {
         for (index, texture) in textures.enumerated() {
             encoder.setTexture(texture, index: index)
         }
-        encoder.dispatchThreads(
-            extent,
-            threadsPerThreadgroup: Fluid3DDispatch.threadsPerThreadgroup(for: pipeline)
-        )
+        if gatingIteration {
+            let kind = try gatedKind(for: extent, operation: operation)
+            dispatchGated(
+                encoder, kind,
+                threadsPerThreadgroup: kind == .cells ? gatedCellThreadgroupSize : MTLSize(width: 1, height: 1, depth: 1)
+            )
+        } else {
+            encoder.dispatchThreads(
+                extent,
+                threadsPerThreadgroup: Fluid3DDispatch.threadsPerThreadgroup(for: pipeline)
+            )
+        }
         encoder.endEncoding()
     }
 
@@ -611,10 +713,14 @@ final class PressureProjection3D {
         encoder.setBuffer(traceBuffer, offset: 0, index: 1)
         encoder.setBytes(&stageValue, length: MemoryLayout<UInt32>.stride, index: 2)
         encoder.setBytes(&iterationValue, length: MemoryLayout<UInt32>.stride, index: 3)
-        encoder.dispatchThreads(
-            MTLSize(width: 1, height: 1, depth: 1),
-            threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1)
-        )
+        if gatingIteration {
+            dispatchGated(encoder, .single, threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1))
+        } else {
+            encoder.dispatchThreads(
+                MTLSize(width: 1, height: 1, depth: 1),
+                threadsPerThreadgroup: MTLSize(width: 1, height: 1, depth: 1)
+            )
+        }
         encoder.endEncoding()
     }
 
@@ -685,7 +791,9 @@ final class PressureProjection3D {
 
     /// Encodes a complete bounded zero-mean diagonal-PCG projection without a
     /// CPU wait/readback. Each status slot must belong to this device and must
-    /// not be reused until its command buffer completes.
+    /// not be reused until its command buffer completes. All `iterationLimit`
+    /// iterations are encoded, but each dispatches indirectly through a GPU-side
+    /// gate, so iterations after convergence or failure cost only the gate.
     func encodeProjection(
         command: MTLCommandBuffer,
         u: MTLTexture,
@@ -820,6 +928,11 @@ final class PressureProjection3D {
         )
 
         for iteration in 1...iterationLimit {
+            // The gate is evaluated before any work in this iteration, so the
+            // iteration that converges still runs to completion unchanged.
+            try encodeIterationGate(command: command, status: status)
+            gatingIteration = true
+            defer { gatingIteration = false }
             try encodeStateKernel(
                 applySearchPipeline,
                 command: command,
@@ -1082,7 +1195,8 @@ final class PressureProjection3D {
 
     var diagnosticBuffers: [(String, MTLBuffer)] {
         [("projection/reduction-partials", reductionPartials),
-         ("projection/standalone-latch", standaloneLatch)]
+         ("projection/standalone-latch", standaloneLatch),
+         ("projection/iteration-gate", iterationGate)]
     }
 
     private func encode(
@@ -1134,10 +1248,21 @@ final class PressureProjection3D {
             encoder.setTexture(texture, index: index)
         }
         encoder.setBuffer(reductionPartials, offset: 0, index: 1)
-        encoder.dispatchThreadgroups(
-            MTLSize(width: groupCount, height: 1, depth: 1),
-            threadsPerThreadgroup: reductionGroupSize
-        )
+        if gatingIteration {
+            guard groupCount == cellReductionGroupCount else {
+                encoder.endEncoding()
+                throw PressureProjection3DError.invalidTexture(
+                    resource: "\(operation) gated reduction",
+                    expected: "a cell-extent reduction inside a PCG iteration"
+                )
+            }
+            dispatchGated(encoder, .reductionPartials, threadsPerThreadgroup: reductionGroupSize)
+        } else {
+            encoder.dispatchThreadgroups(
+                MTLSize(width: groupCount, height: 1, depth: 1),
+                threadsPerThreadgroup: reductionGroupSize
+            )
+        }
         encoder.endEncoding()
     }
 
@@ -1159,10 +1284,14 @@ final class PressureProjection3D {
         encoder.setBytes(&uniforms, length: MemoryLayout<Fluid3DUniforms>.stride, index: 0)
         encoder.setBuffer(reductionPartials, offset: 0, index: 1)
         encoder.setBuffer(result, offset: resultOffset, index: 2)
-        encoder.dispatchThreadgroups(
-            MTLSize(width: 1, height: 1, depth: 1),
-            threadsPerThreadgroup: finalReductionGroupSize
-        )
+        if gatingIteration {
+            dispatchGated(encoder, .reductionFinal, threadsPerThreadgroup: finalReductionGroupSize)
+        } else {
+            encoder.dispatchThreadgroups(
+                MTLSize(width: 1, height: 1, depth: 1),
+                threadsPerThreadgroup: finalReductionGroupSize
+            )
+        }
         encoder.endEncoding()
     }
 
