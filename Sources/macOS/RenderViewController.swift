@@ -101,6 +101,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private var controlsPanel: NSPanel?
     private weak var simulationMenu: NSMenu?
     private var panelConfigured = false
+    private var canvasFrameFitted = false
     private var restorePanelAfterMinimize = false
     private var modeTransitionInProgress = false
     private var modeTransitionSource: SimulationMode?
@@ -178,10 +179,32 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         super.viewDidAppear()
         view.window?.contentMinSize = NSSize(width: 320, height: 240)
         if let window = view.window {
+            fitCanvasWindowToScreenOnce(window)
             NotificationCenter.default.addObserver(self, selector: #selector(canvasBecameMain),
                                                    name: NSWindow.didBecomeMainNotification, object: window)
             if window.isMainWindow { showControlsPanel() }
         }
+    }
+
+    /// The storyboard positions the canvas with struts designed for a smaller
+    /// screen; on some displays that leaves the bottom edge, including the
+    /// resize corner, off-screen. Keep the top-left where possible and shrink
+    /// only when the window cannot fit the visible frame.
+    private func fitCanvasWindowToScreenOnce(_ window: NSWindow) {
+        guard !canvasFrameFitted, let screen = window.screen ?? NSScreen.main else { return }
+        canvasFrameFitted = true
+        let fitted = Self.frame(window.frame, fittedTo: screen.visibleFrame)
+        if fitted != window.frame { window.setFrame(fitted, display: true) }
+    }
+
+    static func frame(_ frame: NSRect, fittedTo visible: NSRect) -> NSRect {
+        guard visible.width > 0, visible.height > 0 else { return frame }
+        let width = min(frame.width, visible.width)
+        let height = min(frame.height, visible.height)
+        let top = min(frame.maxY, visible.maxY)
+        let originY = max(visible.minY, top - height)
+        let originX = min(max(frame.minX, visible.minX), visible.maxX - width)
+        return NSRect(x: originX, y: originY, width: width, height: height)
     }
 
     @objc private func canvasBecameMain() {
