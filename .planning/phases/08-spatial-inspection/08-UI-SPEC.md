@@ -34,7 +34,7 @@ All substantive preferences are already answered in context. Remaining layout an
 | Rendering | Existing `MTKView`, Metal spatial presentation and depth testing; optional hit-transparent native corner-guide view |
 | Icon library | No new icon-only actions; X/Y/Z are explicit text labels, not colored-only axis symbols |
 | Font | macOS system font, existing native control/menu metrics; no custom/downloaded font |
-| Theme | System Light/Dark and semantic native chrome; existing opaque reduced-transparency fallback |
+| Theme | System Light/Dark, semantic native chrome, and a flat opaque panel background |
 | Units | AppKit points for authored UI and projected marker/guide sizing; drawable pixels for render attachments and image fixtures |
 | Dependencies | No new package, scene engine, third-party component registry, font or network asset |
 
@@ -46,7 +46,7 @@ The shadcn initialization/registry-fetch gates are **not applicable**: this is A
 
 ### Preserve the existing shell
 
-- Extend the separate movable **Simulation Controls** utility panel with its existing close/reopen, `.hudWindow` material, `SimulationControls` frame autosave and full-screen auxiliary behavior. Preserve **⌥⌘K** and the View-menu visibility action.
+- Extend the separate movable **Simulation Controls** utility panel with its existing close/reopen, `SimulationControls` frame autosave and full-screen auxiliary behavior. Use a flat, opaque system window background. Preserve **⌥⌘K** and the View-menu visibility action.
 - Retain the **368 pt** target content width, existing screen-bounded sizing and pinned selector/transport/counter. Preserve the canvas window's **320×240 pt** minimum and independent resizing. Choosing a plane or opening the panel must not resize the canvas.
 - Keep the existing **16 pt** horizontal insets and inherited shell vertical geometry. Constrained screens narrow the panel using existing layout logic; wrap Restart below Run/Step when needed. No horizontal scrollbar, text truncation, squeezed native controls or shrinking type to fit.
 - Keep selector, transport and step count outside the scrolling body. All body sections remain expanded and vertically scroll-reachable; focus movement must reveal an offscreen control. Do not create a disclosure that conceals basic inspection or the factual note.
@@ -156,7 +156,7 @@ The **60/30/10** hierarchy describes **native controls chrome**, not a measured 
 
 | Role | Value | Usage |
 |---|---|---|
-| Dominant (60%) | Existing `.hudWindow` material; `NSColor.windowBackgroundColor` opaque fallback | Simulation Controls surface in Light/Dark appearance |
+| Dominant (60%) | Opaque `NSColor.windowBackgroundColor` | Simulation Controls surface in Light/Dark appearance |
 | Secondary (30%) | Native control surfaces; `NSColor.labelColor` / `secondaryLabelColor` | Text hierarchy; promote secondary help to primary when Increase Contrast needs it |
 | Accent (≤10%) | System `NSColor.controlAccentColor` and native focus/selection rendering | Reserved for focused-control rings, selected plane segment, checked Show Tracers indicator, active menu item, transport pressed/highlight state |
 | Destructive / error | Native warning alert and standard buttons; `NSColor.systemRed` reserved for an actual destructive action, none added here | No red Restart, Centre Slice, Reset Camera or dye legend |
@@ -235,7 +235,7 @@ Inspection is available while paused and remains available if inherited lesson-c
 - Preserve `experimentSelector`, `transport.pause`, `transport.step`, `transport.restart`, `stepCount`, `simulationControls`, `lesson3d.heading`, `lesson3d.slice`, `lesson3d.concentration`, `lesson3d.legend`, `lesson3d.note`. Add `inspection3d.plane`, `inspection3d.depth`, `inspection3d.depthValue`, `inspection3d.centreSlice`, `inspection3d.showTracers`, `inspection3d.orbit`, `inspection3d.elevation`, `inspection3d.zoom`, `inspection3d.resetCamera`.
 - Update descriptor accessibility text to **{plane} slice, {axis} depth {p} percent**. Canvas description: **3D dye concentration, {plane} slice at {axis} depth {p} percent. Tracers {shown or hidden}.** Help: **Drag to orbit and scroll to zoom, or use the labelled camera controls in Simulation Controls.** Expose the canvas as a visualization with camera interaction help, not an editable fluid surface. Do not claim every enabled tracer is visible through occlusion.
 - Make the corner guide one nonactionable accessibility element labelled **3D orientation guide: X, Y and Z axes**; decorative axis children/cube lines/individual dots are not hundreds of separate elements. The concentration gradient remains a single labelled visualization without duplicate decorative-child announcements. Do not interrupt VoiceOver on every running step, scroll or drag update.
-- Check Light/Dark, Increase Contrast, Reduce Transparency, Bold Text and Full Keyboard Access. Use existing opaque fallback, semantic text and specified guide variants. Reduce Motion introduces no decorative camera animation and does not alter logical stepping or disable requested direct inspection. Actual VoiceOver/readability checks remain manual acceptance work, not implied by identifiers.
+- Check Light/Dark, Increase Contrast, Reduce Transparency, Bold Text and Full Keyboard Access. Use an opaque panel background, semantic text and specified guide variants. Reduce Motion introduces no decorative camera animation and does not alter logical stepping or disable requested direct inspection. Actual VoiceOver/readability checks remain manual acceptance work, not implied by identifiers.
 
 ## Registry Safety
 

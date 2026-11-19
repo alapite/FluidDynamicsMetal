@@ -352,7 +352,7 @@ final class HUDUITests: XCTestCase {
         for appearance in ["Light", "Dark"] {
             app.terminate()
             app = XCUIApplication()
-            app.launchArguments = ["-AppleInterfaceStyle", appearance]
+            app.launchEnvironment["FLUID_TEST_APPEARANCE"] = appearance
             app.launch()
 
             let selector = app.popUpButtons["experimentSelector"]
@@ -741,6 +741,39 @@ final class HUDUITests: XCTestCase {
         XCTAssertFalse(guide.exists, "The orientation guide must be absent in 2D")
         XCTAssertFalse(app.sliders["inspection3d.zoom"].exists)
         XCTAssertTrue(app.checkBoxes["Dye concentration"].exists)
+    }
+
+    func testPausedZoomPresentsSuccessiveCanvasFrames() throws {
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        let center = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        func centerPixels() throws -> Data {
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(data: canvas.screenshot().pngRepresentation))
+            let image = try XCTUnwrap(bitmap.cgImage)
+            let crop = try XCTUnwrap(image.cropping(to: CGRect(
+                x: image.width / 4, y: image.height / 4,
+                width: image.width / 2, height: image.height / 2
+            )))
+            return try XCTUnwrap(NSBitmapImageRep(cgImage: crop).representation(using: .png, properties: [:]))
+        }
+
+        var previous = try centerPixels()
+        for _ in 0..<3 {
+            center.scroll(byDeltaX: 0, deltaY: 1)
+            let current = try centerPixels()
+            XCTAssertNotEqual(current, previous, "Each small zoom must update the rendered slice")
+            previous = current
+        }
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 0")
     }
 
     func testSpatialTracerVisibilityAndRestart() throws {

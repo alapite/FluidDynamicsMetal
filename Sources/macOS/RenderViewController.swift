@@ -77,6 +77,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private let bodyStack = NSStackView()
     private let pinnedStack = NSStackView()
     private var displayedLesson: ExperimentID?
+    private var displayedInspection: InspectionState3D?
     private var mouseHeld = false
     private var rebaseDrag = false
     private var inspectionDragActive = false
@@ -84,8 +85,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private var rebaseInspectionDrag = false
     private var lastCanvasSize: CGSize = .zero
     private var canvasTrackingArea: NSTrackingArea?
-    private let hud = NSVisualEffectView()
-    private let opaqueSurface = NSView()
+    private let hud = NSView()
     private let fieldGroup = NSStackView()
     private let controlsScroll = NSScrollView()
     private let pauseButton = NSButton(title: "Pause", target: nil, action: nil)
@@ -414,14 +414,11 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     private func installControls() {
-        hud.material = .hudWindow
-        hud.blendingMode = .behindWindow
-        hud.state = .active
-        hud.wantsLayer = true
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 248, height: 196),
                             styleMask: [.titled, .closable, .utilityWindow],
                             backing: .buffered, defer: false)
         panel.title = "Simulation Controls"
+        panel.backgroundColor = .windowBackgroundColor
         panel.identifier = NSUserInterfaceItemIdentifier("simulationControls")
         panel.isFloatingPanel = true
         panel.isMovable = true
@@ -453,16 +450,6 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         )
         metalView.addTrackingArea(trackingArea)
         canvasTrackingArea = trackingArea
-
-        opaqueSurface.translatesAutoresizingMaskIntoConstraints = false
-        opaqueSurface.wantsLayer = true
-        hud.addSubview(opaqueSurface)
-        NSLayoutConstraint.activate([
-            opaqueSurface.leadingAnchor.constraint(equalTo: hud.leadingAnchor),
-            opaqueSurface.trailingAnchor.constraint(equalTo: hud.trailingAnchor),
-            opaqueSurface.topAnchor.constraint(equalTo: hud.topAnchor),
-            opaqueSurface.bottomAnchor.constraint(equalTo: hud.bottomAnchor)
-        ])
 
         func vertical(_ stack: NSStackView) {
             stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 8
@@ -853,14 +840,30 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     private func refreshInspectionControls() {
-        guard renderer.state.mode.is3D else { return }
+        guard renderer.state.mode.is3D else {
+            displayedInspection = nil
+            return
+        }
         let inspection = renderer.state.inspection3D
+        let previous = displayedInspection
+        guard previous != inspection else { return }
+        displayedInspection = inspection
+
+        if previous?.plane != inspection.plane || previous?.depth != inspection.depth
+            || previous?.showTracers != inspection.showTracers {
+            refreshSliceAndTracerControls(inspection)
+        }
+        if previous?.camera != inspection.camera {
+            refreshCameraControls(inspection.camera)
+        }
+    }
+
+    private func refreshSliceAndTracerControls(_ inspection: InspectionState3D) {
         let (planeName, depthAxis) = Self.sliceLabels(for: inspection.plane)
         let percentage = Int((inspection.depth * 100).rounded())
         let descriptor = "\(planeName) slice · \(depthAxis) depth: \(percentage)%"
         threeDSlice.stringValue = descriptor
         threeDSlice.setAccessibilityLabel("\(planeName) slice, \(depthAxis) depth \(percentage) percent")
-        orientationGuide.cameraState = inspection.camera
         let tracerVisibility = inspection.showTracers ? "shown" : "hidden"
         metalView.setAccessibilityLabel(
             "3D dye concentration, \(planeName) slice at \(depthAxis) depth \(percentage) percent. "
@@ -884,17 +887,20 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         inspectionDepthSlider.setAccessibilityValue("\(percentage)%")
         inspectionDepthValue.stringValue = "\(depthAxis) depth: \(percentage)%"
         inspectionDepthValue.setAccessibilityLabel(inspectionDepthValue.stringValue)
+    }
 
-        let yawValue = Self.signedDegrees(inspection.camera.yawDegrees)
-        let elevationValue = Self.signedDegrees(inspection.camera.elevationDegrees)
-        let zoomValue = "\(Int(inspection.camera.zoomPercent.rounded()))%"
-        inspectionOrbitSlider.doubleValue = inspection.camera.yawDegrees
+    private func refreshCameraControls(_ camera: CameraState3D) {
+        orientationGuide.cameraState = camera
+        let yawValue = Self.signedDegrees(camera.yawDegrees)
+        let elevationValue = Self.signedDegrees(camera.elevationDegrees)
+        let zoomValue = "\(Int(camera.zoomPercent.rounded()))%"
+        inspectionOrbitSlider.doubleValue = camera.yawDegrees
         inspectionOrbitSlider.setAccessibilityValue(yawValue)
         inspectionOrbitValue.stringValue = yawValue
-        inspectionElevationSlider.doubleValue = inspection.camera.elevationDegrees
+        inspectionElevationSlider.doubleValue = camera.elevationDegrees
         inspectionElevationSlider.setAccessibilityValue(elevationValue)
         inspectionElevationValue.stringValue = elevationValue
-        inspectionZoomSlider.doubleValue = inspection.camera.zoomPercent
+        inspectionZoomSlider.doubleValue = camera.zoomPercent
         inspectionZoomSlider.setAccessibilityValue(zoomValue)
         inspectionZoomValue.stringValue = zoomValue
     }
@@ -920,8 +926,6 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     @objc private func updateAppearance() {
-        opaqueSurface.isHidden = !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
-        opaqueSurface.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         colourLegend.needsDisplay = true
         threeDColourLegend.needsDisplay = true
         orientationGuide.needsDisplay = true
@@ -1380,10 +1384,13 @@ private final class ColourLegendView: NSView {
             if let gradient = CGGradient(colorsSpace: colorSpace, colors: colors,
                                          locations: locations),
                let context = NSGraphicsContext.current?.cgContext {
+                context.saveGState()
+                context.clip(to: bounds)
                 context.drawLinearGradient(gradient,
                                           start: CGPoint(x: bounds.minX, y: bounds.midY),
                                           end: CGPoint(x: bounds.maxX, y: bounds.midY),
                                           options: [])
+                context.restoreGState()
             }
         } else {
             let colors = field.palette.map {

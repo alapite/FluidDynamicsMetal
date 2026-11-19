@@ -14,7 +14,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @IBOutlet weak var window: NSWindow!
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
-        
+#if DEBUG
+        switch ProcessInfo.processInfo.environment["FLUID_TEST_APPEARANCE"] {
+        case "Light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "Dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: break
+        }
+#endif
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {

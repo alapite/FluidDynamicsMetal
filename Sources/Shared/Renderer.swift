@@ -120,6 +120,10 @@ final class Renderer: NSObject, MTKViewDelegate {
     private var pendingTapContacts: [FluidContact] = []
     private var touchRadius: Float?
     private var stepDrainScheduled = false
+    private var drawingQueuedStep = false
+    private var inspectionRedrawPending = false
+    private var inspectionRedrawScheduled = false
+    private var interactive3DFrameInFlight = false
     private var sessionGeneration = 0
     private let visualization: FieldVisualization
     private let threeDFactory: Renderer3DSessionFactory
@@ -174,7 +178,7 @@ final class Renderer: NSObject, MTKViewDelegate {
         let previous = state.inspection3D
         state.setInspection3D(inspection)
         guard state.inspection3D != previous else { return }
-        redrawIfPaused()
+        requestInspectionRedraw()
         stateDidChange?()
     }
     func resetCamera3D() {
@@ -187,7 +191,13 @@ final class Renderer: NSObject, MTKViewDelegate {
         inspection.centreSlice()
         setInspection3D(inspection)
     }
-    func togglePause() { state.togglePause(); clearInput(); updateScheduling(); stateDidChange?() }
+    func togglePause() {
+        state.togglePause()
+        clearInput()
+        updateScheduling()
+        if state.mode.is3D { requestInspectionRedraw() }
+        stateDidChange?()
+    }
     func setTuningPosition(_ position: Float, for control: TuningControl) {
         guard state.mode == .freePlay else { return }
         state.tuning.setPosition(position, for: control)
@@ -239,7 +249,15 @@ final class Renderer: NSObject, MTKViewDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.sessionGeneration == generation else { return }
             self.stepDrainScheduled = false
-            if self.state.pendingSteps > 0, let view = self.metalView { self.draw(in: view) }
+            if self.state.pendingSteps > 0, let view = self.metalView {
+                if self.state.mode.is3D, view.delegate === self, view.isPaused {
+                    self.drawingQueuedStep = true
+                    view.draw()
+                    self.drawingQueuedStep = false
+                } else {
+                    self.draw(in: view)
+                }
+            }
             self.scheduleStepDrain()
         }
     }
@@ -259,13 +277,43 @@ final class Renderer: NSObject, MTKViewDelegate {
     }
     func becomeActive() { state.becomeActive(); updateScheduling(); redrawIfPaused(); stateDidChange?() }
     private func updateScheduling() { metalView?.isPaused = !state.shouldAdvance }
+
+    private func requestInspectionRedraw() {
+        guard !state.shouldAdvance, !state.inactive, !state.resetting else { return }
+        inspectionRedrawPending = true
+        scheduleInspectionRedraw()
+    }
+
+    private func scheduleInspectionRedraw() {
+        guard inspectionRedrawPending, !inspectionRedrawScheduled, !interactive3DFrameInFlight else { return }
+        inspectionRedrawScheduled = true
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.inspectionRedrawScheduled = false
+                guard self.inspectionRedrawPending, !self.interactive3DFrameInFlight else { return }
+                self.inspectionRedrawPending = false
+                guard self.state.mode.is3D, !self.state.shouldAdvance, let view = self.metalView else { return }
+                if view.delegate === self {
+                    // MTKView retires its current drawable at the end of draw().
+                    view.draw()
+                } else {
+                    self.drawPresentationOnly(in: view)
+                }
+            }
+        }
+    }
     private func redrawIfPaused() {
         guard !state.shouldAdvance, !state.inactive, !state.resetting,
               state.mode.is3D
                 ? simulation3D != nil && visualization3D != nil && tracers3D != nil
                 : simulation != nil,
               let view = metalView else { return }
-        drawPresentationOnly(in: view)
+        if state.mode.is3D, view.delegate === self {
+            requestInspectionRedraw()
+        } else {
+            drawPresentationOnly(in: view)
+        }
     }
     func clearInput() { mouseInput.clear(); touchContacts.removeAll(); pendingTapContacts.removeAll(); touchRadius = nil }
     func updateMouseInteraction(position: SIMD2<Float>?, in view: MTKView) {
@@ -541,19 +589,30 @@ final class Renderer: NSObject, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
-        draw(in: view, presentationOnly: false)
+        // The live display loop may skip a tick while the GPU is busy. Explicit
+        // draws and queued single steps continue to submit each accepted step.
+        let interactive3D = state.mode.is3D && view.delegate === self && !drawingQueuedStep
+        draw(in: view, presentationOnly: interactive3D && !state.shouldAdvance, interactive3D: interactive3D)
     }
 
     func drawPresentationOnly(in view: MTKView) {
         draw(in: view, presentationOnly: true)
     }
 
-    private func draw(in view: MTKView, presentationOnly: Bool) {
+    private func draw(in view: MTKView, presentationOnly: Bool, interactive3D: Bool = false) {
         guard !state.inactive, !state.resetting,
               state.mode.is3D
                 ? simulation3D != nil && visualization3D != nil && tracers3D != nil
                 : simulation != nil else { return }
-        semaphore.wait()
+        if interactive3D {
+            guard !interactive3DFrameInFlight else { return }
+            guard semaphore.wait(timeout: .now()) == .success else {
+                if presentationOnly { inspectionRedrawPending = true }
+                return
+            }
+        } else {
+            semaphore.wait()
+        }
         let drawable: CAMetalDrawable?
         if presentationOnly {
             guard let currentDrawable = view.currentDrawable else {
@@ -565,6 +624,17 @@ final class Renderer: NSObject, MTKViewDelegate {
             drawable = nil
         }
         let command = metal.newCommandBuffer()
+        if interactive3D {
+            interactive3DFrameInFlight = true
+            command.addCompletedHandler { [weak self] _ in
+                RunLoop.main.perform(inModes: [.common]) { [weak self] in
+                    MainActor.assumeIsolated {
+                        self?.interactive3DFrameInFlight = false
+                        self?.scheduleInspectionRedraw()
+                    }
+                }
+            }
+        }
         let step = state.stepCount
         var threeDStatus: PressureProjection3D.StatusSlot?
         if presentationOnly {
@@ -689,6 +759,7 @@ final class Renderer: NSObject, MTKViewDelegate {
             latestCompleted3DStatus = completion.status
             completed3DStepCount += 1
         }
+        scheduleInspectionRedraw()
     }
 
     private func failActiveThreeDSession(_ error: Error) {
