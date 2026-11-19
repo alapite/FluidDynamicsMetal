@@ -900,79 +900,6 @@ kernel void fluid3DReduceDot(
     if (lane == 0) { partials[groupPosition.x] = values[0]; }
 }
 
-kernel void fluid3DReducePCGState(
-    constant Fluid3DUniforms &uniforms [[buffer(0)]],
-    texture3d<float, access::read> pressure [[texture(0)]],
-    texture3d<float, access::read> residual [[texture(1)]],
-    device float4 *partials [[buffer(1)]],
-    uint3 position [[thread_position_in_grid]],
-    uint lane [[thread_index_in_threadgroup]],
-    uint3 groupPosition [[threadgroup_position_in_grid]],
-    uint3 groupWidth [[threads_per_threadgroup]]) {
-    threadgroup float4 values[256];
-    uint width = groupWidth.x;
-    uint index = position.x;
-    uint count = uniforms.output.x * uniforms.output.y * uniforms.output.z;
-    float4 local = float4(0.0f, 0.0f, 0.0f, 1.0f);
-    if (index < count) {
-        uint x = index % uniforms.output.x;
-        uint y = (index / uniforms.output.x) % uniforms.output.y;
-        uint z = index / (uniforms.output.x * uniforms.output.y);
-        float q = pressure.read(uint3(x, y, z)).x;
-        float r = residual.read(uint3(x, y, z)).x;
-        if (isfinite(q) && isfinite(r)) {
-            local = float4(q, r, max(abs(q), abs(r)), 1.0f);
-        } else {
-            local.w = 0.0f;
-        }
-    }
-    values[lane] = local;
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint stride = width / 2; stride > 0; stride >>= 1) {
-        if (lane < stride) { values[lane] = reducePair(values[lane], values[lane + stride]); }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
-    if (lane == 0) { partials[groupPosition.x] = values[0]; }
-}
-
-kernel void fluid3DProjectPressureResidual(
-    constant Fluid3DUniforms &uniforms [[buffer(0)]],
-    device const float4 *state [[buffer(1)]],
-    texture3d<float, access::read_write> pressure [[texture(0)]],
-    texture3d<float, access::read_write> residual [[texture(1)]],
-    texture3d<float, access::read_write> pressureLow [[texture(2)]],
-    uint3 position [[thread_position_in_grid]]) {
-    if (position.x >= pressure.get_width() || position.y >= pressure.get_height()
-        || position.z >= pressure.get_depth()) { return; }
-    if (!pcgActive(state)) { return; }
-    uint count = uniforms.grid.x * uniforms.grid.y * uniforms.grid.z;
-    float2 q = pressureAdd(float2(pressure.read(position).x, pressureLow.read(position).x),
-        -state[8].x / float(count));
-    pressure.write(q.x, position);
-    pressureLow.write(q.y, position);
-    residual.write(residual.read(position).x - state[8].y / float(count), position);
-}
-
-kernel void fluid3DPreconditionVector(
-    constant Fluid3DUniforms &uniforms [[buffer(0)]],
-    device float4 *state [[buffer(1)]],
-    texture3d<float, access::read> residual [[texture(0)]],
-    texture3d<float, access::read> trueResidual [[texture(1)]],
-    texture3d<float, access::write> output [[texture(2)]],
-    uint3 position [[thread_position_in_grid]]) {
-    if (position.x >= output.get_width() || position.y >= output.get_height()
-        || position.z >= output.get_depth()) { return; }
-    if (!pcgActive(state) || state[15].w == 1.0f) {
-        output.write(0.0f, position);
-        return;
-    }
-    float source = state[15].w == 2.0f
-        ? trueResidual.read(position).x - state[11].x / float(uniforms.grid.x * uniforms.grid.y * uniforms.grid.z)
-        : residual.read(position).x;
-    float degree = neighborDegree(position, uniforms.grid.xyz);
-    output.write(degree > 0.0f ? source / degree : 0.0f, position);
-}
-
 kernel void fluid3DProjectPreconditioner(
     constant Fluid3DUniforms &uniforms [[buffer(0)]],
     device const float4 *state [[buffer(1)]],
@@ -1005,31 +932,8 @@ kernel void fluid3DInitializeRho(
     state[0].x = rho;
 }
 
-kernel void fluid3DApplyASearch(
-    constant Fluid3DUniforms &uniforms [[buffer(0)]],
-    device const float4 *state [[buffer(1)]],
-    texture3d<float, access::read> pressure [[texture(0)]],
-    texture3d<float, access::write> output [[texture(1)]],
-    uint3 position [[thread_position_in_grid]]) {
-    uint3 cells = uniforms.grid.xyz;
-    if (position.x >= output.get_width() || position.y >= output.get_height()
-        || position.z >= output.get_depth()) { return; }
-    if (!pcgActive(state)) { output.write(0.0f, position); return; }
-    float center = pressure.read(position).x;
-    float sum = 0.0f;
-    if (position.x > 0) { sum += center - pressure.read(position - uint3(1, 0, 0)).x; }
-    if (position.x + 1 < cells.x) { sum += center - pressure.read(position + uint3(1, 0, 0)).x; }
-    if (position.y > 0) { sum += center - pressure.read(position - uint3(0, 1, 0)).x; }
-    if (position.y + 1 < cells.y) { sum += center - pressure.read(position + uint3(0, 1, 0)).x; }
-    if (position.z > 0) { sum += center - pressure.read(position - uint3(0, 0, 1)).x; }
-    if (position.z + 1 < cells.z) { sum += center - pressure.read(position + uint3(0, 0, 1)).x; }
-    output.write(sum, position);
-}
-
-kernel void fluid3DPreparePCGUpdate(
-    device float4 *state [[buffer(0)]],
-    uint3 position [[thread_position_in_grid]]) {
-    if (any(position != uint3(0)) || !pcgActive(state)) { return; }
+inline void pcgPrepareUpdate(device float4 *state) {
+    if (!pcgActive(state)) { return; }
     float denominator = state[6].x;
     if (state[17].x == 1.0f) { denominator = 0.0f; }
     if (state[17].x == 2.0f) { denominator = -1.0f; }
@@ -1045,39 +949,22 @@ kernel void fluid3DPreparePCGUpdate(
     state[16].x += 1.0f;
 }
 
+inline void pcgValidateSummary(device float4 *state, uint lane, uint failure) {
+    if (state[16].y != 0.0f) { return; }
+    float4 summary = state[lane];
+    if (summary.w < 1.0f || !all(isfinite(summary))) { state[16].y = float(failure); }
+}
+
 kernel void fluid3DValidateSummary(
     constant Fluid3DUniforms &uniforms [[buffer(0)]],
     device float4 *state [[buffer(1)]],
     uint3 position [[thread_position_in_grid]]) {
-    if (any(position != uint3(0)) || state[16].y != 0.0f) { return; }
-    float4 summary = state[uniforms.output.w];
-    if (summary.w < 1.0f || !all(isfinite(summary))) { state[16].y = float(uniforms.output.z); }
+    if (any(position != uint3(0))) { return; }
+    pcgValidateSummary(state, uniforms.output.w, uniforms.output.z);
 }
 
-kernel void fluid3DPCGUpdate(
-    device const float4 *state [[buffer(0)]],
-    texture3d<float, access::read_write> pressure [[texture(0)]],
-    texture3d<float, access::read_write> residual [[texture(1)]],
-    texture3d<float, access::read> direction [[texture(2)]],
-    texture3d<float, access::read> appliedDirection [[texture(3)]],
-    texture3d<float, access::read_write> pressureLow [[texture(4)]],
-    uint3 position [[thread_position_in_grid]]) {
+inline void pcgCheckRecursiveResidual(device float4 *state) {
     if (!pcgActive(state)) { return; }
-    float alpha = state[0].y;
-    float step = alpha * direction.read(position).x;
-    float stepError = fma(alpha, direction.read(position).x, -step);
-    float2 q = pressureAdd(float2(pressure.read(position).x, pressureLow.read(position).x), step);
-    q = pressureAdd(q, stepError);
-    float r = residual.read(position).x - alpha * appliedDirection.read(position).x;
-    pressure.write(q.x, position);
-    pressureLow.write(q.y, position);
-    residual.write(r, position);
-}
-
-kernel void fluid3DCheckRecursiveResidual(
-    device float4 *state [[buffer(0)]],
-    uint3 position [[thread_position_in_grid]]) {
-    if (any(position != uint3(0)) || !pcgActive(state)) { return; }
     float4 summary = state[10];
     state[15].w = 0.0f;
     if (summary.w < 1.0f || !all(isfinite(summary))) {
@@ -1103,23 +990,8 @@ kernel void fluid3DApplyACandidate(
     output.write(compensatedA(pressure, pressureLow, position, uniforms.grid.xyz), position);
 }
 
-kernel void fluid3DComputeCandidateResidual(
-    constant Fluid3DUniforms &uniforms [[buffer(0)]],
-    device const float4 *state [[buffer(1)]],
-    texture3d<float, access::read> rhs [[texture(0)]],
-    texture3d<float, access::read> appliedPressure [[texture(1)]],
-    texture3d<float, access::write> output [[texture(2)]],
-    uint3 position [[thread_position_in_grid]]) {
-    if (position.x >= output.get_width() || position.y >= output.get_height()
-        || position.z >= output.get_depth()) { return; }
-    if (state[15].w != 1.0f) { output.write(0.0f, position); return; }
-    output.write(rhs.read(position).x - appliedPressure.read(position).x, position);
-}
-
-kernel void fluid3DCheckTrueResidual(
-    device float4 *state [[buffer(0)]],
-    uint3 position [[thread_position_in_grid]]) {
-    if (any(position != uint3(0)) || !pcgActive(state) || state[15].w != 1.0f) { return; }
+inline void pcgCheckTrueResidual(device float4 *state) {
+    if (!pcgActive(state) || state[15].w != 1.0f) { return; }
     float4 summary = state[11];
     if (summary.w < 1.0f || !all(isfinite(summary))) {
         state[16].y = 7.0f;
@@ -1174,10 +1046,8 @@ kernel void fluid3DPrepareRestart(
     residual.write(trueResidual.read(position).x - state[11].x / float(count), position);
 }
 
-kernel void fluid3DValidateNextRho(
-    device float4 *state [[buffer(0)]],
-    uint3 position [[thread_position_in_grid]]) {
-    if (any(position != uint3(0)) || !pcgActive(state) || state[15].w == 1.0f) { return; }
+inline void pcgValidateNextRho(device float4 *state) {
+    if (!pcgActive(state) || state[15].w == 1.0f) { return; }
     float nextRho = state[6].x;
     float beta = 0.0f;
     if (!isfinite(nextRho) || nextRho <= 0.0f || state[6].w < 1.0f) {
@@ -1194,21 +1064,8 @@ kernel void fluid3DValidateNextRho(
     state[0].z = beta;
 }
 
-kernel void fluid3DPCGUpdateDirection(
-    device float4 *state [[buffer(0)]],
-    texture3d<float, access::read> preconditioned [[texture(0)]],
-    texture3d<float, access::read_write> direction [[texture(1)]],
-    uint3 position [[thread_position_in_grid]]) {
+inline void pcgFinalizeDirection(device float4 *state) {
     if (!pcgActive(state) || state[15].w == 1.0f) { return; }
-    float z = preconditioned.read(position).x;
-    float oldDirection = direction.read(position).x;
-    direction.write(state[15].w == 2.0f ? z : z + state[0].z * oldDirection, position);
-}
-
-kernel void fluid3DFinalizePCGDirection(
-    device float4 *state [[buffer(0)]],
-    uint3 position [[thread_position_in_grid]]) {
-    if (any(position != uint3(0)) || !pcgActive(state) || state[15].w == 1.0f) { return; }
     state[0].x = state[6].x;
     state[15].w = 0.0f;
 }
@@ -1222,6 +1079,329 @@ kernel void fluid3DProjectDirection(
         || position.z >= direction.get_depth() || !pcgActive(state)) { return; }
     uint count = uniforms.grid.x * uniforms.grid.y * uniforms.grid.z;
     direction.write(direction.read(position).x - state[8].x / float(count), position);
+}
+
+// ---- Fused PCG iteration kernels -------------------------------------------
+// Each fused kernel performs one grid pass of the PCG iteration and the first
+// stage of the reduction that immediately consumed its output. Threads use the
+// same 1D linear cell order and threadgroup tree as fluid3DReduceField/Dot, and
+// the per-cell arithmetic is unchanged, so partials are bit-identical to the
+// separate passes. fluid3DPCGFinalizePartials then completes the reduction and
+// runs the single-thread state updates that used to follow as separate kernels.
+
+inline uint3 pcgCell(uint index, uint3 cells) {
+    return uint3(index % cells.x, (index / cells.x) % cells.y, index / (cells.x * cells.y));
+}
+
+inline float4 pcgFieldPartial(float value) {
+    float4 local = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    if (isfinite(value)) {
+        local.x = value;
+        local.y = value * value;
+        local.z = abs(value);
+        if (!isfinite(local.y)) { local = float4(0.0f); }
+    } else {
+        local.w = 0.0f;
+    }
+    return local;
+}
+
+inline float4 pcgDotPartial(float a, float b) {
+    float product = a * b;
+    float square = product * product;
+    if (isfinite(a) && isfinite(b) && isfinite(product) && isfinite(square)) {
+        return float4(product, square, abs(product), 1.0f);
+    }
+    return float4(0.0f);
+}
+
+inline float4 pcgStatePartial(float q, float r) {
+    if (isfinite(q) && isfinite(r)) { return float4(q, r, max(abs(q), abs(r)), 1.0f); }
+    return float4(0.0f);
+}
+
+inline void pcgStorePartial(
+    float4 local, threadgroup float4 *values, uint lane, uint width, uint group,
+    device float4 *partials) {
+    values[lane] = local;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint stride = width / 2; stride > 0; stride >>= 1) {
+        if (lane < stride) { values[lane] = reducePair(values[lane], values[lane + stride]); }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    if (lane == 0) { partials[group] = values[0]; }
+}
+
+// A(p) for the search direction, plus partials of p.A(p).
+kernel void fluid3DPCGApplySearchDot(
+    constant Fluid3DUniforms &uniforms [[buffer(0)]],
+    device const float4 *state [[buffer(1)]],
+    device float4 *partials [[buffer(2)]],
+    texture3d<float, access::read> direction [[texture(0)]],
+    texture3d<float, access::write> output [[texture(1)]],
+    uint index [[thread_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint group [[threadgroup_position_in_grid]],
+    uint width [[threads_per_threadgroup]]) {
+    threadgroup float4 values[256];
+    uint3 cells = uniforms.grid.xyz;
+    float4 local = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    if (index < cells.x * cells.y * cells.z) {
+        uint3 position = pcgCell(index, cells);
+        float center = direction.read(position).x;
+        float sum = 0.0f;
+        if (pcgActive(state)) {
+            if (position.x > 0) { sum += center - direction.read(position - uint3(1, 0, 0)).x; }
+            if (position.x + 1 < cells.x) { sum += center - direction.read(position + uint3(1, 0, 0)).x; }
+            if (position.y > 0) { sum += center - direction.read(position - uint3(0, 1, 0)).x; }
+            if (position.y + 1 < cells.y) { sum += center - direction.read(position + uint3(0, 1, 0)).x; }
+            if (position.z > 0) { sum += center - direction.read(position - uint3(0, 0, 1)).x; }
+            if (position.z + 1 < cells.z) { sum += center - direction.read(position + uint3(0, 0, 1)).x; }
+        }
+        output.write(sum, position);
+        local = pcgDotPartial(center, sum);
+    }
+    pcgStorePartial(local, values, lane, width, group, partials);
+}
+
+// q += alpha p (compensated), r -= alpha A(p), plus partials of (q, r).
+kernel void fluid3DPCGUpdateStatePartial(
+    constant Fluid3DUniforms &uniforms [[buffer(0)]],
+    device const float4 *state [[buffer(1)]],
+    device float4 *partials [[buffer(2)]],
+    texture3d<float, access::read_write> pressure [[texture(0)]],
+    texture3d<float, access::read_write> residual [[texture(1)]],
+    texture3d<float, access::read> direction [[texture(2)]],
+    texture3d<float, access::read> appliedDirection [[texture(3)]],
+    texture3d<float, access::read_write> pressureLow [[texture(4)]],
+    uint index [[thread_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint group [[threadgroup_position_in_grid]],
+    uint width [[threads_per_threadgroup]]) {
+    threadgroup float4 values[256];
+    uint3 cells = uniforms.grid.xyz;
+    float4 local = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    if (index < cells.x * cells.y * cells.z) {
+        uint3 position = pcgCell(index, cells);
+        float qHigh;
+        float r;
+        if (pcgActive(state)) {
+            float alpha = state[0].y;
+            float step = alpha * direction.read(position).x;
+            float stepError = fma(alpha, direction.read(position).x, -step);
+            float2 q = pressureAdd(float2(pressure.read(position).x, pressureLow.read(position).x), step);
+            q = pressureAdd(q, stepError);
+            r = residual.read(position).x - alpha * appliedDirection.read(position).x;
+            pressure.write(q.x, position);
+            pressureLow.write(q.y, position);
+            residual.write(r, position);
+            qHigh = q.x;
+        } else {
+            qHigh = pressure.read(position).x;
+            r = residual.read(position).x;
+        }
+        local = pcgStatePartial(qHigh, r);
+    }
+    pcgStorePartial(local, values, lane, width, group, partials);
+}
+
+// Remove the pressure/residual means, plus partials of the projected residual.
+kernel void fluid3DPCGProjectResidualPartial(
+    constant Fluid3DUniforms &uniforms [[buffer(0)]],
+    device const float4 *state [[buffer(1)]],
+    device float4 *partials [[buffer(2)]],
+    texture3d<float, access::read_write> pressure [[texture(0)]],
+    texture3d<float, access::read_write> residual [[texture(1)]],
+    texture3d<float, access::read_write> pressureLow [[texture(2)]],
+    uint index [[thread_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint group [[threadgroup_position_in_grid]],
+    uint width [[threads_per_threadgroup]]) {
+    threadgroup float4 values[256];
+    uint3 cells = uniforms.grid.xyz;
+    float4 local = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    if (index < cells.x * cells.y * cells.z) {
+        uint3 position = pcgCell(index, cells);
+        float r;
+        if (pcgActive(state)) {
+            uint count = cells.x * cells.y * cells.z;
+            float2 q = pressureAdd(float2(pressure.read(position).x, pressureLow.read(position).x),
+                -state[8].x / float(count));
+            pressure.write(q.x, position);
+            pressureLow.write(q.y, position);
+            r = residual.read(position).x - state[8].y / float(count);
+            residual.write(r, position);
+        } else {
+            r = residual.read(position).x;
+        }
+        local = pcgFieldPartial(r);
+    }
+    pcgStorePartial(local, values, lane, width, group, partials);
+}
+
+// Candidate true residual b - A(q) when a check is pending, plus its partials.
+kernel void fluid3DPCGCandidateResidualPartial(
+    constant Fluid3DUniforms &uniforms [[buffer(0)]],
+    device const float4 *state [[buffer(1)]],
+    device float4 *partials [[buffer(2)]],
+    texture3d<float, access::read> rhs [[texture(0)]],
+    texture3d<float, access::read> appliedPressure [[texture(1)]],
+    texture3d<float, access::write> output [[texture(2)]],
+    uint index [[thread_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint group [[threadgroup_position_in_grid]],
+    uint width [[threads_per_threadgroup]]) {
+    threadgroup float4 values[256];
+    uint3 cells = uniforms.grid.xyz;
+    float4 local = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    if (index < cells.x * cells.y * cells.z) {
+        uint3 position = pcgCell(index, cells);
+        float value = state[15].w != 1.0f
+            ? 0.0f
+            : rhs.read(position).x - appliedPressure.read(position).x;
+        output.write(value, position);
+        local = pcgFieldPartial(value);
+    }
+    pcgStorePartial(local, values, lane, width, group, partials);
+}
+
+// Diagonal preconditioner z = r / degree, plus partials of z.
+kernel void fluid3DPCGPreconditionPartial(
+    constant Fluid3DUniforms &uniforms [[buffer(0)]],
+    device const float4 *state [[buffer(1)]],
+    device float4 *partials [[buffer(2)]],
+    texture3d<float, access::read> residual [[texture(0)]],
+    texture3d<float, access::read> trueResidual [[texture(1)]],
+    texture3d<float, access::write> output [[texture(2)]],
+    uint index [[thread_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint group [[threadgroup_position_in_grid]],
+    uint width [[threads_per_threadgroup]]) {
+    threadgroup float4 values[256];
+    uint3 cells = uniforms.grid.xyz;
+    float4 local = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    if (index < cells.x * cells.y * cells.z) {
+        uint3 position = pcgCell(index, cells);
+        float value = 0.0f;
+        if (pcgActive(state) && state[15].w != 1.0f) {
+            float source = state[15].w == 2.0f
+                ? trueResidual.read(position).x - state[11].x / float(cells.x * cells.y * cells.z)
+                : residual.read(position).x;
+            float degree = neighborDegree(position, cells);
+            value = degree > 0.0f ? source / degree : 0.0f;
+        }
+        output.write(value, position);
+        local = pcgFieldPartial(value);
+    }
+    pcgStorePartial(local, values, lane, width, group, partials);
+}
+
+// Zero-mean preconditioned residual, plus partials of r.z.
+kernel void fluid3DPCGProjectPreconditionerDot(
+    constant Fluid3DUniforms &uniforms [[buffer(0)]],
+    device const float4 *state [[buffer(1)]],
+    device float4 *partials [[buffer(2)]],
+    texture3d<float, access::read> input [[texture(0)]],
+    texture3d<float, access::write> output [[texture(1)]],
+    texture3d<float, access::write> initialDirection [[texture(2)]],
+    texture3d<float, access::read> residual [[texture(3)]],
+    uint index [[thread_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint group [[threadgroup_position_in_grid]],
+    uint width [[threads_per_threadgroup]]) {
+    threadgroup float4 values[256];
+    uint3 cells = uniforms.grid.xyz;
+    float4 local = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    if (index < cells.x * cells.y * cells.z) {
+        uint3 position = pcgCell(index, cells);
+        float value = 0.0f;
+        if (pcgActive(state)) {
+            uint count = cells.x * cells.y * cells.z;
+            value = input.read(position).x - state[7].x / float(count);
+        }
+        output.write(value, position);
+        initialDirection.write(value, position);
+        local = pcgDotPartial(residual.read(position).x, value);
+    }
+    pcgStorePartial(local, values, lane, width, group, partials);
+}
+
+// p = z + beta p (or z on restart), plus partials of p.
+kernel void fluid3DPCGUpdateDirectionPartial(
+    constant Fluid3DUniforms &uniforms [[buffer(0)]],
+    device const float4 *state [[buffer(1)]],
+    device float4 *partials [[buffer(2)]],
+    texture3d<float, access::read> preconditioned [[texture(0)]],
+    texture3d<float, access::read_write> direction [[texture(1)]],
+    uint index [[thread_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint group [[threadgroup_position_in_grid]],
+    uint width [[threads_per_threadgroup]]) {
+    threadgroup float4 values[256];
+    uint3 cells = uniforms.grid.xyz;
+    float4 local = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    if (index < cells.x * cells.y * cells.z) {
+        uint3 position = pcgCell(index, cells);
+        float oldDirection = direction.read(position).x;
+        float value = oldDirection;
+        if (pcgActive(state) && state[15].w != 1.0f) {
+            float z = preconditioned.read(position).x;
+            value = state[15].w == 2.0f ? z : z + state[0].z * oldDirection;
+            direction.write(value, position);
+        }
+        local = pcgFieldPartial(value);
+    }
+    pcgStorePartial(local, values, lane, width, group, partials);
+}
+
+// Operation codes for fluid3DPCGFinalizePartials; keep aligned with
+// PressureProjection3D.PCGOperation.
+inline void pcgApplyOperation(device float4 *state, uint operation, uint lane, uint failure) {
+    switch (operation) {
+    case 1: pcgPrepareUpdate(state); break;
+    case 2: pcgValidateSummary(state, lane, failure); break;
+    case 3: pcgCheckRecursiveResidual(state); break;
+    case 4: pcgCheckTrueResidual(state); break;
+    case 5: pcgValidateNextRho(state); break;
+    case 6: pcgFinalizeDirection(state); break;
+    default: break;
+    }
+}
+
+// Same final reduction as fluid3DFinalizeReduction, written to state[grid.y],
+// followed by up to two single-thread state operations (output.x, output.y).
+// grid.x = partial count, grid.z = failure code for a validate operation.
+kernel void fluid3DPCGFinalizePartials(
+    constant Fluid3DUniforms &uniforms [[buffer(0)]],
+    device const float4 *partials [[buffer(1)]],
+    device float4 *state [[buffer(2)]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint3 groupWidth [[threads_per_threadgroup]]) {
+    threadgroup float4 values[256];
+    uint width = groupWidth.x;
+    float4 local = float4(0.0f, 0.0f, 0.0f, 1.0f);
+    for (uint index = lane; index < uniforms.grid.x; index += width) {
+        float4 partial = partials[index];
+        if (all(isfinite(partial))) {
+            local = reducePair(local, partial);
+        } else {
+            local.w = 0.0f;
+        }
+    }
+    if (!isfinite(local.x) || !isfinite(local.y) || !isfinite(local.z)) {
+        local = float4(0.0f);
+    }
+    values[lane] = local;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint stride = width / 2; stride > 0; stride >>= 1) {
+        if (lane < stride) { values[lane] = reducePair(values[lane], values[lane + stride]); }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    if (lane == 0) {
+        state[uniforms.grid.y] = values[0];
+        pcgApplyOperation(state, uniforms.output.x, uniforms.grid.y, uniforms.grid.z);
+        pcgApplyOperation(state, uniforms.output.y, uniforms.grid.y, uniforms.grid.z);
+    }
 }
 
 // Evaluated once at the start of every encoded PCG iteration. While the solve

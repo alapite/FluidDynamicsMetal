@@ -1614,15 +1614,19 @@ class Fluid3DTests(unittest.TestCase):
     def test_volume_kernels_read_only_solver_status(self):
         source = (ROOT / "Sources/Shared/Shaders3D.metal").read_text()
         for name in [
-            "fluid3DProjectPressureResidual", "fluid3DProjectPreconditioner",
-            "fluid3DPCGUpdate", "fluid3DProjectDirection", "fluid3DNormalizePressureGauge",
+            "fluid3DPCGProjectResidualPartial", "fluid3DProjectPreconditioner",
+            "fluid3DPCGUpdateStatePartial", "fluid3DProjectDirection", "fluid3DNormalizePressureGauge",
+            "fluid3DPCGApplySearchDot", "fluid3DPCGCandidateResidualPartial",
+            "fluid3DPCGPreconditionPartial", "fluid3DPCGProjectPreconditionerDot",
+            "fluid3DPCGUpdateDirectionPartial",
         ]:
             start = source.index("kernel void " + name + "(")
             end = source.index("\n}", start)
             body = source[start:end]
             with self.subTest(kernel=name):
                 self.assertRegex(body, r"device const float4 \*state")
-                self.assertNotRegex(body, r"state\[\d+\](?:\.[xyzw])?\s*(?:[+*/-]?=)")
+                # Assignment or compound assignment, but not an == comparison.
+                self.assertNotRegex(body, r"state\[\d+\](?:\.[xyzw])?\s*(?:[+*/-]?=)(?!=)")
 
     def test_evidence_hashes_python_driver(self):
         self.assertIn("Tests/Integration/test_fluid3d.py", HASHED_SOURCES)

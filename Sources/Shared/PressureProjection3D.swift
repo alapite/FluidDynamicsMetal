@@ -155,29 +155,17 @@ final class PressureProjection3D {
     private let identityPipeline: MTLComputePipelineState
     private let reduceFieldPipeline: MTLComputePipelineState
     private let reduceDotPipeline: MTLComputePipelineState
-    private let reducePCGStatePipeline: MTLComputePipelineState
     private let reduceWallFluxPipeline: MTLComputePipelineState
     private let finalizeReductionPipeline: MTLComputePipelineState
     private let initializeSolverStatePipeline: MTLComputePipelineState
     private let initializeProjectionStatusPipeline: MTLComputePipelineState
     private let initializePCGFieldsPipeline: MTLComputePipelineState
     private let initializePCGFieldsWarmPipeline: MTLComputePipelineState
-    private let projectPressureResidualPipeline: MTLComputePipelineState
-    private let preconditionVectorPipeline: MTLComputePipelineState
     private let projectPreconditionerPipeline: MTLComputePipelineState
     private let initializeRhoPipeline: MTLComputePipelineState
-    private let applySearchPipeline: MTLComputePipelineState
-    private let updatePCGPipeline: MTLComputePipelineState
-    private let preparePCGUpdatePipeline: MTLComputePipelineState
     private let validateSummaryPipeline: MTLComputePipelineState
-    private let checkRecursiveResidualPipeline: MTLComputePipelineState
     private let applyCandidatePipeline: MTLComputePipelineState
-    private let computeCandidateResidualPipeline: MTLComputePipelineState
-    private let checkTrueResidualPipeline: MTLComputePipelineState
     private let prepareRestartPipeline: MTLComputePipelineState
-    private let validateNextRhoPipeline: MTLComputePipelineState
-    private let updateDirectionPipeline: MTLComputePipelineState
-    private let finalizePCGDirectionPipeline: MTLComputePipelineState
     private let projectDirectionPipeline: MTLComputePipelineState
     private let normalizePressureGaugePipeline: MTLComputePipelineState
     private let finalizeProjectionDiagnosticsPipeline: MTLComputePipelineState
@@ -189,6 +177,26 @@ final class PressureProjection3D {
     private let reductionPartialCapacity: Int
     private let standaloneLatch: MTLBuffer
     private let gatePCGIterationPipeline: MTLComputePipelineState
+    private let fusedApplySearchDotPipeline: MTLComputePipelineState
+    private let fusedUpdateStatePipeline: MTLComputePipelineState
+    private let fusedProjectResidualPipeline: MTLComputePipelineState
+    private let fusedCandidateResidualPipeline: MTLComputePipelineState
+    private let fusedPreconditionPipeline: MTLComputePipelineState
+    private let fusedProjectPreconditionerDotPipeline: MTLComputePipelineState
+    private let fusedUpdateDirectionPipeline: MTLComputePipelineState
+    private let fusedFinalizePipeline: MTLComputePipelineState
+
+    /// Single-thread state steps run by `fluid3DPCGFinalizePartials`; raw
+    /// values must match `pcgApplyOperation` in Shaders3D.metal.
+    private enum PCGOperation: UInt32 {
+        case none = 0
+        case prepareUpdate = 1
+        case validate = 2
+        case checkRecursiveResidual = 3
+        case checkTrueResidual = 4
+        case validateNextRho = 5
+        case finalizeDirection = 6
+    }
     /// Indirect threadgroup counts for every dispatch inside a PCG iteration.
     /// `fluid3DGatePCGIteration` rewrites it at the start of each iteration and
     /// zeroes it once the solve has stopped, so unused iterations launch nothing.
@@ -254,35 +262,31 @@ final class PressureProjection3D {
         identityPipeline = try Self.makePipeline("fluid3DIdentityError", metal: metal)
         reduceFieldPipeline = try Self.makePipeline("fluid3DReduceField", metal: metal)
         reduceDotPipeline = try Self.makePipeline("fluid3DReduceDot", metal: metal)
-        reducePCGStatePipeline = try Self.makePipeline("fluid3DReducePCGState", metal: metal)
         reduceWallFluxPipeline = try Self.makePipeline("fluid3DReduceWallFlux", metal: metal)
         finalizeReductionPipeline = try Self.makePipeline("fluid3DFinalizeReduction", metal: metal)
         initializeSolverStatePipeline = try Self.makePipeline("fluid3DInitializeSolverState", metal: metal)
         initializeProjectionStatusPipeline = try Self.makePipeline("fluid3DInitializeProjectionStatus", metal: metal)
         initializePCGFieldsPipeline = try Self.makePipeline("fluid3DInitializePCGFields", metal: metal)
         initializePCGFieldsWarmPipeline = try Self.makePipeline("fluid3DInitializePCGFieldsWarm", metal: metal)
-        projectPressureResidualPipeline = try Self.makePipeline("fluid3DProjectPressureResidual", metal: metal)
-        preconditionVectorPipeline = try Self.makePipeline("fluid3DPreconditionVector", metal: metal)
         projectPreconditionerPipeline = try Self.makePipeline("fluid3DProjectPreconditioner", metal: metal)
         initializeRhoPipeline = try Self.makePipeline("fluid3DInitializeRho", metal: metal)
-        applySearchPipeline = try Self.makePipeline("fluid3DApplyASearch", metal: metal)
-        updatePCGPipeline = try Self.makePipeline("fluid3DPCGUpdate", metal: metal)
-        preparePCGUpdatePipeline = try Self.makePipeline("fluid3DPreparePCGUpdate", metal: metal)
         validateSummaryPipeline = try Self.makePipeline("fluid3DValidateSummary", metal: metal)
-        checkRecursiveResidualPipeline = try Self.makePipeline("fluid3DCheckRecursiveResidual", metal: metal)
         applyCandidatePipeline = try Self.makePipeline("fluid3DApplyACandidate", metal: metal)
-        computeCandidateResidualPipeline = try Self.makePipeline("fluid3DComputeCandidateResidual", metal: metal)
-        checkTrueResidualPipeline = try Self.makePipeline("fluid3DCheckTrueResidual", metal: metal)
         prepareRestartPipeline = try Self.makePipeline("fluid3DPrepareRestart", metal: metal)
-        validateNextRhoPipeline = try Self.makePipeline("fluid3DValidateNextRho", metal: metal)
-        updateDirectionPipeline = try Self.makePipeline("fluid3DPCGUpdateDirection", metal: metal)
-        finalizePCGDirectionPipeline = try Self.makePipeline("fluid3DFinalizePCGDirection", metal: metal)
         projectDirectionPipeline = try Self.makePipeline("fluid3DProjectDirection", metal: metal)
         normalizePressureGaugePipeline = try Self.makePipeline("fluid3DNormalizePressureGauge", metal: metal)
         finalizeProjectionDiagnosticsPipeline = try Self.makePipeline("fluid3DFinalizeProjectionDiagnostics", metal: metal)
         capturePCGTracePipeline = try Self.makePipeline("fluid3DCapturePCGTrace", metal: metal)
         enforceWallsPipeline = try Self.makePipeline("fluid3DEnforceWalls", metal: metal)
         gatePCGIterationPipeline = try Self.makePipeline("fluid3DGatePCGIteration", metal: metal)
+        fusedApplySearchDotPipeline = try Self.makePipeline("fluid3DPCGApplySearchDot", metal: metal)
+        fusedUpdateStatePipeline = try Self.makePipeline("fluid3DPCGUpdateStatePartial", metal: metal)
+        fusedProjectResidualPipeline = try Self.makePipeline("fluid3DPCGProjectResidualPartial", metal: metal)
+        fusedCandidateResidualPipeline = try Self.makePipeline("fluid3DPCGCandidateResidualPartial", metal: metal)
+        fusedPreconditionPipeline = try Self.makePipeline("fluid3DPCGPreconditionPartial", metal: metal)
+        fusedProjectPreconditionerDotPipeline = try Self.makePipeline("fluid3DPCGProjectPreconditionerDot", metal: metal)
+        fusedUpdateDirectionPipeline = try Self.makePipeline("fluid3DPCGUpdateDirectionPartial", metal: metal)
+        fusedFinalizePipeline = try Self.makePipeline("fluid3DPCGFinalizePartials", metal: metal)
 
         let partialWidth = min(256, reduceFieldPipeline.maxTotalThreadsPerThreadgroup)
         reductionGroupSize = MTLSize(width: partialWidth, height: 1, depth: 1)
@@ -322,12 +326,7 @@ final class PressureProjection3D {
 
         // Gated cell dispatches use whole threadgroups that tile the grid
         // exactly, so kernels without bounds checks never see extra threads.
-        let gatedCellPipelines = [
-            applySearchPipeline, updatePCGPipeline, projectPressureResidualPipeline,
-            applyCandidatePipeline, computeCandidateResidualPipeline, prepareRestartPipeline,
-            preconditionVectorPipeline, projectPreconditionerPipeline, updateDirectionPipeline,
-            projectDirectionPipeline
-        ]
+        let gatedCellPipelines = [applyCandidatePipeline, prepareRestartPipeline, projectDirectionPipeline]
         let cellWidthLimit = gatedCellPipelines
             .map { Fluid3DDispatch.threadsPerThreadgroup(for: $0).width }
             .min() ?? 1
@@ -349,6 +348,91 @@ final class PressureProjection3D {
         }
         gate.label = "3D PCG iteration indirect gate"
         iterationGate = gate
+
+        // Fused reductions must use exactly the separate reductions' grouping
+        // to reproduce their partial sums.
+        let fusedPartialPipelines: [(String, MTLComputePipelineState)] = [
+            ("fluid3DPCGApplySearchDot", fusedApplySearchDotPipeline),
+            ("fluid3DPCGUpdateStatePartial", fusedUpdateStatePipeline),
+            ("fluid3DPCGProjectResidualPartial", fusedProjectResidualPipeline),
+            ("fluid3DPCGCandidateResidualPartial", fusedCandidateResidualPipeline),
+            ("fluid3DPCGPreconditionPartial", fusedPreconditionPipeline),
+            ("fluid3DPCGProjectPreconditionerDot", fusedProjectPreconditionerDotPipeline),
+            ("fluid3DPCGUpdateDirectionPartial", fusedUpdateDirectionPipeline),
+        ]
+        for (name, pipeline) in fusedPartialPipelines
+        where pipeline.maxTotalThreadsPerThreadgroup < reductionGroupSize.width {
+            throw PressureProjection3DError.pipelineCreationFailed(
+                function: name,
+                reason: "supports \(pipeline.maxTotalThreadsPerThreadgroup) threads per threadgroup; "
+                    + "fused reduction requires \(reductionGroupSize.width)"
+            )
+        }
+        guard fusedFinalizePipeline.maxTotalThreadsPerThreadgroup >= finalReductionGroupSize.width else {
+            throw PressureProjection3DError.pipelineCreationFailed(
+                function: "fluid3DPCGFinalizePartials",
+                reason: "supports \(fusedFinalizePipeline.maxTotalThreadsPerThreadgroup) threads per threadgroup; "
+                    + "final reduction requires \(finalReductionGroupSize.width)"
+            )
+        }
+    }
+
+    /// One grid pass fused with the partial stage of the reduction of its
+    /// output. Only valid inside a gated PCG iteration.
+    private func encodeFusedPartial(
+        _ pipeline: MTLComputePipelineState,
+        command: MTLCommandBuffer,
+        operation: String,
+        status: StatusSlot,
+        textures: [MTLTexture]
+    ) throws {
+        guard gatingIteration else {
+            throw PressureProjection3DError.encoderUnavailable(operation: "\(operation) outside a gated PCG iteration")
+        }
+        for texture in textures { try validateCellTexture(texture, resource: "\(operation) texture") }
+        guard let encoder = command.makeComputeCommandEncoder() else {
+            throw PressureProjection3DError.encoderUnavailable(operation: operation)
+        }
+        encoder.label = "3D \(operation)"
+        encoder.setComputePipelineState(pipeline)
+        var uniforms = makeUniforms(output: pressure.ping)
+        encoder.setBytes(&uniforms, length: MemoryLayout<Fluid3DUniforms>.stride, index: 0)
+        encoder.setBuffer(status.buffer, offset: 0, index: 1)
+        encoder.setBuffer(reductionPartials, offset: 0, index: 2)
+        for (index, texture) in textures.enumerated() {
+            encoder.setTexture(texture, index: index)
+        }
+        dispatchGated(encoder, .reductionPartials, threadsPerThreadgroup: reductionGroupSize)
+        encoder.endEncoding()
+    }
+
+    /// Completes a fused reduction into `lane`, then runs up to two
+    /// single-thread state operations in order.
+    private func encodeFusedFinal(
+        command: MTLCommandBuffer,
+        status: StatusSlot,
+        lane: StateLane,
+        operations: (PCGOperation, PCGOperation),
+        failure: Fluid3DProjectionFailure = .none
+    ) throws {
+        guard gatingIteration else {
+            throw PressureProjection3DError.encoderUnavailable(operation: "fused final reduction outside a gated PCG iteration")
+        }
+        guard let encoder = command.makeComputeCommandEncoder() else {
+            throw PressureProjection3DError.encoderUnavailable(operation: "fused final reduction")
+        }
+        encoder.label = "3D fused final reduction"
+        encoder.setComputePipelineState(fusedFinalizePipeline)
+        var uniforms = Fluid3DUniforms(
+            grid: SIMD4<UInt32>(UInt32(cellReductionGroupCount), UInt32(lane.rawValue), failure.rawValue, 0),
+            scale: SIMD4<Float>(repeating: 0),
+            output: SIMD4<UInt32>(operations.0.rawValue, operations.1.rawValue, 0, 0)
+        )
+        encoder.setBytes(&uniforms, length: MemoryLayout<Fluid3DUniforms>.stride, index: 0)
+        encoder.setBuffer(reductionPartials, offset: 0, index: 1)
+        encoder.setBuffer(status.buffer, offset: 0, index: 2)
+        dispatchGated(encoder, .reductionFinal, threadsPerThreadgroup: finalReductionGroupSize)
+        encoder.endEncoding()
     }
 
     /// Writes this iteration's indirect dispatch sizes, or zeros once the
@@ -580,19 +664,6 @@ final class PressureProjection3D {
             result: status.buffer,
             resultOffset: resultLane.byteOffset
         )
-    }
-
-    private func encodePCGStateReduction(command: MTLCommandBuffer, status: StatusSlot) throws {
-        try encodeReductionPass(
-            command: command,
-            primary: pressure.ping,
-            secondary: recursiveResidual.ping,
-            pipeline: reducePCGStatePipeline,
-            operation: "PCG pressure/residual projection",
-            result: status.buffer,
-            resultOffset: StateLane.pressureMean.byteOffset
-        )
-        try encodeValidateSummary(command: command, status: status, lane: .pressureMean, failure: .nonfiniteIterate)
     }
 
     private func encodeValidateSummary(
@@ -954,58 +1025,25 @@ final class PressureProjection3D {
             try encodeIterationGate(command: command, status: status)
             gatingIteration = true
             defer { gatingIteration = false }
-            try encodeStateKernel(
-                applySearchPipeline,
-                command: command,
-                operation: "apply A to PCG search direction",
-                status: status,
-                uniforms: scalarUniforms,
-                textures: [searchDirection.ping, appliedOperator.ping],
-                extent: cellExtent
-            )
-            try encodeDotReduction(
-                command: command,
-                left: searchDirection.ping,
-                right: appliedOperator.ping,
-                status: status,
-                resultLane: .dotSummary
-            )
-            try encodeStateKernel(
-                preparePCGUpdatePipeline, command: command, operation: "validate PCG denominator and alpha",
-                status: status, uniforms: nil, textures: [], extent: MTLSize(width: 1, height: 1, depth: 1)
-            )
-            try encodeStateKernel(
-                updatePCGPipeline,
-                command: command,
-                operation: "update PCG pressure and recurrence residual",
-                status: status,
-                uniforms: nil,
-                textures: [pressure.ping, recursiveResidual.ping, searchDirection.ping, appliedOperator.ping, pressure.pong],
-                extent: cellExtent
-            )
-            try encodePCGStateReduction(command: command, status: status)
-            try encodeStateKernel(
-                projectPressureResidualPipeline,
-                command: command,
-                operation: "project pressure and residual gauges",
-                status: status,
-                uniforms: scalarUniforms,
-                textures: [pressure.ping, recursiveResidual.ping, pressure.pong],
-                extent: cellExtent
-            )
-            try encodeReduction(
-                command: command, input: recursiveResidual.ping, result: status.buffer,
-                resultOffset: StateLane.recursiveResidualSummary.byteOffset
-            )
-            try encodeStateKernel(
-                checkRecursiveResidualPipeline,
-                command: command,
-                operation: "check recursive PCG residual",
-                status: status,
-                uniforms: nil,
-                textures: [],
-                extent: MTLSize(width: 1, height: 1, depth: 1)
-            )
+            // Each fused pass is one grid kernel plus the partial reduction of
+            // its output; each finalize completes that reduction and runs the
+            // single-thread state step(s) that used to follow it.
+            try encodeFusedPartial(fusedApplySearchDotPipeline, command: command,
+                                   operation: "apply A to search direction with p.Ap", status: status,
+                                   textures: [searchDirection.ping, appliedOperator.ping])
+            try encodeFusedFinal(command: command, status: status, lane: .dotSummary,
+                                 operations: (.prepareUpdate, .none))
+            try encodeFusedPartial(fusedUpdateStatePipeline, command: command,
+                                   operation: "update PCG pressure and residual with means", status: status,
+                                   textures: [pressure.ping, recursiveResidual.ping, searchDirection.ping,
+                                              appliedOperator.ping, pressure.pong])
+            try encodeFusedFinal(command: command, status: status, lane: .pressureMean,
+                                 operations: (.validate, .none), failure: .nonfiniteIterate)
+            try encodeFusedPartial(fusedProjectResidualPipeline, command: command,
+                                   operation: "project pressure and residual gauges", status: status,
+                                   textures: [pressure.ping, recursiveResidual.ping, pressure.pong])
+            try encodeFusedFinal(command: command, status: status, lane: .recursiveResidualSummary,
+                                 operations: (.checkRecursiveResidual, .none))
             try encodePCGTrace(command: command, status: status, stage: .recursiveResidual, iteration: iteration)
             try encodeStateKernel(
                 applyCandidatePipeline,
@@ -1016,28 +1054,11 @@ final class PressureProjection3D {
                 textures: [pressure.ping, appliedOperator.ping, pressure.pong],
                 extent: cellExtent
             )
-            try encodeStateKernel(
-                computeCandidateResidualPipeline,
-                command: command,
-                operation: "recompute candidate true residual",
-                status: status,
-                uniforms: scalarUniforms,
-                textures: [rhs.ping, appliedOperator.ping, trueResidual.ping],
-                extent: cellExtent
-            )
-            try encodeReduction(
-                command: command, input: trueResidual.ping, result: status.buffer,
-                resultOffset: StateLane.trueResidualSummary.byteOffset
-            )
-            try encodeStateKernel(
-                checkTrueResidualPipeline,
-                command: command,
-                operation: "accept or restart from true residual",
-                status: status,
-                uniforms: nil,
-                textures: [],
-                extent: MTLSize(width: 1, height: 1, depth: 1)
-            )
+            try encodeFusedPartial(fusedCandidateResidualPipeline, command: command,
+                                   operation: "recompute candidate true residual", status: status,
+                                   textures: [rhs.ping, appliedOperator.ping, trueResidual.ping])
+            try encodeFusedFinal(command: command, status: status, lane: .trueResidualSummary,
+                                 operations: (.checkTrueResidual, .none))
             try encodePCGTrace(command: command, status: status, stage: .trueResidual, iteration: iteration)
             try encodeStateKernel(
                 prepareRestartPipeline,
@@ -1048,68 +1069,25 @@ final class PressureProjection3D {
                 textures: [trueResidual.ping, recursiveResidual.ping],
                 extent: cellExtent
             )
-            try encodeStateKernel(
-                preconditionVectorPipeline,
-                command: command,
-                operation: "diagonal PCG preconditioner",
-                status: status,
-                uniforms: scalarUniforms,
-                textures: [recursiveResidual.ping, trueResidual.ping, preconditioned.ping],
-                extent: cellExtent
-            )
-            try encodeReduction(
-                command: command, input: preconditioned.ping, result: status.buffer,
-                resultOffset: StateLane.preconditionerMean.byteOffset
-            )
-            try encodeValidateSummary(command: command, status: status, lane: .preconditionerMean, failure: .invalidPreconditionedResidual)
-            try encodeStateKernel(
-                projectPreconditionerPipeline,
-                command: command,
-                operation: "project preconditioned residual",
-                status: status,
-                uniforms: scalarUniforms,
-                textures: [preconditioned.ping, preconditioned.pong, searchDirection.pong],
-                extent: cellExtent
-            )
-            try encodeDotReduction(
-                command: command,
-                left: recursiveResidual.ping,
-                right: preconditioned.pong,
-                status: status,
-                resultLane: .dotSummary
-            )
-            try encodeStateKernel(
-                validateNextRhoPipeline,
-                command: command,
-                operation: "validate next PCG rho and beta",
-                status: status,
-                uniforms: nil,
-                textures: [],
-                extent: MTLSize(width: 1, height: 1, depth: 1)
-            )
-            try encodeStateKernel(
-                updateDirectionPipeline,
-                command: command,
-                operation: "update PCG search direction",
-                status: status,
-                uniforms: nil,
-                textures: [preconditioned.pong, searchDirection.ping],
-                extent: cellExtent
-            )
-            try encodeStateKernel(
-                finalizePCGDirectionPipeline,
-                command: command,
-                operation: "finalize PCG recurrence scalars",
-                status: status,
-                uniforms: nil,
-                textures: [],
-                extent: MTLSize(width: 1, height: 1, depth: 1)
-            )
-            try encodeReduction(
-                command: command, input: searchDirection.ping, result: status.buffer,
-                resultOffset: StateLane.pressureMean.byteOffset
-            )
-            try encodeValidateSummary(command: command, status: status, lane: .pressureMean, failure: .nonfiniteIterate)
+            try encodeFusedPartial(fusedPreconditionPipeline, command: command,
+                                   operation: "diagonal PCG preconditioner", status: status,
+                                   textures: [recursiveResidual.ping, trueResidual.ping, preconditioned.ping])
+            try encodeFusedFinal(command: command, status: status, lane: .preconditionerMean,
+                                 operations: (.validate, .none), failure: .invalidPreconditionedResidual)
+            try encodeFusedPartial(fusedProjectPreconditionerDotPipeline, command: command,
+                                   operation: "project preconditioned residual with r.z", status: status,
+                                   textures: [preconditioned.ping, preconditioned.pong, searchDirection.pong,
+                                              recursiveResidual.ping])
+            try encodeFusedFinal(command: command, status: status, lane: .dotSummary,
+                                 operations: (.validateNextRho, .none))
+            // Finalizing the recurrence scalars only touches rho and the
+            // restart flag, which the search-direction reduction never reads,
+            // so it runs after that reduction completes instead of before.
+            try encodeFusedPartial(fusedUpdateDirectionPipeline, command: command,
+                                   operation: "update PCG search direction", status: status,
+                                   textures: [preconditioned.pong, searchDirection.ping])
+            try encodeFusedFinal(command: command, status: status, lane: .pressureMean,
+                                 operations: (.finalizeDirection, .validate), failure: .nonfiniteIterate)
             try encodeStateKernel(
                 projectDirectionPipeline,
                 command: command,
