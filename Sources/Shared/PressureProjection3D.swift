@@ -161,6 +161,7 @@ final class PressureProjection3D {
     private let initializeSolverStatePipeline: MTLComputePipelineState
     private let initializeProjectionStatusPipeline: MTLComputePipelineState
     private let initializePCGFieldsPipeline: MTLComputePipelineState
+    private let initializePCGFieldsWarmPipeline: MTLComputePipelineState
     private let projectPressureResidualPipeline: MTLComputePipelineState
     private let preconditionVectorPipeline: MTLComputePipelineState
     private let projectPreconditionerPipeline: MTLComputePipelineState
@@ -259,6 +260,7 @@ final class PressureProjection3D {
         initializeSolverStatePipeline = try Self.makePipeline("fluid3DInitializeSolverState", metal: metal)
         initializeProjectionStatusPipeline = try Self.makePipeline("fluid3DInitializeProjectionStatus", metal: metal)
         initializePCGFieldsPipeline = try Self.makePipeline("fluid3DInitializePCGFields", metal: metal)
+        initializePCGFieldsWarmPipeline = try Self.makePipeline("fluid3DInitializePCGFieldsWarm", metal: metal)
         projectPressureResidualPipeline = try Self.makePipeline("fluid3DProjectPressureResidual", metal: metal)
         preconditionVectorPipeline = try Self.makePipeline("fluid3DPreconditionVector", metal: metal)
         projectPreconditionerPipeline = try Self.makePipeline("fluid3DProjectPreconditioner", metal: metal)
@@ -805,7 +807,8 @@ final class PressureProjection3D {
         status: StatusSlot,
         iterationLimit: Int = maximumIterations,
         failureInjection: Fluid3DProjectionFailureInjection = .none,
-        failureLatch: MTLBuffer? = nil
+        failureLatch: MTLBuffer? = nil,
+        warmStart: Bool = false
     ) throws {
         guard iterationLimit > 0 && iterationLimit <= Self.maximumIterations else {
             throw FluidSimulation3DError.invalidConfiguration(
@@ -887,15 +890,33 @@ final class PressureProjection3D {
 
         let cellExtent = MTLSize(width: configuration.nx, height: configuration.ny, depth: configuration.nz)
         let scalarUniforms = makeUniforms(output: pressure.ping)
-        try encodeStateKernel(
-            initializePCGFieldsPipeline,
-            command: command,
-            operation: "initialize zero-guess PCG fields",
-            status: status,
-            uniforms: scalarUniforms,
-            textures: [rhs.ping, pressure.ping, recursiveResidual.ping, preconditioned.ping, pressure.pong],
-            extent: cellExtent
-        )
+        if warmStart {
+            // The retained pressure is the previous solve's normalized result.
+            try encode(
+                applyACompensatedPipeline, command: command, operation: "warm-start pressure operator",
+                output: appliedOperator.ping, textures: [pressure.ping, appliedOperator.ping, pressure.pong]
+            )
+            try encodeStateKernel(
+                initializePCGFieldsWarmPipeline,
+                command: command,
+                operation: "initialize warm-start PCG fields",
+                status: status,
+                uniforms: scalarUniforms,
+                textures: [rhs.ping, pressure.ping, recursiveResidual.ping, preconditioned.ping, pressure.pong,
+                           appliedOperator.ping],
+                extent: cellExtent
+            )
+        } else {
+            try encodeStateKernel(
+                initializePCGFieldsPipeline,
+                command: command,
+                operation: "initialize zero-guess PCG fields",
+                status: status,
+                uniforms: scalarUniforms,
+                textures: [rhs.ping, pressure.ping, recursiveResidual.ping, preconditioned.ping, pressure.pong],
+                extent: cellExtent
+            )
+        }
         try encodeReduction(
             command: command, input: preconditioned.ping, result: status.buffer,
             resultOffset: StateLane.preconditionerMean.byteOffset

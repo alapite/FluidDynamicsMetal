@@ -833,6 +833,36 @@ kernel void fluid3DInitializePCGFields(
     preconditioned.write(degree > 0.0f ? value / degree : 0.0f, position);
 }
 
+// Warm-start variant of fluid3DInitializePCGFields: keeps the previous solve's
+// compensated pressure as the initial iterate and forms r0 = b - mean(b) - A(q0)
+// from a precomputed compensated A(q0). If the solve is already inactive
+// (failure or zero-guess convergence) it falls back to the exact zero-guess
+// state, so a retained iterate is never applied without iterating.
+kernel void fluid3DInitializePCGFieldsWarm(
+    constant Fluid3DUniforms &uniforms [[buffer(0)]],
+    device float4 *state [[buffer(1)]],
+    texture3d<float, access::read> rhs [[texture(0)]],
+    texture3d<float, access::write> pressure [[texture(1)]],
+    texture3d<float, access::write> residual [[texture(2)]],
+    texture3d<float, access::write> preconditioned [[texture(3)]],
+    texture3d<float, access::write> pressureLow [[texture(4)]],
+    texture3d<float, access::read> appliedPressure [[texture(5)]],
+    uint3 position [[thread_position_in_grid]]) {
+    if (position.x >= pressure.get_width() || position.y >= pressure.get_height()
+        || position.z >= pressure.get_depth()) { return; }
+    if (!pcgActive(state)) {
+        pressure.write(0.0f, position);
+        pressureLow.write(0.0f, position);
+        residual.write(0.0f, position);
+        preconditioned.write(0.0f, position);
+        return;
+    }
+    float value = rhs.read(position).x - state[14].x - appliedPressure.read(position).x;
+    residual.write(value, position);
+    float degree = neighborDegree(position, uniforms.grid.xyz);
+    preconditioned.write(degree > 0.0f ? value / degree : 0.0f, position);
+}
+
 kernel void fluid3DReduceDot(
     constant Fluid3DUniforms &uniforms [[buffer(0)]],
     texture3d<float, access::read> left [[texture(0)]],

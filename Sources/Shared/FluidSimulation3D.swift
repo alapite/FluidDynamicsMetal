@@ -22,6 +22,10 @@ final class FluidSimulation3D {
     private let transportedV: VolumeField3D
     private let transportedW: VolumeField3D
     private let failureLatch: MTLBuffer
+    /// True once the projection's pressure holds a previous *step's* solution.
+    /// Steps warm-start from it; the reset projection's pressure is unrelated
+    /// to per-step advection corrections, so the first step starts from zero.
+    private var hasStepPressure = false
 
     private let velocityPipeline: MTLComputePipelineState
     private let dyePipeline: MTLComputePipelineState
@@ -86,6 +90,7 @@ final class FluidSimulation3D {
             throw FluidSimulation3DError.invalidConfiguration("reset dye must be in 0...1")
         }
         let status = try projection.makeStatusSlot(label: "3D reset projection")
+        hasStepPressure = false
         try encodeClear(command: command)
         for field in [transportedU, transportedV, transportedW] {
             try field.encodeClear(command: command, pipeline: clearPipeline)
@@ -129,8 +134,10 @@ final class FluidSimulation3D {
         try projection.encodeProjection(
             command: command, u: transportedU.ping, v: transportedV.ping, w: transportedW.ping,
             projectedU: u.pong, projectedV: v.pong, projectedW: w.pong,
-            status: status, failureInjection: failureInjection, failureLatch: failureLatch
+            status: status, failureInjection: failureInjection, failureLatch: failureLatch,
+            warmStart: hasStepPressure
         )
+        hasStepPressure = true
         for field in [u, v, w] {
             try encodeGuarded(restoreVelocityPipeline, command: command, output: field,
                               componentID: 0, textures: [field.ping, field.pong])
