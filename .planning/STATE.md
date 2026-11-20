@@ -5,16 +5,16 @@ milestone_name: 3D Teaching Foundation
 current_phase: 07
 current_phase_name: First 3D Fluid Vertical Slice
 status: executing
-stopped_at: Completed 07-10-PLAN.md
-last_updated: "2026-11-20T23:07:41.026Z"
+stopped_at: Completed 07-11-PLAN.md
+last_updated: "2026-11-20T23:27:56.106Z"
 last_activity: 2026-11-20
 last_activity_desc: Phase 07 execution started
-state_head: 6903f7a845e1d84524796e1fc1e63aa1e2c9d369
+state_head: 933bfcf35d54065307ae180658be233527300781
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 22
-  completed_plans: 18
+  completed_plans: 19
   percent: 25
 ---
 
@@ -30,7 +30,7 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 ## Current Position
 
 Phase: 07 (First 3D Fluid Vertical Slice) — EXECUTING
-Plan: 11 of 13
+Plan: 12 of 13
 Status: Ready to execute
 Last activity: 2026-11-20 — Phase 07 execution started
 
@@ -52,6 +52,7 @@ Progress: [███░░░░░░░] 25% of currently planned v1.1 plans c
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 07 P10 | 57 min | 2 tasks | 4 files |
+| Phase 07 P11 | 17 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,7 @@ Progress: [███░░░░░░░] 25% of currently planned v1.1 plans c
 - 2026-11-14: 08-07 stages every evolution resource with fail-closed ownership/name/shape validation, retains reset/latest/submitted status ownership, and deterministically clears optional trace tails. Complete paused bytes/identity/metadata and independent equal-step solver/tracer schedules pass; only process-local identity/session tokens normalize across fresh sessions. All Phase 8 requirements remain pending.
 - 2026-11-15: 08-08 requires all six fresh matrix categories and separates synthetic schema validity from actual inspection acceptance; keep legacy benchmark semantics, retained failure/retry history and all pending human/runtime/device/pacing boundaries.
 - [Phase 07]: 07-10: paused 2D presentation and paused Step drain route through MTKView.draw() when the renderer is the MTKView delegate (drawingPresentationOnly flag keeps presentation redraws from consuming steps); delegate-less fixtures keep drawPresentationOnly. SimulationControlsPanel forwards Command-M to the canvas; no inactive indicator added (panel is hidden when inactive/minimized). — MTKView retires its current drawable only at the end of draw(), so reads outside draw() reuse an already-presented drawable (G-07-5). Headless spy is the deterministic proof; the real-window UI test also passed pre-fix and is a guard only. SIM-06/LES-06 stay pending for 07-12 human re-observation.
+- [Phase 07]: 07-11: Human-calibrated early-window gates (E1-E7) are an additive dated amendment after END PREREGISTERED CONTRACT, committed and shown RED on the original recipe before any recipe value changed. Shipped lesson recipe is speed 0.17, centre (0.66, 0.44, 0.59), radius 0.17: slice RMS 0.030 at step 10, 160 encoded-change samples, section area 156 to 257 by step 48, 600 production steps accepted (max input 7.61e-4, 144 iterations). Solver, shaders, tolerances and contract prefix hash unchanged. The opaque single-slice depth limit stays Phase 10 scope; numeric gates are not human acceptance (07-12). — UAT G-07-2: original recipe changed visibly only at steps 35-46. Phase 9 solver-cliff constraint: input divergence ~speed^2 crosses 1e-3 near x1.62 of the 0.12 seed; speeds in x1.6-x3.3 risk the 1000x reduction rule (x3 hard-failed at step 164); stay outside or add in-solver PCG margin, never relax the rule.
 
 ### Pending Todos
 
@@ -114,6 +116,7 @@ Progress: [███░░░░░░░] 25% of currently planned v1.1 plans c
 - Phase 7 Plan 07-09 documentation closeout is recorded after the user said they cannot commit to manual checks and directed us to proceed assuming no issues. The report retains an unchecked manual checklist and explicitly records that no visual/accessibility/interaction checks or observations were made; this is not a human-review PASS. Six user-facing Phase 7 requirements remain pending, VER-03 is complete on automated production-kernel evidence, actual macOS 26 and physical-device multitouch remain NOT TESTED, and displayed frame pacing remains NOT MEASURED. All nine plans are closed; phase-level user-facing acceptance is incomplete.
 - The 64³ wall/edge/corner pressure stress case converged at 317/320 iterations, leaving only three iterations of cap margin. This is measured numerical evidence, not a performance or cross-device guarantee. No cap or primary acceptance threshold was relaxed.
 - Phase 3 inline code review `03-REVIEW.md` records an advisory resample-pipeline failure-path warning; successful Mac/iOS user interaction and current GPU tests do not exercise that negative path.
+- Phase 9 (09-repeatable-3d-advection-lesson) solver-cliff constraint from 07-11: projection input divergence scales ~speed^2 and crosses 1e-3 near x1.62 of the 0.12 seed (~0.194); minimum 1000x-rule reductions were 1026x at x1.75, 1007x at x2.25, 995.3x at x3 (hard failure at step 164, finalAcceptanceFailed), >=1372x from x3.5. Any Phase 9 speed must stay outside that band or add in-solver PCG margin (continue to >=1500x when input >=1e-3); never relax the rule. The shipped 0.17 seed has max input 7.61e-4. The opaque single-slice depth limit remains Phase 10 scope.
 
 ## Deferred Items
 
@@ -148,8 +151,8 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 
 ## Session Continuity
 
-Last session: 2026-11-20T23:07:40.940Z
-Stopped at: Completed 07-10-PLAN.md
+Last session: 2026-11-20T23:27:56.015Z
+Stopped at: Completed 07-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

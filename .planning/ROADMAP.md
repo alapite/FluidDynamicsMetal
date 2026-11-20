@@ -34,7 +34,7 @@ The post-v1.0 educational release (`07703e2`, documented 2026-10-13) established
 3. App inactivity freezes evolution and reactivation introduces no catch-up steps; switching back to 2D restores the established mode-selection/reset behaviour without stale input.
 4. The production encoder passes documented three-axis advection, compatible projection, all-six-face boundary, and finite-value fixtures. Reference results and tolerances are defined before acceptance; both pressure residual and post-projection divergence are measured.
 
-**Plans**: 10/13 plans executed (9 original plans in 8 waves, all closed; 4 UAT gap-closure plans in 3 waves)
+**Plans**: 11/13 plans executed (9 original plans in 8 waves, all closed; 4 UAT gap-closure plans in 3 waves)
 
 Plans:
 **Wave 1**
@@ -75,7 +75,7 @@ Plans:
 **Gap Wave 1**
 
 - [x] 07-10-PLAN.md — G-07-5: route paused 2D presentation and paused Step through MTKView.draw() (headless spy + real-window regression); panel-key Command-M minimizes the canvas.
-- [ ] 07-11-PLAN.md — G-07-2: preregister human-calibrated early-window gates as a dated contract amendment, recalibrate the lesson blob/speed within a bounded envelope, add the 600-step lesson-recipe check and fail-closed validation.
+- [x] 07-11-PLAN.md — G-07-2: preregister human-calibrated early-window gates as a dated contract amendment, recalibrate the lesson blob/speed within a bounded envelope, add the 600-step lesson-recipe check and fail-closed validation.
 
 **Gap Wave 2** *(blocked on Gap Wave 1)*
 
@@ -198,7 +198,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 7. First 3D Fluid Vertical Slice | 10/13 | Gap closure planned (UAT G-07-2, G-07-5); acceptance incomplete | — (original plans closed 2026-11-13) |
+| 7. First 3D Fluid Vertical Slice | 11/13 | Gap closure planned (UAT G-07-2, G-07-5); acceptance incomplete | — (original plans closed 2026-11-13) |
 | 8. Spatial Inspection | 8/9 | In Progress — next 08-09 / Wave 9 mandatory human review | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |
