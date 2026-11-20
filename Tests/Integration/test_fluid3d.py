@@ -93,6 +93,37 @@ REGRESSION_MATRIX_REQUIRED = (
     "ipadHUD",
 )
 
+# Human-calibrated early-window visibility amendment (docs/3d-numerical-contract.md, UAT G-07-2).
+# These mirror the amendment thresholds; the validator never trusts an emitted `passed` flag.
+EVOLUTION_OBSERVATION_STEPS = (0, 1, 10, 20, 24, 48, 72)
+EVOLUTION_CALIBRATED_GATES = {
+    "step10RMSFromStep0Minimum": 0.025,
+    "step20RMSFromStep0Minimum": 0.04,
+    "encodedChangeThreshold": 32,
+    "step10EncodedChangeCountMinimum": 100,
+    "sectionAreaThreshold": 0.1,
+    "step0SectionAreaMinimum": 100,
+    "step48SectionAreaRelativeChangeMinimum": 0.30,
+    "earlyWindowSteps": [10, 20, 24, 48],
+    "earlyWindowPeakMinimum": 0.30,
+    "earlyWindowSectionAreaMinimum": 50,
+}
+LESSON_RECIPE_ENVELOPE = {
+    "seedMaximumVectorSpeed": (0.12, 0.18),
+    "blobRadius": (0.16, 0.18),
+    "blobCenterCoordinate": (0.30, 0.70),
+    "equatorOffsetOverRadius": (0.30, 0.60),
+    "blobPeak": 1.0,
+    "tolerance": 1e-6,
+}
+LESSON_RECIPE_600 = {
+    "steps": 600,
+    "inputDivergenceLimit": 9e-4,
+    "volumePeakMinimum": 0.05,
+    "checkpointSteps": [100, 200, 300, 400, 500, 600],
+    "iterationCap": 320,
+}
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -600,6 +631,197 @@ def validate_regression_matrix(matrix: object) -> list[str]:
     return errors
 
 
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _validate_evolution_calibration(result: dict, by_step: dict) -> list[str]:
+    """Fail-closed checks of the human-calibrated early-window amendment (E1-E7) and recipe envelope."""
+    errors: list[str] = []
+    gates = EVOLUTION_CALIBRATED_GATES
+    for step in EVOLUTION_OBSERVATION_STEPS:
+        if step in (0, 24, 48):
+            continue  # preregistered steps are checked by the original validator branch
+        item = by_step.get(step)
+        if not isinstance(item, dict):
+            errors.append(f"evolution-visibility is missing step {step}")
+        elif item.get("projection", {}).get("failure") != "none" or not item.get("projection", {}).get("converged"):
+            errors.append(f"evolution-visibility step {step} projection status failed")
+
+    window = result.get("calibratedEarlyWindow")
+    if not isinstance(window, dict):
+        errors.append("evolution-visibility calibratedEarlyWindow is missing")
+    elif window.get("gates") != gates:
+        errors.append("evolution-visibility calibratedEarlyWindow gates differ from the amendment constants")
+    else:
+        observed = window.get("observed")
+        if not isinstance(observed, dict):
+            errors.append("evolution-visibility calibratedEarlyWindow observed values are missing")
+        else:
+            if window.get("passed") is not True:
+                errors.append("evolution-visibility calibratedEarlyWindow did not report passed")
+            for step, key, label in ((10, "step10RMSFromStep0", "step-10"), (20, "step20RMSFromStep0", "step-20")):
+                value = observed.get(key)
+                item = by_step.get(step)
+                minimum = gates[f"step{step}RMSFromStep0Minimum"]
+                if not _is_number(value):
+                    errors.append(f"evolution-visibility {label} RMS is missing or nonfinite")
+                    continue
+                if value < minimum:
+                    errors.append(f"evolution-visibility {label} RMS {value} is below the amendment gate {minimum}")
+                if isinstance(item, dict) and not (
+                    _is_number(item.get("sliceRMSFromStep0")) and abs(item["sliceRMSFromStep0"] - value) <= 1e-9
+                ):
+                    errors.append(f"evolution-visibility {label} RMS does not match its observation")
+            encoded = observed.get("step10EncodedChangeCount")
+            if not _is_number(encoded) or encoded < gates["step10EncodedChangeCountMinimum"]:
+                errors.append(
+                    f"evolution-visibility step-10 encoded-change count {encoded} is below "
+                    f"{gates['step10EncodedChangeCountMinimum']}"
+                )
+            areas = observed.get("sectionArea")
+            peaks = observed.get("earlyWindowPeaks")
+            if not isinstance(areas, dict) or not isinstance(peaks, dict):
+                errors.append("evolution-visibility section areas or early-window peaks are missing")
+            else:
+                for step in [0] + list(gates["earlyWindowSteps"]):
+                    item = by_step.get(step)
+                    area = areas.get(str(step))
+                    if not _is_number(area):
+                        errors.append(f"evolution-visibility section area for step {step} is missing")
+                    elif isinstance(item, dict) and item.get("sliceAreaAtLeast0_1") != area:
+                        errors.append(f"evolution-visibility section area for step {step} does not match its observation")
+                for step in gates["earlyWindowSteps"]:
+                    item = by_step.get(step)
+                    peak = peaks.get(str(step))
+                    area = areas.get(str(step))
+                    if not _is_number(peak) or peak < gates["earlyWindowPeakMinimum"]:
+                        errors.append(
+                            f"evolution-visibility step-{step} early-window peak {peak} is below "
+                            f"{gates['earlyWindowPeakMinimum']}"
+                        )
+                    elif isinstance(item, dict) and not (
+                        _is_number(item.get("slicePeak")) and abs(item["slicePeak"] - peak) <= 1e-9
+                    ):
+                        errors.append(f"evolution-visibility step-{step} early-window peak does not match its observation")
+                    if _is_number(area) and area < gates["earlyWindowSectionAreaMinimum"]:
+                        errors.append(
+                            f"evolution-visibility step-{step} early-window section area {area} is below "
+                            f"{gates['earlyWindowSectionAreaMinimum']}"
+                        )
+                area0, area48 = areas.get("0"), areas.get("48")
+                if _is_number(area0) and area0 < gates["step0SectionAreaMinimum"]:
+                    errors.append(
+                        f"evolution-visibility step-0 section area {area0} is below {gates['step0SectionAreaMinimum']}"
+                    )
+                if _is_number(area0) and _is_number(area48) and area0 > 0:
+                    relative = abs(area48 - area0) / area0
+                    if relative < gates["step48SectionAreaRelativeChangeMinimum"]:
+                        errors.append(
+                            f"evolution-visibility step-48 section-area change {relative} is below "
+                            f"{gates['step48SectionAreaRelativeChangeMinimum']}"
+                        )
+                    reported = observed.get("step48SectionAreaRelativeChange")
+                    if not _is_number(reported) or abs(reported - relative) > 1e-9:
+                        errors.append("evolution-visibility step-48 section-area change does not match its areas")
+
+    lesson = result.get("lessonRecipe600")
+    contract = LESSON_RECIPE_600
+    if not isinstance(lesson, dict):
+        errors.append("evolution-visibility lessonRecipe600 is missing")
+    else:
+        if lesson.get("stepsValidated") != contract["steps"]:
+            errors.append(
+                f"evolution-visibility lessonRecipe600 stepsValidated is {lesson.get('stepsValidated')}, "
+                f"expected {contract['steps']}"
+            )
+        if lesson.get("projectionFailures") != 0:
+            errors.append("evolution-visibility lessonRecipe600 projectionFailures must be 0")
+        if lesson.get("capHits") != 0:
+            errors.append("evolution-visibility lessonRecipe600 capHits must be 0")
+        input_divergence = lesson.get("maximumInputDivergenceDTInf")
+        if not _is_number(input_divergence) or input_divergence > contract["inputDivergenceLimit"]:
+            errors.append(
+                f"evolution-visibility lessonRecipe600 maximum input divergence {input_divergence} "
+                f"exceeds {contract['inputDivergenceLimit']}"
+            )
+        if lesson.get("inputDivergenceMarginLimit") != contract["inputDivergenceLimit"]:
+            errors.append("evolution-visibility lessonRecipe600 input divergence margin limit differs from the amendment")
+        if lesson.get("reductionGateActiveSteps") != 0:
+            errors.append(
+                f"evolution-visibility lessonRecipe600 reduction gate was active on "
+                f"{lesson.get('reductionGateActiveSteps')} steps"
+            )
+        iterations = lesson.get("maximumIterations")
+        if not _is_number(iterations) or iterations >= contract["iterationCap"]:
+            errors.append(
+                f"evolution-visibility lessonRecipe600 maximum iterations {iterations} do not stay below "
+                f"the {contract['iterationCap']} cap"
+            )
+        if lesson.get("finite") is not True:
+            errors.append("evolution-visibility lessonRecipe600 is not finite")
+        volume = lesson.get("volumePeakAt600")
+        if not _is_number(volume) or volume < contract["volumePeakMinimum"]:
+            errors.append(
+                f"evolution-visibility lessonRecipe600 volume dye peak at step 600 {volume} is below "
+                f"{contract['volumePeakMinimum']}"
+            )
+        if lesson.get("volumePeakMinimumAt600") != contract["volumePeakMinimum"]:
+            errors.append("evolution-visibility lessonRecipe600 volume peak minimum differs from the amendment")
+        checkpoints = lesson.get("checkpoints")
+        if not isinstance(checkpoints, list) or [
+            item.get("step") if isinstance(item, dict) else None for item in checkpoints
+        ] != contract["checkpointSteps"]:
+            errors.append("evolution-visibility lessonRecipe600 checkpoint steps must be 100 to 600 by 100")
+        else:
+            for item in checkpoints:
+                numeric = ("slicePeak", "sliceAreaAtLeast0_1", "sliceCountAtLeast0_02", "volumePeak", "volumeMass")
+                if item.get("finite") is not True or not all(_is_number(item.get(key)) for key in numeric):
+                    errors.append(f"evolution-visibility lessonRecipe600 checkpoint step {item['step']} is not finite")
+                if not isinstance(item.get("sliceCapture"), str) or not item["sliceCapture"]:
+                    errors.append(f"evolution-visibility lessonRecipe600 checkpoint step {item['step']} has no capture")
+            last = checkpoints[-1]
+            if _is_number(volume) and _is_number(last.get("volumePeak")) and abs(last["volumePeak"] - volume) > 1e-9:
+                errors.append("evolution-visibility lessonRecipe600 step-600 checkpoint volume peak does not match volumePeakAt600")
+
+    recipe = result.get("recipe")
+    envelope = LESSON_RECIPE_ENVELOPE
+    tolerance = envelope["tolerance"]
+    if not isinstance(recipe, dict):
+        errors.append("evolution-visibility recipe is missing")
+    else:
+        def within(value: object, bounds: tuple[float, float]) -> bool:
+            return _is_number(value) and bounds[0] - tolerance <= value <= bounds[1] + tolerance
+
+        speed = recipe.get("seedMaximumVectorSpeed")
+        if not within(speed, envelope["seedMaximumVectorSpeed"]):
+            errors.append(f"evolution-visibility recipe seed speed {speed} is outside {envelope['seedMaximumVectorSpeed']}")
+        radius = recipe.get("blobRadius")
+        if not within(radius, envelope["blobRadius"]):
+            errors.append(f"evolution-visibility recipe blob radius {radius} is outside {envelope['blobRadius']}")
+        center = recipe.get("blobCenter")
+        if not isinstance(center, list) or len(center) != 3 or not all(
+            within(value, envelope["blobCenterCoordinate"]) for value in center
+        ):
+            errors.append(
+                f"evolution-visibility recipe blob centre {center} is outside {envelope['blobCenterCoordinate']}"
+            )
+        else:
+            offset = abs(center[2] - 0.5) / radius if _is_number(radius) and radius > 0 else math.inf
+            if not within(offset, envelope["equatorOffsetOverRadius"]):
+                errors.append(
+                    f"evolution-visibility recipe equator offset |cz-0.5|/r {offset} is outside "
+                    f"{envelope['equatorOffsetOverRadius']}"
+                )
+        if recipe.get("blobPeak") != envelope["blobPeak"]:
+            errors.append("evolution-visibility recipe blob peak must be 1")
+        if recipe.get("dyeDecayPerStep") != 0:
+            errors.append("evolution-visibility recipe dye decay per step must be 0")
+        if recipe.get("velocityReseedAfterReset") is not False:
+            errors.append("evolution-visibility recipe velocity reseed after reset must be false")
+    return errors
+
+
 def _validate_fixture_metrics(fixture: str, report: dict) -> list[str]:
     errors: list[str] = []
     result = report.get("result")
@@ -632,6 +854,7 @@ def _validate_fixture_metrics(fixture: str, report: dict) -> list[str]:
         analytic = result.get("analyticReferenceTrajectory", {})
         if not isinstance(analytic, dict) or analytic.get("finite") is not True or analytic.get("plane_rms_arc_ratio", 0) < 0.01:
             errors.append("evolution-visibility analytic trajectory misses its finite/nonplanar threshold")
+        errors.extend(_validate_evolution_calibration(result, by_step))
     elif fixture == "reset-finite":
         snapshots = result.get("snapshots")
         if not isinstance(snapshots, list) or not snapshots or any(item.get("finite") is not True for item in snapshots):
