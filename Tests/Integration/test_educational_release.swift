@@ -4,6 +4,26 @@ import MetalKit
 import AppKit
 import simd
 
+/// Records every MTKView draw() and every currentDrawable read made outside a draw() cycle.
+/// MTKView retires its current drawable only at the end of draw(), so a read outside draw() hands
+/// back an already-presented drawable whose later presents never reach the screen.
+@MainActor final class PresentationSpyView: MTKView {
+    private(set) var drawCalls = 0
+    private(set) var outsideDrawableReads = 0
+    private var insideDraw = false
+    func resetCounters() { drawCalls = 0; outsideDrawableReads = 0 }
+    override var currentDrawable: CAMetalDrawable? {
+        if !insideDraw { outsideDrawableReads += 1 }
+        return super.currentDrawable
+    }
+    override func draw() {
+        drawCalls += 1
+        insideDraw = true
+        defer { insideDraw = false }
+        super.draw()
+    }
+}
+
 @main @MainActor struct EducationalChecks {
     static func require(_ condition: @autoclosure () -> Bool, _ message: String) {
         if !condition() { fatalError(message) }
@@ -98,6 +118,63 @@ import simd
         freeRenderer.restartCurrentSimulation(); freeRenderer.draw(in: emptyView)
         require(texture(freeRenderer.simulation.density.ping).allSatisfy { $0 == 0 }, "Reset cancels pending taps")
         report.append("PASS real renderer: no-drawable stepping, rapid queue, paused redraw, inactivity, resize resource identity, pending-input reset")
+        // View-facing delegate path (D-15/D-16): every paused 2D drawable read must happen inside
+        // MTKView.draw(). Renderer's init leaves the delegate unset; the app controllers set it afterwards.
+        let spyView = PresentationSpyView(frame: CGRect(x: 0, y: 0, width: 64, height: 48), device: device)
+        let spyRenderer = Renderer(metalView: spyView, metal: metal)
+        spyView.delegate = spyRenderer
+        spyView.resetCounters()
+        func pump(_ seconds: TimeInterval = 0.1) { RunLoop.main.run(until: Date(timeIntervalSinceNow: seconds)) }
+        for lesson in [ExperimentID.advection, .interactingVortices, .dyeStretching, .advection] {
+            let drawsBefore = spyView.drawCalls
+            spyRenderer.selectMode(.experiment(lesson))
+            require(spyView.drawCalls > drawsBefore, "Selecting paused lesson \(lesson.title) did not present through MTKView.draw() (draw calls \(drawsBefore) -> \(spyView.drawCalls))")
+            require(spyView.outsideDrawableReads == 0, "Selecting paused lesson \(lesson.title) read currentDrawable outside MTKView.draw() \(spyView.outsideDrawableReads) time(s)")
+            let selected = spyRenderer.state
+            require(selected.mode == .experiment(lesson) && selected.stepCount == 0 && selected.pendingSteps == 0 && selected.userPaused
+                    && selected.field == lesson.defaultField && selected.adjustment == lesson.defaultAdjustment,
+                    "Selecting paused lesson \(lesson.title) must leave step 0, paused, with its default field and adjustment")
+        }
+        spyView.resetCounters()
+        for step in 1...3 {
+            let drawsBefore = spyView.drawCalls
+            spyRenderer.requestSingleStep(); pump()
+            require(spyRenderer.state.stepCount == step && spyRenderer.state.pendingSteps == 0,
+                    "Paused Step \(step) must advance exactly one step (step \(spyRenderer.state.stepCount), pending \(spyRenderer.state.pendingSteps))")
+            require(spyView.drawCalls > drawsBefore, "Paused Step \(step) did not present through MTKView.draw()")
+        }
+        require(spyView.outsideDrawableReads == 0, "Paused Steps read currentDrawable outside MTKView.draw() \(spyView.outsideDrawableReads) time(s)")
+        spyRenderer.requestSingleStep()
+        require(spyRenderer.state.pendingSteps == 1, "A queued Step must be pending before the drain runs")
+        spyRenderer.selectField(.pressure)
+        spyRenderer.setDisplayOptions(DisplayOptions(arrows: false, particles: true, trails: true))
+        spyRenderer.nextSlab()
+        require(spyRenderer.state.stepCount == 3 && spyRenderer.state.pendingSteps == 1,
+                "Field/option/slab presentation redraws consumed the pending Step (step \(spyRenderer.state.stepCount), pending \(spyRenderer.state.pendingSteps))")
+        pump()
+        require(spyRenderer.state.stepCount == 4 && spyRenderer.state.pendingSteps == 0,
+                "The pending Step must be drained exactly once (step \(spyRenderer.state.stepCount), pending \(spyRenderer.state.pendingSteps))")
+        require(spyView.outsideDrawableReads == 0, "Presentation redraws read currentDrawable outside MTKView.draw() \(spyView.outsideDrawableReads) time(s)")
+        let stepsBeforeReactivation = spyRenderer.state.stepCount
+        spyRenderer.resignActive()
+        var drawsBefore = spyView.drawCalls
+        spyRenderer.becomeActive()
+        require(spyView.drawCalls > drawsBefore && spyRenderer.state.stepCount == stepsBeforeReactivation,
+                "Reactivation must present through MTKView.draw() without advancing")
+        spyRenderer.selectMode(.freePlay)
+        spyRenderer.togglePause()
+        require(spyRenderer.state.userPaused && spyRenderer.state.mode == .freePlay, "Free Play must be paused for the resize check")
+        drawsBefore = spyView.drawCalls
+        spyView.frame = CGRect(x: 0, y: 0, width: 96, height: 64)
+        spyRenderer.mtkView(spyView, drawableSizeWillChange: CGSize(width: 192, height: 128))
+        require(spyView.drawCalls > drawsBefore && spyRenderer.state.stepCount == 0,
+                "Paused resize must present through MTKView.draw() without advancing")
+        drawsBefore = spyView.drawCalls
+        spyRenderer.lessonAvailableRect = CGRect(x: 0, y: 0, width: 80, height: 40)
+        require(spyView.drawCalls > drawsBefore && spyRenderer.state.stepCount == 0,
+                "A lesson-available-rect change must present through MTKView.draw() without advancing")
+        require(spyView.outsideDrawableReads == 0, "Reactivation/resize/available-rect redraws read currentDrawable outside MTKView.draw() \(spyView.outsideDrawableReads) time(s)")
+        report.append("PASS real renderer: paused 2D presentation via MTKView.draw()")
         let sim = FluidSimulation(width: 256, height: 256, metal: metal)
         let target = imageTexture()
         reset(sim, nil)

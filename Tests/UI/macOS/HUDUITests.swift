@@ -191,6 +191,57 @@ final class HUDUITests: XCTestCase {
         XCTAssertFalse(app.buttons["transport.step"].isEnabled)
     }
 
+    /// G-07-5 / D-15 / D-16: paused 2D selection and Step must update the visible canvas, not just the panel.
+    func testDirectPausedLessonSwitchesRefreshCanvas() throws {
+        XCTAssertTrue(app.popUpButtons["experimentSelector"].waitForExistence(timeout: 10))
+        let panel = app.windows["Simulation Controls"]
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        func closePanel() {
+            if panel.exists { panel.buttons[XCUIIdentifierCloseWindow].click() }
+        }
+        func canvasPixels() throws -> Data {
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(data: canvas.screenshot().pngRepresentation))
+            let image = try XCTUnwrap(bitmap.cgImage)
+            // Canvas interior only: skip the title bar and the window edge.
+            let crop = try XCTUnwrap(image.cropping(to: CGRect(
+                x: image.width / 10, y: image.height / 6,
+                width: image.width * 8 / 10, height: image.height * 7 / 10
+            )))
+            return try XCTUnwrap(NSBitmapImageRep(cgImage: crop).representation(using: .png, properties: [:]))
+        }
+        /// Waits for a settled frame: two captures 0.25 s apart must be byte-identical (at most 3 s).
+        func settledCapture(_ name: String) throws -> Data {
+            closePanel()
+            var previous = try canvasPixels()
+            let deadline = Date().addingTimeInterval(3)
+            while Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.25)
+                let current = try canvasPixels()
+                if current == previous { break }
+                previous = current
+            }
+            let attachment = XCTAttachment(data: previous, uniformTypeIdentifier: "public.png")
+            attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+            return previous
+        }
+
+        XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        var previous = try settledCapture("canvas-0-free-play")
+        for (index, key) in ["2", "3", "4", "2"].enumerated() {
+            command(key)
+            let current = try settledCapture("canvas-\(index + 1)-command-\(key)")
+            XCTAssertNotEqual(current, previous,
+                              "Command-\(key) (switch \(index + 1)) must replace the canvas with that lesson's fresh step-0 image")
+            previous = current
+        }
+        for step in 1...2 {
+            command(XCUIKeyboardKey.rightArrow.rawValue)
+            let current = try settledCapture("canvas-step-\(step)")
+            XCTAssertNotEqual(current, previous, "Paused Step \(step) must visibly update the canvas")
+            previous = current
+        }
+    }
+
     func testThreeDGroupedNavigationAndTransport() throws {
         let selector = app.popUpButtons["experimentSelector"]
         XCTAssertTrue(selector.waitForExistence(timeout: 10))
