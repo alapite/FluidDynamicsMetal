@@ -3548,9 +3548,13 @@ private struct Fluid3DChecks {
                     "Step-zero dye support is not one compact seed: support=\(supportCount)")
         let initialStats = volumeStatistics(initialDye, nx: grid.nx, ny: grid.ny, nz: grid.nz)
         let initialCentroid = initialStats["centroid"] as! [Double]
-        try require(abs(initialCentroid[0] - 0.42) < 0.02
-                    && abs(initialCentroid[1] - 0.48) < 0.02
-                    && abs(initialCentroid[2] - 0.52) < 0.02,
+        let lesson = ExperimentRecipes3D.lesson
+        let lessonCenter = SIMD3<Double>(
+            Double(lesson.blobCenter.x), Double(lesson.blobCenter.y), Double(lesson.blobCenter.z)
+        )
+        try require(abs(initialCentroid[0] - lessonCenter.x) < 0.02
+                    && abs(initialCentroid[1] - lessonCenter.y) < 0.02
+                    && abs(initialCentroid[2] - lessonCenter.z) < 0.02,
                     "Step-zero dye is not centred on the approved off-centre blob: \(initialCentroid)")
         try require(connectedComponents(initialDye, nx: grid.nx, ny: grid.ny, nz: grid.nz,
                                        threshold: 0.001) == 1,
@@ -3561,7 +3565,7 @@ private struct Fluid3DChecks {
         let initialSpeedMaximum = cellCenteredSpeedMaximum(firstVelocity, nx: grid.nx, ny: grid.ny, nz: grid.nz)
         try require(initialSpeedMaximum.isFinite && initialSpeedMaximum > 0,
                     "Reset recipe has no finite three-component transport velocity")
-        var probePaths = makeDyeSeededProbePaths(center: SIMD3<Double>(0.42, 0.48, 0.52))
+        var probePaths = makeDyeSeededProbePaths(center: lessonCenter)
         let probeStarts = probePaths.map { $0[0] }
         for start in probeStarts {
             try require(sampleCellCentered(initialDye, nx: grid.nx, ny: grid.ny, nz: grid.nz,
@@ -3605,9 +3609,26 @@ private struct Fluid3DChecks {
             "trueResidualDTInf": initialDiagnostics.trueResidualDTInf,
             "projectedDivergenceDTInf": initialDiagnostics.projectedDivergenceDTInf,
         ]]
-        let observationSteps: Set<Int> = [1, 24, 48, 72]
-        for step in 1...72 {
-            advanceProbePaths(&probePaths, with: activeVelocity, grid: grid)
+        let observationSteps: Set<Int> = [1, 10, 20, 24, 48, 72]
+        let originalWindowSteps = 72
+        let lessonStepCount = 600
+        let checkpointSteps: Set<Int> = [100, 200, 300, 400, 500, 600]
+        // The 600-step lesson-recipe check (amendment E7) is accounted, not thrown, so a
+        // failing candidate still reports every metric.
+        var lessonStepsValidated = 0
+        var lessonProjectionFailures = 0
+        var lessonCapHits = 0
+        var lessonFirstFailure: String?
+        var lessonMaximumIterations = 0
+        var lessonMaximumInputDivergence: Float = 0
+        var lessonReductionActiveSteps = 0
+        var lessonMinimumReductionWhereActive: Float?
+        var lessonCheckpoints: [[String: Any]] = []
+        var lessonVolumePeakAtEnd: Float = 0
+        for step in 1...lessonStepCount {
+            if step <= originalWindowSteps {
+                advanceProbePaths(&probePaths, with: activeVelocity, grid: grid)
+            }
             let buffer = metal.newCommandBuffer()
             let status = try simulation.encodeStep(command: buffer)
             buffer.commit()
@@ -3615,28 +3636,51 @@ private struct Fluid3DChecks {
             try require(buffer.status == .completed,
                         "Production advance \(step) command failed: \(String(describing: buffer.error))")
             let diagnostics = status.diagnostics()
-            try require(diagnostics.failure == .none && diagnostics.converged && !diagnostics.capHit,
-                        "Production step \(step) failed projection acceptance: \(diagnostics.failure)")
-            try require(diagnostics.trueResidualDTInf <= 1e-5
+            var violation: String?
+            if !(diagnostics.failure == .none && diagnostics.converged && !diagnostics.capHit) {
+                violation = "Production step \(step) failed projection acceptance: \(diagnostics.failure)"
+            } else if !(diagnostics.trueResidualDTInf <= 1e-5
                         && diagnostics.projectedDivergenceDTInf <= 1e-5
                         && diagnostics.identityDTError <= 2e-5
-                        && diagnostics.maximumWallNormalValue == 0,
-                        "Production step \(step) violated the preregistered pressure/wall gate: "
-                        + "residual=\(diagnostics.trueResidualDTInf), "
-                        + "divergence=\(diagnostics.projectedDivergenceDTInf), "
-                        + "identity=\(diagnostics.identityDTError) (GPU limit 2e-5), "
-                        + "wall=\(diagnostics.maximumWallNormalValue)")
-            maximumIterations = max(maximumIterations, diagnostics.iterations)
-            statusSummaries.append([
-                "step": step,
-                "iterations": diagnostics.iterations,
-                "failure": diagnostics.failure.description,
-                "converged": diagnostics.converged,
-                "trueResidualDTInf": diagnostics.trueResidualDTInf,
-                "projectedDivergenceDTInf": diagnostics.projectedDivergenceDTInf,
-                "identityDTError": diagnostics.identityDTError,
-                "maximumWallNormalValue": diagnostics.maximumWallNormalValue,
-            ])
+                        && diagnostics.maximumWallNormalValue == 0) {
+                violation = "Production step \(step) violated the preregistered pressure/wall gate: "
+                    + "residual=\(diagnostics.trueResidualDTInf), "
+                    + "divergence=\(diagnostics.projectedDivergenceDTInf), "
+                    + "identity=\(diagnostics.identityDTError) (GPU limit 2e-5), "
+                    + "wall=\(diagnostics.maximumWallNormalValue)"
+            }
+            if step <= originalWindowSteps, let violation {
+                throw Fluid3DHarnessError.assertion(violation)
+            }
+            if diagnostics.capHit { lessonCapHits += 1 }
+            lessonMaximumIterations = max(lessonMaximumIterations, diagnostics.iterations)
+            lessonMaximumInputDivergence = max(lessonMaximumInputDivergence, diagnostics.inputDivergenceDTInf)
+            if diagnostics.inputDivergenceDTInf >= 1e-3 {
+                lessonReductionActiveSteps += 1
+                lessonMinimumReductionWhereActive = min(
+                    lessonMinimumReductionWhereActive ?? diagnostics.divergenceReduction,
+                    diagnostics.divergenceReduction
+                )
+            }
+            if let violation {
+                lessonProjectionFailures += 1
+                lessonFirstFailure = "step \(step): \(violation)"
+                break
+            }
+            lessonStepsValidated += 1
+            if step <= originalWindowSteps {
+                maximumIterations = max(maximumIterations, diagnostics.iterations)
+                statusSummaries.append([
+                    "step": step,
+                    "iterations": diagnostics.iterations,
+                    "failure": diagnostics.failure.description,
+                    "converged": diagnostics.converged,
+                    "trueResidualDTInf": diagnostics.trueResidualDTInf,
+                    "projectedDivergenceDTInf": diagnostics.projectedDivergenceDTInf,
+                    "identityDTError": diagnostics.identityDTError,
+                    "maximumWallNormalValue": diagnostics.maximumWallNormalValue,
+                ])
+            }
 
             if observationSteps.contains(step) {
                 let fields = try scanSimulation(simulation)
@@ -3668,13 +3712,42 @@ private struct Fluid3DChecks {
                     sliceCapture: String(format: "recipe-step-%03d.ppm", step)
                 )
                 activeVelocity = velocitySnapshot(from: fields)
-            } else {
+            } else if step <= originalWindowSteps {
                 activeVelocity = try readActiveVelocity(simulation)
+            }
+
+            if checkpointSteps.contains(step) {
+                let fields = try scanSimulation(simulation)
+                let dye = fields["dye/ping"]!
+                let image = try captureSlice(
+                    visualization: visualization,
+                    simulation: simulation,
+                    step: step,
+                    directory: evidenceDirectory
+                )
+                let slice = centralSlice(dye, nx: grid.nx, ny: grid.ny, nz: grid.nz)
+                try compareSliceImage(image, concentrations: slice)
+                let statistics = volumeStatistics(dye, nx: grid.nx, ny: grid.ny, nz: grid.nz)
+                let volumePeak = dye.max() ?? 0
+                if step == lessonStepCount { lessonVolumePeakAtEnd = volumePeak }
+                lessonCheckpoints.append([
+                    "step": step,
+                    "slicePeak": slice.max() ?? 0,
+                    "sliceAreaAtLeast0_1": slice.filter { $0 >= 0.1 }.count,
+                    "sliceCountAtLeast0_02": slice.filter { $0 >= 0.02 }.count,
+                    "volumePeak": volumePeak,
+                    "volumeMass": statistics["mass"] ?? 0,
+                    "finite": statistics["finite"] as? Bool ?? false,
+                    "sliceCapture": String(format: "recipe-step-%03d.ppm", step),
+                ])
             }
         }
 
+        // Metrics are all computed before any gate is evaluated.
         let stepZero = observations[0]!
         let stepOne = observations[1]!
+        let step10Observation = observations[10]
+        let step20Observation = observations[20]
         let step24 = observations[24]!
         let step48 = observations[48]!
         let step72 = observations[72]!
@@ -3684,6 +3757,144 @@ private struct Fluid3DChecks {
         let visible24 = step24.slice.filter { $0 >= 0.02 }.count
         let visible48 = step48.slice.filter { $0 >= 0.02 }.count
         let sliceRMS48 = rmsDifference(stepZero.slice, step48.slice)
+
+        // Human-calibrated early-window amendment (docs/3d-numerical-contract.md, E1-E7).
+        let amendmentHeading = "Human-calibrated early-window visibility amendment — 2026-11-20 (UAT G-07-2)"
+        let calibratedGates: [String: Any] = [
+            "step10RMSFromStep0Minimum": 0.025,
+            "step20RMSFromStep0Minimum": 0.04,
+            "encodedChangeThreshold": 32,
+            "step10EncodedChangeCountMinimum": 100,
+            "sectionAreaThreshold": 0.1,
+            "step0SectionAreaMinimum": 100,
+            "step48SectionAreaRelativeChangeMinimum": 0.30,
+            "earlyWindowSteps": [10, 20, 24, 48],
+            "earlyWindowPeakMinimum": 0.30,
+            "earlyWindowSectionAreaMinimum": 50,
+        ]
+        func sectionArea(_ slice: [Float]) -> Int { slice.filter { $0 >= 0.1 }.count }
+        func encodedChangeCount(_ lhs: SliceImage, _ rhs: SliceImage, threshold: Int) -> Int {
+            var count = 0
+            for pixel in 0..<(lhs.width * lhs.height) {
+                let offset = pixel * 4
+                let change = (0..<3).map { abs(Int(lhs.pixels[offset + $0]) - Int(rhs.pixels[offset + $0])) }.max() ?? 0
+                if change >= threshold { count += 1 }
+            }
+            return count
+        }
+        let earlyWindowSteps = [10, 20, 24, 48]
+        let step10RMS = step10Observation.map { rmsDifference(stepZero.slice, $0.slice) } ?? Double.nan
+        let step20RMS = step20Observation.map { rmsDifference(stepZero.slice, $0.slice) } ?? Double.nan
+        let step10EncodedChange = step10Observation.map {
+            encodedChangeCount(stepZero.image, $0.image, threshold: 32)
+        } ?? 0
+        let areaByStep: [Int: Int] = [
+            0: sectionArea(stepZero.slice),
+            10: step10Observation.map { sectionArea($0.slice) } ?? 0,
+            20: step20Observation.map { sectionArea($0.slice) } ?? 0,
+            24: sectionArea(step24.slice),
+            48: sectionArea(step48.slice),
+        ]
+        let peakByStep: [Int: Float] = [
+            10: step10Observation?.slice.max() ?? 0,
+            20: step20Observation?.slice.max() ?? 0,
+            24: peak24,
+            48: peak48,
+        ]
+        let area0 = areaByStep[0] ?? 0
+        let step48AreaRelativeChange = area0 > 0
+            ? abs(Double(areaByStep[48] ?? 0) - Double(area0)) / Double(area0) : 0
+        var calibratedFailures: [String] = []
+        if peak0 < 0.5 { calibratedFailures.append("E1 step-0 slice peak \(peak0) < 0.5") }
+        if !(step10RMS >= 0.025) { calibratedFailures.append("E2 step-10 slice RMS \(step10RMS) < 0.025") }
+        if !(step20RMS >= 0.04) { calibratedFailures.append("E3 step-20 slice RMS \(step20RMS) < 0.04") }
+        if step10EncodedChange < 100 {
+            calibratedFailures.append("E4 step-10 encoded-change count \(step10EncodedChange) < 100")
+        }
+        if area0 < 100 { calibratedFailures.append("E5 step-0 section area \(area0) < 100") }
+        if step48AreaRelativeChange < 0.30 {
+            calibratedFailures.append("E5 step-48 section-area relative change \(step48AreaRelativeChange) < 0.30")
+        }
+        for step in earlyWindowSteps {
+            let peak = peakByStep[step] ?? 0
+            let area = areaByStep[step] ?? 0
+            if peak < 0.30 { calibratedFailures.append("E6 step-\(step) slice peak \(peak) < 0.30") }
+            if area < 50 { calibratedFailures.append("E6 step-\(step) section area \(area) < 50") }
+        }
+        func stringKeyed<Value>(_ values: [Int: Value]) -> [String: Value] {
+            Dictionary(uniqueKeysWithValues: values.map { (String($0.key), $0.value) })
+        }
+        let calibratedEarlyWindow: [String: Any] = [
+            "amendment": amendmentHeading,
+            "gates": calibratedGates,
+            "observed": [
+                "step10RMSFromStep0": step10RMS,
+                "step20RMSFromStep0": step20RMS,
+                "step10EncodedChangeCount": step10EncodedChange,
+                "sectionArea": stringKeyed(areaByStep),
+                "step48SectionAreaRelativeChange": step48AreaRelativeChange,
+                "earlyWindowPeaks": stringKeyed(peakByStep),
+            ] as [String: Any],
+            "passed": calibratedFailures.isEmpty,
+        ]
+
+        var lessonFailures: [String] = []
+        if lessonStepsValidated != lessonStepCount {
+            lessonFailures.append("E7 validated \(lessonStepsValidated) of \(lessonStepCount) steps")
+        }
+        if lessonProjectionFailures != 0 {
+            lessonFailures.append("E7 projection failure: \(lessonFirstFailure ?? "unknown")")
+        }
+        if lessonCapHits != 0 { lessonFailures.append("E7 cap hits: \(lessonCapHits)") }
+        if !(Double(lessonMaximumInputDivergence) <= 9e-4) {
+            lessonFailures.append("E7 maximum input dt*||Du*||inf \(lessonMaximumInputDivergence) > 9e-4")
+        }
+        if lessonReductionActiveSteps != 0 {
+            lessonFailures.append("E7 reduction gate active on \(lessonReductionActiveSteps) steps")
+        }
+        if lessonMaximumIterations >= PressureProjection3D.maximumIterations {
+            lessonFailures.append("E7 maximum iterations \(lessonMaximumIterations) reached the cap")
+        }
+        if lessonStepsValidated == lessonStepCount, !(lessonVolumePeakAtEnd >= 0.05) {
+            lessonFailures.append("E7 step-600 volume dye peak \(lessonVolumePeakAtEnd) < 0.05")
+        }
+        if lessonCheckpoints.count != checkpointSteps.count && lessonStepsValidated == lessonStepCount {
+            lessonFailures.append("E7 recorded \(lessonCheckpoints.count) checkpoints")
+        }
+        let lessonRecipe600: [String: Any] = [
+            "stepsValidated": lessonStepsValidated,
+            "projectionFailures": lessonProjectionFailures,
+            "capHits": lessonCapHits,
+            "maximumIterations": lessonMaximumIterations,
+            "maximumInputDivergenceDTInf": lessonMaximumInputDivergence,
+            "inputDivergenceMarginLimit": 9e-4,
+            "reductionGateActiveSteps": lessonReductionActiveSteps,
+            "minimumReductionWhereGateActive": lessonMinimumReductionWhereActive.map { Double($0) as Any } ?? NSNull(),
+            "finite": true,
+            "volumePeakAt600": lessonVolumePeakAtEnd,
+            "volumePeakMinimumAt600": 0.05,
+            "checkpoints": lessonCheckpoints,
+        ]
+        let allFailures = calibratedFailures + lessonFailures
+        if !allFailures.isEmpty {
+            let metrics: [String: Any] = [
+                "calibratedEarlyWindow": calibratedEarlyWindow,
+                "lessonRecipe600": lessonRecipe600,
+                "lessonRecipe": [
+                    "seedMaximumVectorSpeed": lesson.maximumVectorSpeed,
+                    "blobCenter": [lesson.blobCenter.x, lesson.blobCenter.y, lesson.blobCenter.z],
+                    "blobRadius": lesson.blobRadius,
+                ] as [String: Any],
+            ]
+            let json = (try? JSONSerialization.data(withJSONObject: metrics, options: [.sortedKeys]))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "\(metrics)"
+            throw Fluid3DHarnessError.assertion(
+                "Human-calibrated early-window gates failed:\n- "
+                + allFailures.joined(separator: "\n- ")
+                + "\nMETRICS=" + json
+            )
+        }
+
         try require(peak0 >= 0.5, "Step-zero central slice peak is below 0.5: \(peak0)")
         try require(peak24 >= 0.05 && visible24 >= 8,
                     "Step-24 fixed slice misses preregistered visibility: peak=\(peak24), count=\(visible24)")
@@ -3735,10 +3946,10 @@ private struct Fluid3DChecks {
             "h": grid.h,
             "dt": grid.dt,
             "vectorPotential": "A=(0.7*f, f*sin^2(pi*y), 0.6*f*sin^2(pi*z)); f=sin^2(pi*x)sin^2(pi*y)sin^2(pi*z)",
-            "seedMaximumVectorSpeed": 0.12,
-            "blobCenter": [0.42, 0.48, 0.52],
-            "blobRadius": 0.12,
-            "blobPeak": 1.0,
+            "seedMaximumVectorSpeed": lesson.maximumVectorSpeed,
+            "blobCenter": [lesson.blobCenter.x, lesson.blobCenter.y, lesson.blobCenter.z],
+            "blobRadius": lesson.blobRadius,
+            "blobPeak": lesson.blobPeak,
             "dyeDecayPerStep": 0.0,
             "velocityReseedAfterReset": false,
         ] as [String: Any]
@@ -3756,11 +3967,13 @@ private struct Fluid3DChecks {
                 "volumeStatistics": initialStats,
                 "resetVectorSpeedMaximum": initialSpeedMaximum,
             ],
-            "observations": [stepZero, stepOne, step24, step48, step72].map { observation in
+            "observations": ([stepZero, stepOne] + [step10Observation, step20Observation].compactMap { $0 }
+                             + [step24, step48, step72]).map { observation in
                 [
                     "step": observation.step,
                     "slicePeak": observation.slice.max() ?? 0,
                     "sliceCountAtLeast0_02": observation.slice.filter { $0 >= 0.02 }.count,
+                    "sliceAreaAtLeast0_1": sectionArea(observation.slice),
                     "sliceRMSFromStep0": rmsDifference(stepZero.slice, observation.slice),
                     "volumeStatistics": observation.volumeStatistics,
                     "projection": projectionSummary(observation.diagnostics),
@@ -3778,6 +3991,8 @@ private struct Fluid3DChecks {
                 "step48RMSFromStep0Minimum": 0.005,
                 "observedStep48RMSFromStep0": sliceRMS48,
             ],
+            "calibratedEarlyWindow": calibratedEarlyWindow,
+            "lessonRecipe600": lessonRecipe600,
             "velocityChangeMaxAbsolute": velocityChanges,
             "velocityChangeNormalizedByResetSpeed": velocityChangeRatios,
             "depthVariationMaxAbsolute": depthVariation,
@@ -3791,9 +4006,10 @@ private struct Fluid3DChecks {
             "projectionStatuses": statusSummaries,
             "maximumProjectionIterations": maximumIterations,
             "finite": true,
-            "captures": [stepZero, stepOne, step24, step48, step72].flatMap {
+            "captures": ([stepZero, stepOne] + [step10Observation, step20Observation].compactMap { $0 }
+                         + [step24, step48, step72]).flatMap {
                 [$0.sliceCapture, $0.stateCapture["file"] as! String]
-            },
+            } + lessonCheckpoints.compactMap { $0["sliceCapture"] as? String },
         ]
     }
 

@@ -183,6 +183,68 @@ Report both ideal-Double and stored-output identity errors and the derived bound
 The compact GPU diagnostic `2e-5` identity check is only the triangle-inequality
 consequence of the two `1e-5` gates, not a substitute for this independent check.
 
+### Human-calibrated early-window visibility amendment — 2026-11-20 (UAT G-07-2)
+
+This amendment is appended after the marker and never edits the preregistered
+prefix. It is additive: it adds gates and a recipe envelope, and it relaxes
+nothing.
+
+**1. Calibration source.** UAT test 2 on 2026-11-20. The user first noticed
+motion at steps 40-50 and expected 5-10. Production probe values for the
+original recipe (speed 0.12, radius 0.12, centre `(0.42, 0.48, 0.52)`) were a
+slice RMS from step 0 of 0.0129 at step 10, 0.035 at about step 35 and 0.052 at
+about step 46 (a 1-2 cell patch shift); 41 slice samples with at least 32/255
+encoded change at step 10; and a section area (samples at least 0.1) of 123
+cells at step 0 against 119 cells at step 48. The preregistered candidate gates
+above were about 10x weaker than this human visibility threshold. The numeric
+gates below are a calibration of those candidate gates. They do not establish
+human acceptance (see item 4).
+
+**2. Additive gates** on the production solver, the fixed palette and the Z=0.5
+central slice (planes 31/32, 64x64 production captures):
+
+- E1 (retained): the step-0 slice peak is at least `0.5`.
+- E2: the slice RMS difference from step 0 at step 10 is at least `0.025`.
+- E3: the slice RMS difference from step 0 at step 20 is at least `0.04`.
+- E4: at step 10, at least `100` of the 4096 slice samples have an encoded 8-bit
+  palette colour that differs from step 0 by at least `32` in at least one
+  channel, measured on the production 64x64 captures.
+- E5: the section area `A(t)` (count of slice samples at least `0.1`) satisfies
+  `A(0) >= 100` and `|A(48) - A(0)| >= 0.30 * A(0)`.
+- E6: the slice peak is at least `0.30` and `A(t) >= 50` at steps 10, 20, 24
+  and 48.
+- E7: the shipped lesson recipe is run for 600 steps. Every step is accepted
+  under the unchanged projection gates with no cap hit; the maximum input
+  `dt*||Du*||inf` is at most `9e-4` (at least 10% below the `1e-3` activation of
+  the unchanged 1000x reduction rule); all fields are finite at steps 100-600;
+  and the volume dye maximum at step 600 is at least `0.05`. The slice peak and
+  area at steps 100-600 are reported, not gated, because D-09 allows dye to
+  leave the section.
+
+**3. Recipe envelope** (D-07, D-08, D-10). The vector potential, curl
+construction, wall handling and bump form are unchanged; the bump peak is 1 and
+there is one blob. The global speed normalisation is in `[0.12, 0.18]`: inside
+the UAT's x1.6 bound, with margin because x1.62 crosses `1e-3`. The blob radius
+is in `[0.16, 0.18]`. Each centre coordinate is in `[0.30, 0.70]`, the D-08
+reading of "slightly off centre": central region, support at least 0.12 from
+every wall. The section starts off the equator, `0.30 <= |cz - 0.5| / r <= 0.60`,
+so the step-0 slice peak stays at least `0.5`.
+
+**4. Unchanged.** Every original candidate gate, every tolerance (`1e-5`
+residual and divergence, 1000x reduction, cap 320, `1e-10` Double,
+`2e-5 + 2e-4` Float) and the preregistered prefix hash are unchanged. These
+numeric gates operationalise "readable early transport" (D-09) but do not
+establish human acceptance; human re-observation is a separate blocking
+checkpoint (plan 07-12).
+
+**5. Phase 9 solver-cliff constraint.** The projection input divergence scales
+roughly with speed squared and crosses `1e-3` near x1.62 of the original seed.
+Measured minimum reductions were 1026x at x1.75, 1007x at x2.25 and 995.3x at
+x3, where the run hard-failed at step 164 with a `finalAcceptanceFailed` latch,
+then at least 1372x from x3.5. Any Phase 9 speed must stay outside that band or
+add in-solver PCG margin (for example continuing to at least 1500x when the
+input is at least `1e-3`), and must never relax the rule.
+
 The SHA-256 is computed over the exact UTF-8 bytes before the marker above, including the newline immediately preceding it. Results may be appended after the marker without changing the preregistered-contract hash. The reference driver pins the resulting digest and `--check-contract` fails if this prefix changes without an intentional review and test update.
 
 **Preregistered contract SHA-256:** `a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b`

@@ -5,15 +5,41 @@ import simd
 /// This recipe is applied only by reset; every later velocity is transported
 /// and projected by `FluidSimulation3D` without reseeding or explicit dye loss.
 enum ExperimentRecipes3D {
-    static let maximumVectorSpeed: Float = 0.12
-    static let blobCenter = SIMD3<Float>(0.42, 0.48, 0.52)
-    static let blobRadius: Float = 0.12
-    static let blobPeak: Float = 1
+    /// One dye-blob and seed-speed recipe. The vector potential, curl
+    /// construction, wall handling and bump form are fixed; only these values
+    /// vary, inside the envelope in `docs/3d-numerical-contract.md`.
+    struct Parameters: Sendable, Equatable {
+        /// Maximum reconstructed cell-centred speed, in domain lengths per time unit.
+        var maximumVectorSpeed: Float
+        var blobCenter: SIMD3<Float>
+        var blobRadius: Float
+        var blobPeak: Float
+    }
+
+    /// The shipped lesson recipe.
+    static let lesson = Parameters(
+        maximumVectorSpeed: 0.12,
+        blobCenter: SIMD3<Float>(0.42, 0.48, 0.52),
+        blobRadius: 0.12,
+        blobPeak: 1
+    )
+
+    static var maximumVectorSpeed: Float { lesson.maximumVectorSpeed }
+    static var blobCenter: SIMD3<Float> { lesson.blobCenter }
+    static var blobRadius: Float { lesson.blobRadius }
+    static var blobPeak: Float { lesson.blobPeak }
 
     /// Samples the analytic curl of the approved smooth vector potential at
     /// each MAC face, normalizes reconstructed cell-centred speed, and returns
     /// one compact off-centre cell-centred dye blob.
-    static func initialState(for grid: FluidSimulation3DConfiguration) -> Fluid3DInitialState {
+    static func initialState(
+        for grid: FluidSimulation3DConfiguration,
+        parameters: Parameters = ExperimentRecipes3D.lesson
+    ) -> Fluid3DInitialState {
+        let maximumVectorSpeed = parameters.maximumVectorSpeed
+        let blobCenter = parameters.blobCenter
+        let blobRadius = parameters.blobRadius
+        let blobPeak = parameters.blobPeak
         let nx = grid.nx
         let ny = grid.ny
         let nz = grid.nz
