@@ -3,7 +3,7 @@ status: complete
 phase: 07-first-3d-fluid-vertical-slice
 source: [07-VERIFICATION.md]
 started: 2026-11-20T20:10:00Z
-updated: 2026-11-20T20:57:02.193Z
+updated: 2026-11-20T21:26:06Z
 ---
 
 ## Current Test
@@ -28,9 +28,9 @@ result: pass
 
 ### 4. While running and while manually paused, switch to another app / minimize, wait, then return.
 expected: Counter frozen while inactive; no burst of catch-up steps on return; a manually paused lesson stays paused.
-result: issue
-reported: "For part A, while it's hard to be sure due to the speed at which the steps increase (and the 500 step limit), it doesn't seem to me that switching away or minimising pauses execution. For part B, it's a full pass."
-severity: major
+result: pass
+reported: "With the new test procedure you've suggested, G-07-4 records as a pass."
+note: "Initial run reported as issue (\"For part A, while it's hard to be sure due to the speed at w...\"); diagnosis (.planning/debug/3d-running-continues-while-inactive.md) found freeze logic correct but unobservable at ~60 steps/s with the counter panel hidden while inactive, and Cmd-M inert while the controls panel is key. Re-tested 2026-11-20 with a timed procedure (switch away at ~120-180 steps, wait 10 s): pass. Side finding (not a test failure): Cmd-M does nothing while the controls panel is the key window."
 
 ### 5. Switch from 3D back to Free Play and each 2D lesson (also trigger the injected 3D failure path if available).
 expected: Established 2D selection/reset defaults, no stale mouse/touch input, native recovery message and retry work.
@@ -47,8 +47,8 @@ note: "Keyboard traversal and readability passed. VoiceOver (Part B) was skipped
 ## Summary
 
 total: 6
-passed: 3
-issues: 3
+passed: 4
+issues: 2
 pending: 0
 skipped: 0
 blocked: 0
@@ -61,15 +61,6 @@ blocked: 0
   reason: "User reported: The first thing I've noticed is that it takes many more than 5-10 steps to see noticeable movement of the dye patch - more like 40-50. The second issue is that the patch doesn't really give a convincingly 3d impression. It starts by taking relatively little of the cube volume, and during transformation it doesn't give strong depth cues to convince me that I'm not just viewing a 2d slice."
   severity: major
   test: 2
-  artifacts: []
-  missing: []
-
-- gap_id: G-07-4
-  truth: "Counter frozen while inactive; no burst of catch-up steps on return; a manually paused lesson stays paused."
-  status: failed
-  reason: "User reported: For part A, while it's hard to be sure due to the speed at which the steps increase (and the 500 step limit), it doesn't seem to me that switching away or minimising pauses execution. For part B, it's a full pass."
-  severity: major
-  test: 4
   artifacts: []
   missing: []
 
