@@ -15,7 +15,7 @@ The post-v1.0 educational release (`07703e2`, documented 2026-10-13) established
 
 ## Phases
 
-- [ ] **Phase 7: First 3D Fluid Vertical Slice** — All 9/9 plans are closed; phase-level user-facing acceptance remains incomplete, with six requirements pending manual acceptance.
+- [ ] **Phase 7: First 3D Fluid Vertical Slice** — All 9 original plans are closed; phase-level user-facing acceptance remains incomplete, with six requirements pending manual acceptance. UAT 2026-11-20 gap closure (G-07-2, G-07-5): 4 plans (07-10 to 07-13) planned.
 - [ ] **Phase 8: Spatial Inspection** — Explore depth using camera controls, movable slices, and passive tracers without changing the experiment.
 - [ ] **Phase 9: Repeatable 3D Advection Lesson** — Compare initial speeds through an explained, restartable 600-step lesson.
 - [ ] **Phase 10: Volume View and Measured Release Quality** — View the dye volume and meet the measured performance and regression contract.
@@ -34,7 +34,7 @@ The post-v1.0 educational release (`07703e2`, documented 2026-10-13) established
 3. App inactivity freezes evolution and reactivation introduces no catch-up steps; switching back to 2D restores the established mode-selection/reset behaviour without stale input.
 4. The production encoder passes documented three-axis advection, compatible projection, all-six-face boundary, and finite-value fixtures. Reference results and tolerances are defined before acceptance; both pressure residual and post-projection divergence are measured.
 
-**Plans**: 9 plans in 8 waves
+**Plans**: 13 plans (9 original plans in 8 waves, all closed; 4 UAT gap-closure plans in 3 waves)
 
 Plans:
 **Wave 1**
@@ -69,6 +69,21 @@ Plans:
 **Wave 8** *(blocked on Wave 7 completion)*
 
 - [x] 07-09-PLAN.md — Record the documentation closeout under user direction; keep the human visual/accessibility/interaction review explicitly pending.
+
+**UAT gap closure (2026-11-20; G-07-2, G-07-5)**
+
+**Gap Wave 1**
+
+- [ ] 07-10-PLAN.md — G-07-5: route paused 2D presentation and paused Step through MTKView.draw() (headless spy + real-window regression); panel-key Command-M minimizes the canvas.
+- [ ] 07-11-PLAN.md — G-07-2: preregister human-calibrated early-window gates as a dated contract amendment, recalibrate the lesson blob/speed within a bounded envelope, add the 600-step lesson-recipe check and fail-closed validation.
+
+**Gap Wave 2** *(blocked on Gap Wave 1)*
+
+- [ ] 07-12-PLAN.md — Prepare the exact final app and obtain the user's blocking re-observation of UAT tests 2 and 5.
+
+**Gap Wave 3** *(blocked on 07-12 approval)*
+
+- [ ] 07-13-PLAN.md — Regenerate fresh Phase 7/Phase 8 evidence through one final matrix and append dated gap-closure sections to both verification reports.
 
 **Execution status (2026-11-13):** All nine plans are closed across eight waves. Plan 07-09 closed the documentation work, but the human visual/accessibility/native-interaction review was **not performed**; its checklist remains unchecked and this is not a human-review PASS. SIM-04, SIM-05, SIM-06, LES-01, LES-02, and LES-06 remain pending manual acceptance; VER-03 is complete from automated production-kernel evidence. Actual macOS 26 runtime and physical-device multitouch remain **NOT TESTED**; displayed frame pacing remains **NOT MEASURED**.
 
@@ -183,7 +198,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 7. First 3D Fluid Vertical Slice | 9/9 | Plans closed; acceptance incomplete | — (plans closed 2026-11-13) |
+| 7. First 3D Fluid Vertical Slice | 9/13 | Gap closure planned (UAT G-07-2, G-07-5); acceptance incomplete | — (original plans closed 2026-11-13) |
 | 8. Spatial Inspection | 8/9 | In Progress — next 08-09 / Wave 9 mandatory human review | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |
