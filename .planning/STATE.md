@@ -1,17 +1,21 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: "1.0"
 milestone: v1.1
 milestone_name: 3D Teaching Foundation
+current_phase: 07
+current_phase_name: First 3D Fluid Vertical Slice
 status: executing
-stopped_at: Completed 08-08-PLAN.md; next 08-09 / Wave 9 mandatory human review
-last_updated: "2026-11-15T08:25:14Z"
-last_activity: 2026-11-15 -- 08-08 fresh automated matrix and evidence handoff complete; human review pending
+stopped_at: Completed 07-10-PLAN.md
+last_updated: "2026-11-20T23:07:41.026Z"
+last_activity: 2026-11-20
+last_activity_desc: Phase 07 execution started
+state_head: 6903f7a845e1d84524796e1fc1e63aa1e2c9d369
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 18
-  completed_plans: 17
-  percent: 94
+  total_plans: 22
+  completed_plans: 18
+  percent: 25
 ---
 
 # Project State
@@ -21,16 +25,16 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-11-06)
 
 **Core value:** People can interact with a responsive, visually familiar fluid simulation on both supported platforms and adjust it without editing source code.
-**Current focus:** Phase 08 — spatial-inspection
+**Current focus:** Phase 07 — First 3D Fluid Vertical Slice
 
 ## Current Position
 
-Phase: 08 (spatial-inspection) — EXECUTING
-Plan: 8 of 9 complete; next 08-09 / Wave 9
-Status: Executing Phase 08 — mandatory actual human review pending
-Last activity: 2026-11-15 -- 08-08 fresh matrix, real-evidence CLI and launchable app ready
+Phase: 07 (First 3D Fluid Vertical Slice) — EXECUTING
+Plan: 11 of 13
+Status: Ready to execute
+Last activity: 2026-11-20 — Phase 07 execution started
 
-Progress: [█████████░] 94% of currently planned v1.1 plans closed (17/18); Phase 8 is 8/9. The one plan-closed phase in frontmatter is Phase 7, not a human-acceptance claim. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
+Progress: [███░░░░░░░] 25% of currently planned v1.1 plans closed (17/18); Phase 8 is 8/9. The one plan-closed phase in frontmatter is Phase 7, not a human-acceptance claim. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
 
 ## Performance Metrics
 
@@ -43,6 +47,11 @@ Progress: [█████████░] 94% of currently planned v1.1 plans c
 **By Phase:** v1.0 implementation plans 14/14 archived; Phase 7 plans 9/9 closed. Phase 7 user-facing acceptance remains incomplete because manual review was not performed; VER-03 is complete from automated evidence. Historical macOS 26 and device-only verification remain deferred.
 
 **Recent Trend:** 08-08 final automated matrix passes: both exact builds, Mac 47/47, integration 45/45, iPhone/iPad HUD 11/11 each, actual-evidence CLI and launchable app. Initial Mac 45/47 and iPhone 9/11 failures plus full unchanged-source retries are retained. Matrix attempts total 2,950.717 s; VoiceOver and physical input/human review remain pending.
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 07 P10 | 57 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -69,6 +78,7 @@ Progress: [█████████░] 94% of currently planned v1.1 plans c
 - 2026-11-14: 08-06 schedules tracer evolution only with accepted renderer steps, adds opaque-sheet depth-tested discs and the native visibility checkbox, and verifies hidden/no-drawable scheduling, Restart retention, failure recovery, and image occlusion. Spatial evidence routing now consistently hashes the inspection contract and captures. All Phase 8 requirements remain pending; 08-09 remains the human-review checkpoint.
 - 2026-11-14: 08-07 stages every evolution resource with fail-closed ownership/name/shape validation, retains reset/latest/submitted status ownership, and deterministically clears optional trace tails. Complete paused bytes/identity/metadata and independent equal-step solver/tracer schedules pass; only process-local identity/session tokens normalize across fresh sessions. All Phase 8 requirements remain pending.
 - 2026-11-15: 08-08 requires all six fresh matrix categories and separates synthetic schema validity from actual inspection acceptance; keep legacy benchmark semantics, retained failure/retry history and all pending human/runtime/device/pacing boundaries.
+- [Phase 07]: 07-10: paused 2D presentation and paused Step drain route through MTKView.draw() when the renderer is the MTKView delegate (drawingPresentationOnly flag keeps presentation redraws from consuming steps); delegate-less fixtures keep drawPresentationOnly. SimulationControlsPanel forwards Command-M to the canvas; no inactive indicator added (panel is hidden when inactive/minimized). — MTKView retires its current drawable only at the end of draw(), so reads outside draw() reuse an already-presented drawable (G-07-5). Headless spy is the deterministic proof; the real-window UI test also passed pre-fix and is a guard only. SIM-06/LES-06 stay pending for 07-12 human re-observation.
 
 ### Pending Todos
 
@@ -138,9 +148,9 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 
 ## Session Continuity
 
-Last session: 2026-11-15T08:25:14Z
-Stopped at: Completed 08-08-PLAN.md; next 08-09 / Wave 9 mandatory actual human review
-Resume file: .planning/phases/08-spatial-inspection/08-09-PLAN.md
+Last session: 2026-11-20T23:07:40.940Z
+Stopped at: Completed 07-10-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
