@@ -121,6 +121,9 @@ final class Renderer: NSObject, MTKViewDelegate {
     private var touchRadius: Float?
     private var stepDrainScheduled = false
     private var drawingQueuedStep = false
+    /// Set while a presentation-only redraw runs inside MTKView.draw(), so the
+    /// delegate entry can never consume a pending step or input for that frame.
+    private var drawingPresentationOnly = false
     private var inspectionRedrawPending = false
     private var inspectionRedrawScheduled = false
     /// Live 3D frames submitted from the display loop and not yet completed.
@@ -255,7 +258,10 @@ final class Renderer: NSObject, MTKViewDelegate {
             guard let self, self.sessionGeneration == generation else { return }
             self.stepDrainScheduled = false
             if self.state.pendingSteps > 0, let view = self.metalView {
-                if self.state.mode.is3D, view.delegate === self, view.isPaused {
+                if view.delegate === self, view.isPaused {
+                    // MTKView retires its current drawable only at the end of
+                    // draw(), so reading it outside draw() reuses an
+                    // already-presented drawable that never reaches the screen.
                     self.drawingQueuedStep = true
                     view.draw()
                     self.drawingQueuedStep = false
@@ -316,6 +322,13 @@ final class Renderer: NSObject, MTKViewDelegate {
               let view = metalView else { return }
         if state.mode.is3D, view.delegate === self {
             requestInspectionRedraw()
+        } else if view.delegate === self {
+            // Paused 2D presentation must read the drawable inside MTKView.draw():
+            // MTKView retires its current drawable only at the end of draw(), so
+            // a read outside it reuses an already-presented drawable.
+            drawingPresentationOnly = true
+            defer { drawingPresentationOnly = false }
+            view.draw()
         } else {
             drawPresentationOnly(in: view)
         }
@@ -594,6 +607,10 @@ final class Renderer: NSObject, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
+        if drawingPresentationOnly {
+            draw(in: view, presentationOnly: true)
+            return
+        }
         // The live display loop may skip a tick while the GPU is busy. Explicit
         // draws and queued single steps continue to submit each accepted step.
         let interactive3D = state.mode.is3D && view.delegate === self && !drawingQueuedStep
