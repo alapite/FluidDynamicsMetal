@@ -1371,6 +1371,99 @@ def synthetic_inspection_manifest() -> dict:
     }
 
 
+def synthetic_evolution_visibility_report() -> dict:
+    """Explicitly synthetic passing evolution-visibility report; never written to .build."""
+
+    def observation(step: int, peak: float, count: int, rms: float, area: int) -> dict:
+        return {
+            "step": step,
+            "slicePeak": peak,
+            "sliceCountAtLeast0_02": count,
+            "sliceAreaAtLeast0_1": area,
+            "sliceRMSFromStep0": rms,
+            "projection": {"failure": "none", "converged": True, "capHit": False},
+        }
+
+    observations = [
+        observation(0, 0.67, 160, 0.0, 156),
+        observation(1, 0.69, 162, 0.0034, 160),
+        observation(10, 0.80, 190, 0.0304, 193),
+        observation(20, 0.88, 215, 0.0527, 224),
+        observation(24, 0.90, 220, 0.0594, 231),
+        observation(48, 0.905, 240, 0.078, 257),
+        observation(72, 0.745, 250, 0.072, 255),
+    ]
+    return {
+        "result": {
+            "passed": True,
+            "fixture": "evolution-visibility",
+            "recipe": {
+                "seedMaximumVectorSpeed": 0.17,
+                "blobCenter": [0.66, 0.44, 0.59],
+                "blobRadius": 0.17,
+                "blobPeak": 1.0,
+                "dyeDecayPerStep": 0.0,
+                "velocityReseedAfterReset": False,
+            },
+            "observations": observations,
+            "velocityChangeNormalizedByResetSpeed": {"u": 0.2, "v": 0.2, "w": 0.2},
+            "depthVariationNormalizedByResetSpeed": 0.5,
+            "maximumProbeZTravelCells": 2.0,
+            "analyticReferenceTrajectory": {"finite": True, "plane_rms_arc_ratio": 0.0166},
+            "calibratedEarlyWindow": {
+                "amendment": "Human-calibrated early-window visibility amendment — 2026-11-20 (UAT G-07-2)",
+                "gates": {
+                    "step10RMSFromStep0Minimum": 0.025,
+                    "step20RMSFromStep0Minimum": 0.04,
+                    "encodedChangeThreshold": 32,
+                    "step10EncodedChangeCountMinimum": 100,
+                    "sectionAreaThreshold": 0.1,
+                    "step0SectionAreaMinimum": 100,
+                    "step48SectionAreaRelativeChangeMinimum": 0.30,
+                    "earlyWindowSteps": [10, 20, 24, 48],
+                    "earlyWindowPeakMinimum": 0.30,
+                    "earlyWindowSectionAreaMinimum": 50,
+                },
+                "observed": {
+                    "step10RMSFromStep0": 0.0304,
+                    "step20RMSFromStep0": 0.0527,
+                    "step10EncodedChangeCount": 160,
+                    "sectionArea": {"0": 156, "10": 193, "20": 224, "24": 231, "48": 257},
+                    "step48SectionAreaRelativeChange": (257 - 156) / 156,
+                    "earlyWindowPeaks": {"10": 0.80, "20": 0.88, "24": 0.90, "48": 0.905},
+                },
+                "passed": True,
+            },
+            "lessonRecipe600": {
+                "stepsValidated": 600,
+                "projectionFailures": 0,
+                "capHits": 0,
+                "maximumIterations": 144,
+                "maximumInputDivergenceDTInf": 7.6e-4,
+                "inputDivergenceMarginLimit": 9e-4,
+                "reductionGateActiveSteps": 0,
+                "minimumReductionWhereGateActive": None,
+                "finite": True,
+                "volumePeakAt600": 0.25,
+                "volumePeakMinimumAt600": 0.05,
+                "checkpoints": [
+                    {
+                        "step": step,
+                        "slicePeak": 0.2,
+                        "sliceAreaAtLeast0_1": 50,
+                        "sliceCountAtLeast0_02": 100,
+                        "volumePeak": 0.25 if step == 600 else 0.5,
+                        "volumeMass": 540.0,
+                        "finite": True,
+                        "sliceCapture": f"recipe-step-{step:03d}.ppm",
+                    }
+                    for step in (100, 200, 300, 400, 500, 600)
+                ],
+            },
+        },
+    }
+
+
 class Fluid3DTests(unittest.TestCase):
     def test_inspection_evidence_schema(self):
         # Explicitly synthetic: schema validity never constitutes an actual run.
@@ -1484,6 +1577,114 @@ class Fluid3DTests(unittest.TestCase):
             with self.subTest(corruption=mutation):
                 self.assertTrue(validate_inspection_manifest(changed))
         self.assertEqual(len(independence["inventory"]), 38)
+
+    def test_evolution_visibility_evidence_requires_calibrated_window_and_600_step_lesson(self):
+        report = synthetic_evolution_visibility_report()
+        self.assertEqual(_validate_fixture_metrics("evolution-visibility", report), [])
+
+        def observation(candidate: dict, step: int) -> dict:
+            return next(item for item in candidate["result"]["observations"] if item["step"] == step)
+
+        def drop_observation(step: int):
+            def mutate(candidate: dict) -> None:
+                candidate["result"]["observations"] = [
+                    item for item in candidate["result"]["observations"] if item["step"] != step
+                ]
+            return mutate
+
+        def set_rms(step: int, value: float):
+            def mutate(candidate: dict) -> None:
+                observation(candidate, step)["sliceRMSFromStep0"] = value
+                candidate["result"]["calibratedEarlyWindow"]["observed"][f"step{step}RMSFromStep0"] = value
+            return mutate
+
+        def set_window(key: str, value):
+            def mutate(candidate: dict) -> None:
+                candidate["result"]["calibratedEarlyWindow"]["observed"][key] = value
+            return mutate
+
+        def set_gate(key: str, value):
+            def mutate(candidate: dict) -> None:
+                candidate["result"]["calibratedEarlyWindow"]["gates"][key] = value
+            return mutate
+
+        def set_peak(step: str, value: float):
+            def mutate(candidate: dict) -> None:
+                candidate["result"]["calibratedEarlyWindow"]["observed"]["earlyWindowPeaks"][step] = value
+            return mutate
+
+        def set_area(step: str, value: int):
+            def mutate(candidate: dict) -> None:
+                candidate["result"]["calibratedEarlyWindow"]["observed"]["sectionArea"][step] = value
+            return mutate
+
+        def set_lesson(key: str, value):
+            def mutate(candidate: dict) -> None:
+                candidate["result"]["lessonRecipe600"][key] = value
+            return mutate
+
+        def set_recipe(key: str, value):
+            def mutate(candidate: dict) -> None:
+                candidate["result"]["recipe"][key] = value
+            return mutate
+
+        def nonfinite_checkpoint(candidate: dict) -> None:
+            candidate["result"]["lessonRecipe600"]["checkpoints"][2]["finite"] = False
+
+        def short_checkpoints(candidate: dict) -> None:
+            del candidate["result"]["lessonRecipe600"]["checkpoints"][-1]
+
+        def small_area_change(candidate: dict) -> None:
+            observed = candidate["result"]["calibratedEarlyWindow"]["observed"]
+            observed["sectionArea"]["48"] = 187
+            observed["step48SectionAreaRelativeChange"] = (187 - 156) / 156
+            observation(candidate, 48)["sliceAreaAtLeast0_1"] = 187
+
+        mutations = [
+            ("missing step 10", drop_observation(10), "missing step 10"),
+            ("missing step 20", drop_observation(20), "missing step 20"),
+            ("step-10 RMS", set_rms(10, 0.02), "step-10 RMS"),
+            ("step-20 RMS", set_rms(20, 0.03), "step-20 RMS"),
+            ("encoded change", set_window("step10EncodedChangeCount", 99), "encoded-change"),
+            ("section-area change", small_area_change, "section-area change"),
+            ("early-window peak", set_peak("24", 0.29), "early-window peak"),
+            ("early-window area", set_area("20", 49), "early-window section area"),
+            ("emitted gate", set_gate("step10RMSFromStep0Minimum", 0.01), "gates"),
+            ("RMS cross-check", set_window("step10RMSFromStep0", 0.05), "does not match"),
+            ("599 steps", set_lesson("stepsValidated", 599), "stepsValidated"),
+            ("projection failure", set_lesson("projectionFailures", 1), "projectionFailures"),
+            ("cap hit", set_lesson("capHits", 1), "capHits"),
+            ("input divergence", set_lesson("maximumInputDivergenceDTInf", 9.5e-4), "input divergence"),
+            ("reduction gate active", set_lesson("reductionGateActiveSteps", 1), "reduction gate"),
+            ("iteration cap", set_lesson("maximumIterations", 320), "iterations"),
+            ("nonfinite checkpoint", nonfinite_checkpoint, "checkpoint"),
+            ("missing checkpoint", short_checkpoints, "checkpoint"),
+            ("volume peak", set_lesson("volumePeakAt600", 0.04), "volume"),
+            ("speed", set_recipe("seedMaximumVectorSpeed", 0.19), "speed"),
+            ("radius", set_recipe("blobRadius", 0.12), "radius"),
+            ("centre x", set_recipe("blobCenter", [0.75, 0.44, 0.59]), "centre"),
+            ("equator offset low", set_recipe("blobCenter", [0.66, 0.44, 0.52]), "equator offset"),
+            ("equator offset high", set_recipe("blobCenter", [0.66, 0.44, 0.70]), "equator offset"),
+            ("blob peak", set_recipe("blobPeak", 2.0), "peak"),
+            ("decay", set_recipe("dyeDecayPerStep", 0.01), "decay"),
+            ("reseed", set_recipe("velocityReseedAfterReset", True), "reseed"),
+        ]
+        for name, mutate, expected in mutations:
+            changed = copy.deepcopy(report)
+            mutate(changed)
+            errors = _validate_fixture_metrics("evolution-visibility", changed)
+            with self.subTest(mutation=name):
+                self.assertTrue(errors, f"{name} was accepted")
+                self.assertTrue(
+                    any(expected in error for error in errors),
+                    f"{name}: no error mentions {expected!r}: {errors}",
+                )
+
+        for key in ("calibratedEarlyWindow", "lessonRecipe600", "recipe"):
+            changed = copy.deepcopy(report)
+            del changed["result"][key]
+            with self.subTest(omitted=key):
+                self.assertTrue(_validate_fixture_metrics("evolution-visibility", changed))
 
     def test_evidence_schema(self):
         def sample():
