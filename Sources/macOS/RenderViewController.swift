@@ -9,6 +9,31 @@
 import AppKit
 import MetalKit
 
+/// Utility panel that stays non-miniaturizable itself but forwards Window > Minimize
+/// (Command-M) to the canvas window, so the existing willMiniaturize path orders the
+/// panel out and freezes evolution while the panel is key.
+private final class SimulationControlsPanel: NSPanel {
+    weak var canvasWindow: NSWindow?
+
+    private var canForwardMinimize: Bool {
+        guard let window = canvasWindow else { return false }
+        return window.styleMask.contains(.miniaturizable) && !window.isMiniaturized
+    }
+
+    override func performMiniaturize(_ sender: Any?) {
+        guard canForwardMinimize, let window = canvasWindow else {
+            NSSound.beep()
+            return
+        }
+        window.performMiniaturize(sender)
+    }
+
+    override func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(NSWindow.performMiniaturize(_:)) { return canForwardMinimize }
+        return super.validateMenuItem(item)
+    }
+}
+
 class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValidation {
     private enum InspectionSliderKind: Int {
         case depth
@@ -98,7 +123,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private var tuningValues: [TuningControl: NSTextField] = [:]
     private var isTuningExpanded = false
     private var fieldButtons: [DisplayField: NSButton] = [:]
-    private var controlsPanel: NSPanel?
+    private var controlsPanel: SimulationControlsPanel?
     private weak var simulationMenu: NSMenu?
     private var panelConfigured = false
     private var canvasFrameFitted = false
@@ -215,6 +240,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         guard let panel = controlsPanel, let window = view.window else { return }
         if !panelConfigured {
             panelConfigured = true
+            panel.canvasWindow = window
             updateControlLayout()
             let restored = panel.setFrameUsingName("SimulationControls")
             if !restored {
@@ -437,9 +463,9 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     private func installControls() {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 248, height: 196),
-                            styleMask: [.titled, .closable, .utilityWindow],
-                            backing: .buffered, defer: false)
+        let panel = SimulationControlsPanel(contentRect: NSRect(x: 0, y: 0, width: 248, height: 196),
+                                            styleMask: [.titled, .closable, .utilityWindow],
+                                            backing: .buffered, defer: false)
         panel.title = "Simulation Controls"
         panel.backgroundColor = .windowBackgroundColor
         panel.identifier = NSUserInterfaceItemIdentifier("simulationControls")
