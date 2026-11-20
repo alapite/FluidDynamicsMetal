@@ -117,6 +117,32 @@ final class HUDUITests: XCTestCase {
         XCTAssertFalse(panel.exists)
     }
 
+    /// LES-06: Window > Minimize must work while the Simulation Controls panel is key.
+    func testPanelKeyMinimizeMinimizesCanvas() throws {
+        let panel = app.windows["Simulation Controls"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        // Clicking a panel control makes the panel the key window.
+        let pause = app.buttons["Pause simulation"]
+        XCTAssertTrue(pause.waitForExistence(timeout: 5))
+        pause.click()
+        XCTAssertTrue(app.buttons["Resume simulation"].waitForExistence(timeout: 5))
+
+        app.menuBars.menuBarItems["Window"].click()
+        let minimize = app.menuBars.menuItems["Minimize"]
+        XCTAssertTrue(minimize.waitForExistence(timeout: 5))
+        XCTAssertTrue(minimize.isEnabled, "Window > Minimize must be enabled while the controls panel is key")
+        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
+
+        // Not the command(_:) helper: its app.activate() could move key status back to the canvas.
+        app.typeKey("m", modifierFlags: .command)
+        let gone = NSPredicate(format: "exists == false")
+        let panelGone = XCTNSPredicateExpectation(predicate: gone, object: panel)
+        XCTAssertEqual(XCTWaiter.wait(for: [panelGone], timeout: 5), .completed,
+                       "Command-M from the panel must minimize the canvas, which orders the panel out")
+        XCTAssertFalse(canvas.isHittable, "The canvas window must be minimized")
+    }
+
     func testMouseDragProducesVisibleDyeAndPausedResizePreservesIt() throws {
         let panel = app.windows["Simulation Controls"]
         XCTAssertTrue(panel.waitForExistence(timeout: 10))
