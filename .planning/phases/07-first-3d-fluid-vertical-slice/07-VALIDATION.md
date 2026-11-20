@@ -1,7 +1,7 @@
 ---
 phase: 7
 slug: first-3d-fluid-vertical-slice
-status: approved
+status: validated
 nyquist_compliant: true
 wave_0_complete: true
 created: 2026-11-06
