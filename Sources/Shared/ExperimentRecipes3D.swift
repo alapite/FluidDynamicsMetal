@@ -16,11 +16,15 @@ enum ExperimentRecipes3D {
         var blobPeak: Float
     }
 
-    /// The shipped lesson recipe.
+    /// The shipped lesson recipe, calibrated against the human-calibrated early-window
+    /// amendment (UAT G-07-2). The blob starts slightly off the Z=0.5 equator in faster
+    /// flow so the fixed slice visibly changes within 10-20 steps, and the seed speed
+    /// stays below the 1000x projection-reduction activation band (input
+    /// `dt*||Du*||inf` <= 9e-4). Do not raise the speed without the Phase 9 constraint.
     static let lesson = Parameters(
-        maximumVectorSpeed: 0.12,
-        blobCenter: SIMD3<Float>(0.42, 0.48, 0.52),
-        blobRadius: 0.12,
+        maximumVectorSpeed: 0.17,
+        blobCenter: SIMD3<Float>(0.66, 0.44, 0.59),
+        blobRadius: 0.17,
         blobPeak: 1
     )
 
