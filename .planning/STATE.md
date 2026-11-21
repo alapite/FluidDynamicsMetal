@@ -5,11 +5,11 @@ milestone_name: 3D Teaching Foundation
 current_phase: 07
 current_phase_name: First 3D Fluid Vertical Slice
 status: executing
-stopped_at: 07-15 Task 1 halt rule (E7' solver gate at speed 0.17); replan chosen
-last_updated: "2026-11-21T09:15:37.886Z"
+stopped_at: 07-15/07-16 replanned for lowered seed speed (gap round, checker passed)
+last_updated: "2026-11-21T12:46:49.391Z"
 last_activity: 2026-11-21
-last_activity_desc: 07-15 halted at blocking-human checkpoint; user chose lower seed speed (replan)
-state_head: 3576a540441961bbdcf480064b503f8507e638a4
+last_activity_desc: 07-15/07-16 revised for lower seed speed; 07-13/07-17 minimally edited; plan checker passed
+state_head: b8f1c12bbdbace7ded6ebb6a7e8f105712bec783
 progress:
   total_phases: 4
   completed_phases: 1
@@ -29,10 +29,10 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 
 ## Current Position
 
-Phase: 07 (First 3D Fluid Vertical Slice) — EXECUTING
-Plan: 15 of 17 (halted, needs replan)
-Status: Blocked — 07-15 awaiting replan
-Last activity: 2026-11-21 — 07-14 complete; 07-15 halted at Task 1 RED (E7' solver gate)
+Phase: 07 (First 3D Fluid Vertical Slice) — READY TO EXECUTE
+Plan: 15 of 17 (revised, ready)
+Status: Ready to execute — revised 07-15 next (--gaps-only)
+Last activity: 2026-11-21 — 07-15/07-16 replanned (cd74eb9, b8f1c12): speed sweep 0.15–0.12 with pre-declared selection and HALT-A/B/C; 07-17 adds g07_2_d_early_motion
 
 Progress: [███░░░░░░░] 25% of currently planned v1.1 plans closed (17/18); Phase 8 is 8/9. The one plan-closed phase in frontmatter is Phase 7, not a human-acceptance claim. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
 
@@ -159,12 +159,12 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 ## Session Continuity
 
 Last session: 2026-11-21T09:15:37.789Z
-Stopped at: 07-15 Task 1 halt — replan with lower seed speed
+Stopped at: 07-15/07-16 replanned for lower seed speed
 Resume file: None
 
 ## Operator Next Steps
 
-- Phase 7 gap closure (2026-11-21): 07-14 complete. 07-15 halted at Task 1 (E7' solver gate fails at speed 0.17 over 1800 steps); user chose to lower the seed speed. Next: `/gsd-plan-phase 7 --gaps` to revise 07-15 (and 07-16 lesson length), reusing the uncommitted Task 1 work, then `/gsd-execute-phase 7 --gaps-only`. 07-17 and 07-13 must not run before then.
+- Phase 7 gap closure (2026-11-21): 07-14 complete. 07-15 halted at Task 1 (E7' solver gate fails at speed 0.17 over 1800 steps); user chose to lower the seed speed. Replanned 2026-11-21 (cd74eb9, b8f1c12; checker passed). Next: `/gsd-execute-phase 7 --gaps-only` (order 07-15 → 07-16 → 07-17 → 07-13). Revised 07-15 Task 1 commits the uncommitted Task 1 work once. 07-17 human review stays blocking.
 
 - Phase 7 gap closure: 07-12 recorded G-07-5 human re-observation PASS (and Command-M PASS) but G-07-2 OPEN (3D slice: returning dye very dim, patch small, run length too short; see `07-12-SUMMARY.md`). Do NOT run 07-13. Next: `/gsd-plan-phase 7 --gaps` or `/gsd-verify-work 7` to diagnose and replan G-07-2. UAT results and requirement statuses are owned by `/gsd-verify-work`.
 - Next is 08-09 / Wave 9 mandatory actual human review; do not auto-approve it. Read `08-08-SUMMARY.md`, `08-08-REVIEW.md` and `docs/3d-phase8-verification.md` for the fresh full matrix, retained failures/retries, actual manifest/app/capture paths and unchecked human checklist. Eight of nine plans are complete; 08-09 and phase-level verification remain pending. Keep all five Phase 8 requirements pending; no auto-advance or phase completion was performed.
