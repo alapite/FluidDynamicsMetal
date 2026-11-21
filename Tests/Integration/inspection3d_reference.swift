@@ -2,7 +2,7 @@
 import Foundation
 import CryptoKit
 
-private let contractHash = "7f793d4ecfff13e7138a96e354f7597a9da9db88853c657d47a23ae09955e0c7"
+private let contractHash = "ac824cffb3cb3db141cf1c03f9425cd67797db0586246480a258ddd06a502cbb"
 private enum OracleError: Error { case invalid(String) }
 private func hash(_ data: Data) -> String {
     SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()

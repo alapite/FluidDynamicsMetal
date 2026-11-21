@@ -1960,7 +1960,7 @@ private struct Fluid3DChecks {
         let expectedHash = manifest["sha256"] as? String
         let actualHash = SHA256.hash(data: expectedBinary).map { String(format: "%02x", $0) }.joined()
         try require(manifest["contractHash"] as? String
-                    == "7f793d4ecfff13e7138a96e354f7597a9da9db88853c657d47a23ae09955e0c7",
+                    == "ac824cffb3cb3db141cf1c03f9425cd67797db0586246480a258ddd06a502cbb",
                     "Spatial expectations must use the pinned independent inspection contract")
         try require(expectedHash == actualHash, "Independent spatial expectation payload hash mismatch")
         try require((manifest["midpointPlanes"] as? [Int]) == [31, 32],
@@ -6584,7 +6584,7 @@ private struct Fluid3DChecks {
         guard let reference = try JSONSerialization.jsonObject(
             with: Data(contentsOf: referenceURL)
         ) as? [String: Any],
-        reference["contractHash"] as? String == "7f793d4ecfff13e7138a96e354f7597a9da9db88853c657d47a23ae09955e0c7",
+        reference["contractHash"] as? String == "ac824cffb3cb3db141cf1c03f9425cd67797db0586246480a258ddd06a502cbb",
         let forwardCases = reference["forwardRK2Cases"] as? [[String: Any]],
         let boundaryProbes = reference["boundaryProbes"] as? [[String: Any]],
         let affineProbes = reference["affineTracerProbes"] as? [[String: Any]],

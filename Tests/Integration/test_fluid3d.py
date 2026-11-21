@@ -25,7 +25,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_HASH = "a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b"
-INSPECTION_CONTRACT_HASH = "7f793d4ecfff13e7138a96e354f7597a9da9db88853c657d47a23ae09955e0c7"
+INSPECTION_CONTRACT_HASH = "ac824cffb3cb3db141cf1c03f9425cd67797db0586246480a258ddd06a502cbb"
 SWIFT_SOURCES = [
     "Sources/Shared/MetalDevice.swift",
     "Sources/Shared/RenderShader.swift",
@@ -864,6 +864,26 @@ def _validate_fixture_metrics(fixture: str, report: dict) -> list[str]:
             errors.append("slice-palette read-only/finite result is missing")
         if result.get("sampledPlanes") != [31, 32] or result.get("sampleWeights") != [0.5, 0.5]:
             errors.append("slice-palette does not report the central 31/32 midpoint")
+        if result.get("displayTransfer") != "square-root":
+            errors.append("slice-palette must report the fixed square-root display transfer")
+        stops = result.get("paletteStops")
+        if (
+            not isinstance(stops, list)
+            or [item.get("concentration") for item in stops if isinstance(item, dict)] != [0.0, 0.25, 1.0]
+            or [item.get("displayValue") for item in stops if isinstance(item, dict)] != [0.0, 0.5, 1.0]
+            or [item.get("rgb") for item in stops if isinstance(item, dict)]
+            != [[0, 0, 0], [237, 139, 35], [255, 241, 214]]
+        ):
+            errors.append(
+                "slice-palette stops must be concentration [0, 0.25, 1], display value [0, 0.5, 1] "
+                "and RGB black/amber/cream"
+            )
+        samples = result.get("transferSamples")
+        if not isinstance(samples, list) or not any(
+            isinstance(item, dict) and item.get("concentration") == 0.25 and item.get("rgb") == [237, 139, 35]
+            for item in samples
+        ):
+            errors.append("slice-palette transferSamples must pin concentration 0.25 to full amber (237,139,35)")
     elif fixture == "spatial-slices":
         if result.get("cubeEdgesChecked") != 12:
             errors.append("spatial-slices must verify all 12 projected cube edges")
