@@ -108,12 +108,15 @@ EVOLUTION_CALIBRATED_GATES = {
     "earlyWindowPeakMinimum": 0.30,
     "earlyWindowSectionAreaMinimum": 50,
 }
+# Larger-blob, square-root display and 3D lesson-length amendment (2026-11-21) item 6; supersedes
+# item 3 of the 07-11 amendment.
 LESSON_RECIPE_ENVELOPE = {
-    "seedMaximumVectorSpeed": (0.12, 0.18),
-    "blobRadius": (0.16, 0.18),
+    "seedMaximumVectorSpeed": (0.12, 0.17),
+    "blobRadius": (0.20, 0.26),
+    "blobPeak": (1.0, 1.25),
     "blobCenterCoordinate": (0.30, 0.70),
+    "wallClearanceMinimum": 0.06,
     "equatorOffsetOverRadius": (0.30, 0.60),
-    "blobPeak": 1.0,
     "tolerance": 1e-6,
 }
 LESSON_RECIPE_600 = {
@@ -807,14 +810,23 @@ def _validate_evolution_calibration(result: dict, by_step: dict) -> list[str]:
                 f"evolution-visibility recipe blob centre {center} is outside {envelope['blobCenterCoordinate']}"
             )
         else:
+            if _is_number(radius):
+                for axis, coordinate in zip("xyz", center):
+                    clearance = min(coordinate - radius, 1 - coordinate - radius)
+                    if clearance < envelope["wallClearanceMinimum"] - tolerance:
+                        errors.append(
+                            f"evolution-visibility recipe {axis} wall clearance {clearance} is below "
+                            f"{envelope['wallClearanceMinimum']}"
+                        )
             offset = abs(center[2] - 0.5) / radius if _is_number(radius) and radius > 0 else math.inf
             if not within(offset, envelope["equatorOffsetOverRadius"]):
                 errors.append(
                     f"evolution-visibility recipe equator offset |cz-0.5|/r {offset} is outside "
                     f"{envelope['equatorOffsetOverRadius']}"
                 )
-        if recipe.get("blobPeak") != envelope["blobPeak"]:
-            errors.append("evolution-visibility recipe blob peak must be 1")
+        peak = recipe.get("blobPeak")
+        if not within(peak, envelope["blobPeak"]):
+            errors.append(f"evolution-visibility recipe blob peak {peak} is outside {envelope['blobPeak']}")
         if recipe.get("dyeDecayPerStep") != 0:
             errors.append("evolution-visibility recipe dye decay per step must be 0")
         if recipe.get("velocityReseedAfterReset") is not False:
@@ -1641,9 +1653,9 @@ def synthetic_evolution_visibility_report() -> dict:
             "passed": True,
             "fixture": "evolution-visibility",
             "recipe": {
-                "seedMaximumVectorSpeed": 0.17,
-                "blobCenter": [0.66, 0.44, 0.59],
-                "blobRadius": 0.17,
+                "seedMaximumVectorSpeed": 0.15,
+                "blobCenter": [0.64, 0.44, 0.62],
+                "blobRadius": 0.24,
                 "blobPeak": 1.0,
                 "dyeDecayPerStep": 0.0,
                 "velocityReseedAfterReset": False,
@@ -1871,6 +1883,12 @@ class Fluid3DTests(unittest.TestCase):
                 candidate["result"]["recipe"][key] = value
             return mutate
 
+        def combine(*mutations):
+            def mutate(candidate: dict) -> None:
+                for item in mutations:
+                    item(candidate)
+            return mutate
+
         def nonfinite_checkpoint(candidate: dict) -> None:
             candidate["result"]["lessonRecipe600"]["checkpoints"][2]["finite"] = False
 
@@ -1904,11 +1922,15 @@ class Fluid3DTests(unittest.TestCase):
             ("missing checkpoint", short_checkpoints, "checkpoint"),
             ("volume peak", set_lesson("volumePeakAt600", 0.04), "volume"),
             ("speed", set_recipe("seedMaximumVectorSpeed", 0.19), "speed"),
+            ("speed below envelope", set_recipe("seedMaximumVectorSpeed", 0.11), "speed"),
             ("radius", set_recipe("blobRadius", 0.12), "radius"),
-            ("centre x", set_recipe("blobCenter", [0.75, 0.44, 0.59]), "centre"),
-            ("equator offset low", set_recipe("blobCenter", [0.66, 0.44, 0.52]), "equator offset"),
-            ("equator offset high", set_recipe("blobCenter", [0.66, 0.44, 0.70]), "equator offset"),
-            ("blob peak", set_recipe("blobPeak", 2.0), "peak"),
+            ("radius above envelope", set_recipe("blobRadius", 0.27), "radius"),
+            ("centre x", set_recipe("blobCenter", [0.75, 0.44, 0.62]), "centre"),
+            ("equator offset low", set_recipe("blobCenter", [0.64, 0.44, 0.56]), "equator offset"),
+            ("equator offset high", set_recipe("blobCenter", [0.64, 0.44, 0.70]), "equator offset"),
+            ("wall clearance", combine(set_recipe("blobRadius", 0.26), set_recipe("blobCenter", [0.70, 0.44, 0.62])),
+             "wall clearance"),
+            ("blob peak", set_recipe("blobPeak", 1.3), "peak"),
             ("decay", set_recipe("dyeDecayPerStep", 0.01), "decay"),
             ("reseed", set_recipe("velocityReseedAfterReset", True), "reseed"),
         ]

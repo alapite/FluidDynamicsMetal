@@ -245,6 +245,180 @@ then at least 1372x from x3.5. Any Phase 9 speed must stay outside that band or
 add in-solver PCG margin (for example continuing to at least 1500x when the
 input is at least `1e-3`), and must never relax the rule.
 
+### Larger-blob, square-root display and 3D lesson-length amendment — 2026-11-21 (UAT G-07-2 re-observation)
+
+This amendment is appended after the marker and the 07-11 amendment above. It
+never edits the preregistered prefix or the 07-11 amendment text. It is
+additive: it adds gates, a lesson-length rule and a recipe envelope, and it
+relaxes nothing.
+
+**1. Calibration source.** The 07-12 human re-observation of UAT test 2 on
+2026-11-21, quoted verbatim from `07-12-SUMMARY.md`:
+
+> "For test 2, I do see the patch fade and come back somewhat, but the
+> brightness as it returns is very low, and so it's hard to interpret what is
+> going on. Part of the problem seems to be that the patch is relatively small
+> to begin with. Another issue is that there are only 500 timesteps, which is
+> barely enough time to see anything happening."
+
+The 07-11 600-step measurements for the shipped recipe (speed 0.17, centre
+`(0.66, 0.44, 0.59)`, radius 0.17, peak 1) were: section area `A(0)` of 156
+slice samples; slice peak 0.053 and section area 0 at step 200; section area 0
+at step 300; section area 90 and slice peak 0.201 at step 600; volume dye peak
+0.253 at step 600. The gap-round decisions of 2026-11-21 were: (1) the returning
+dye must be clearly displayed (met by the 07-14 square-root display transfer),
+(2) the starting patch is larger, and (3) the 3D lesson is longer, with its
+length derived from a measured fade-and-return rather than guessed.
+
+**2. Display basis.** The display metrics below use the production 64x64
+central-slice captures, rendered by the production fixed-slice shader with the
+square-root transfer of the 07-14 amendment to `docs/3d-inspection-contract.md`.
+For each capture pixel take the encoded sRGB channels `v = byte/255`. Linearise
+with `v <= 0.04045 ? v/12.92 : ((v+0.055)/1.055)^2.4`, then
+`Y = 0.2126 R + 0.7152 G + 0.0722 B`, and
+`L* = 116*cbrt(Y) - 16` when `Y > 216/24389`, else `(24389/27)*Y`. `V50(t)` is
+the count of the 4096 pixels with `L* >= 50`, and `Lmax(t)` is the largest
+pixel `L*`. Sanity anchors: `#ED8B23` gives `L*` of about 67.0 and `#FFF1D6`
+about 95.6. Gate E4 of the 07-11 amendment is evaluated on the same production
+captures. Every concentration-based metric (E1-E3, E5, E6, the volume peak) is
+unchanged.
+
+**3. Additive gates** on the production solver, the fixed square-root display
+and the Z=0.5 central slice:
+
+- S1: the step-0 section area `A(0)` (samples at least `0.1`) is at least `250`
+  (the 07-11 recipe had 156).
+- S2: `V50(0) >= 300`.
+- R1 (return visibility), evaluated at checkpoints `c` in `{0, 50, ..., 1800}`
+  where the step-0 value comes from the step-0 observation. `fadeStep` is the
+  smallest `c >= 50` with `V50(c) <= 0.5 * V50(0)`. If `fadeStep` exists,
+  `returnStep` is the smallest `c > fadeStep` with `V50(c) >= 150` and either
+  `c == 1800` or `V50(c) >= V50(c+50)`. R1 passes when `returnStep` exists,
+  `returnStep + 100 <= 1800` and `Lmax(returnStep) >= 60` (the amber stop is
+  `L*` of about 67). If no `fadeStep` exists, R1 passes when `V50(c) >= 150`
+  for every `c <= 1200`. When R1 fails, the derived lesson length is null.
+- E7' (the shipped recipe over 1800 steps): every one of the 1800 steps is
+  accepted under the unchanged projection gates with no cap hit; the maximum
+  input `dt*||Du*||inf` is at most `9e-4` with zero steps at or above `1e-3`, so
+  the 1000x reduction rule is never active; all fields are finite at every
+  50-step checkpoint; and the volume dye maximum at the derived lesson length is
+  at least `0.05`. E1-E6 keep their thresholds, and the 07-11 E7 600-step check
+  stays required as a subset of E7'.
+
+**4. 3D lesson-length rule.** One 1800-step production run derives the 3D
+lesson length. It is the smallest of `1200`, `1500` or `1800` that is at least
+`returnStep + 100`, or `1200` when there is no `fadeStep`. This is a measured
+rule, not a shipped value: plan 07-16 ships the derived number. The 2D lessons
+keep 600 steps.
+
+**5. Phase 9 handoff.** `LES-05` and Phase 9 success criterion 2 still say
+"600". Phase 9 planning must reconcile them with the user. This amendment
+satisfies neither.
+
+**6. Recipe envelope.** This supersedes item 3 of the 07-11 amendment. The
+vector potential, curl construction, wall handling, bump form and the single
+blob are unchanged. New bounds: seed speed in `[0.12, 0.17]`; radius in
+`[0.20, 0.26]`; peak in `[1.00, 1.25]`; each centre coordinate in
+`[0.30, 0.70]` with `min(c - r, 1 - c - r) >= 0.06` on every axis; and
+`0.30 <= |cz - 0.5| / r <= 0.60`. Speed never exceeds 0.17, which keeps it below
+the x1.6-x3.3 solver-cliff band of the original 0.12 seed. A peak above 1 is
+tried only after peak-1 candidates, because a large saturated core would hide
+the internal gradient that shows the section changing.
+Speed 0.17 itself fails E7' over 1800 steps (item 8), so the shipped speed is selected below 0.17 by the rule in item 8.
+
+**7. Unchanged.** Every original candidate gate, every tolerance (`1e-5`
+residual and divergence, the 1000x reduction rule, cap 320, `1e-10` Double,
+`2e-5 + 2e-4` Float), the 07-11 E1-E7 thresholds and the preregistered prefix
+hash are unchanged. The 1000x rule is never relaxed. These numeric gates
+calibrate the user's words; they are not human acceptance. Plan 07-17 is the
+blocking human checkpoint.
+
+**8. Seed-speed decision and preregistered selection (2026-11-21).**
+
+(a) RED record on the 07-11 recipe (speed 0.17, centre `(0.66, 0.44, 0.59)`,
+radius 0.17, peak 1) over 1800 steps, quoted from `0715-RED.log`: 1800 of 1800
+steps were accepted, with 0 projection failures, 0 cap hits and at most 144
+iterations. The maximum input `dt*||Du*||inf` was `1.1625e-3`, above `9e-4`.
+The 1000x reduction rule was active on 126 steps with a minimum reduction of
+`1006.8x`; it never failed. All checkpoints were finite. The 600-step subset
+had a maximum input of `7.608e-4` and 0 active steps, so the 07-11 600-step
+evidence hid this. On the square-root display the patch faded at step 150 and
+returned at best to `V50` 52 at step 650.
+
+(b) This is blob-independent. `ExperimentRecipes3D.initialState` scales the
+vector-potential velocity by the seed speed alone and the dye is passive, so
+the E7' solver statistics (input divergence, iterations, reduction-rule
+activity) depend on the seed speed only. No blob at speed 0.17 can pass E7'.
+
+(c) User decision of 2026-11-21 (option 1): lower the seed speed inside
+`[0.12, 0.17]`. E7', D-17, the 1000x rule and every tolerance are never
+relaxed.
+
+(d) Preregistered selection rule.
+
+- Speed grid, in order: `0.15, 0.14, 0.13, 0.12`, all strictly below 0.17.
+  Quadratic estimates from the RED run, `1.1625e-3 * (s/0.17)^2`, are
+  `9.05e-4`, `7.88e-4`, `6.80e-4` and `5.79e-4`. These are estimates only; the
+  1800-step measurement decides.
+- Blob set, all peak 1, inside the item-6 envelope, with wall clearance of at
+  least 0.10 and `|cz - 0.5| / r` between 0.45 and 0.50:
+  B1 centre `(0.66, 0.44, 0.60)` radius 0.22; B2 centre `(0.66, 0.44, 0.61)`
+  radius 0.24; B3 centre `(0.64, 0.44, 0.62)` radius 0.24; B4 centre
+  `(0.64, 0.44, 0.62)` radius 0.26.
+- Stage A (speed screen): reference blob B2 at every grid speed in grid order,
+  always all four runs (A015, A014, A013, A012). A speed is admissible when its
+  Stage-A run has `stepsValidated` 1800, `projectionFailures` 0, `capHits` 0,
+  `maximumIterations < 320`, `maximumInputDivergenceDTInf <= 9e-4`,
+  `reductionGateActiveSteps` 0, `threeDLesson.finite` true, and every 07-11 E7
+  600-step solver condition passing.
+- Stage B (blob batches). Let s1 be the highest admissible speed and s2 the
+  next admissible one. Batch 1: B1, B3 and B4 at s1, peak 1; it always runs.
+  Batch 2 runs only while the selection set is empty: the two best peak-1
+  candidates at s1 (the Stage-A run included) by minimum normalized margin,
+  rerun at peak 1.25. Batches 3 and 4 repeat batches 1 and 2 at s2, again only
+  while the selection set is empty. Run IDs are `<blob>-<speed x100>-P<peak x100>`.
+- Selection set: every candidate run, Stage A or B, whose fixture run exited 0.
+  The winner has the largest minimum normalized margin over: E2 `rms10/0.025`;
+  E3 `rms20/0.04`; E4 `enc10/100`; E5 `min(A0/100, relA48/0.30)`; E6 the
+  minimum over steps 10, 20, 24 and 48 of `min(peak/0.30, area/50)`; S1
+  `A0/250`; S2 `V50(0)/300`; R1 (on the fade path with a return,
+  `min(returnDisplayVisibleArea/150, returnMaximumLightness/60)`; on the fade
+  path without a return, the maximum `V50` over the checkpoints after `fadeStep`
+  divided by 150, a ranking proxy only, and that candidate fails R1; on the
+  no-fade path, `minimumVisibleAreaThroughNoFadeWindow/150`); and E7' as
+  `9e-4 / maximumInputDivergenceDTInf`.
+- Ties are broken by the smaller `derivedLessonSteps`, then the higher speed,
+  then the larger `V50(0)`.
+- Cap: at most 14 candidate runs (4 + 3 + 2 + 3 + 2) plus one FINAL run that
+  reruns the winner.
+- Halts, none of which widens anything; the human decides. HALT-A: no
+  admissible speed. HALT-B: the batches are exhausted with an empty selection
+  set. HALT-C (inconsistency): a later run at an already-screened speed differs
+  from that speed's Stage-A run in `stepsValidated`, `projectionFailures`,
+  `capHits`, `reductionGateActiveSteps` or admissibility, or in
+  `maximumInputDivergenceDTInf` by more than 1e-4 relative; or the FINAL run
+  does not reproduce the winner (S1, S2, `fadeStep`, `returnStep`,
+  `derivedLessonSteps` and the solver integer counters identical, and the
+  floating margins equal within 1e-4 relative); or a run exits non-zero without
+  a `METRICS=` line and the same happens again on one unchanged rerun.
+- The grid, envelope, blob set and cap are never widened during execution.
+
+(e) E1-E6, S1, S2, R1, E7' and every tolerance keep their written thresholds
+at the lower speed. In particular the E1-E6 thresholds calibrated at 0.17 are
+not re-scaled.
+
+(f) Phase 9 note. The 07-11 statement that the input crosses `1e-3` near x1.62
+of the 0.12 seed was a 600-step measurement. Over 1800 steps, speed 0.17
+already crosses `9e-4` and `1e-3`. Phase 9 speed choices must be measured over
+the reconciled lesson length.
+
+(g) When this item was written, no evolution-visibility run below speed 0.17
+existed. The recipe-candidates directory then held only the 07-11 runs at
+speeds 0.18 and 0.17 and the 07-15 RED run at 0.17.
+
+(h) These remain numeric gates, not human acceptance. Plan 07-17 is the
+blocking human checkpoint.
+
 The SHA-256 is computed over the exact UTF-8 bytes before the marker above, including the newline immediately preceding it. Results may be appended after the marker without changing the preregistered-contract hash. The reference driver pins the resulting digest and `--check-contract` fails if this prefix changes without an intentional review and test update.
 
 **Preregistered contract SHA-256:** `a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b`

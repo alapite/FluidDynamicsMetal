@@ -3636,8 +3636,14 @@ private struct Fluid3DChecks {
         let originalWindowSteps = 72
         let lessonStepCount = 600
         let checkpointSteps: Set<Int> = [100, 200, 300, 400, 500, 600]
+        // 3D lesson-length evidence (amendment 2026-11-21): one 1800-step production run with a
+        // display checkpoint every 50 steps derives the 3D lesson length.
+        let lessonHorizonSteps = 1800
+        let checkpointInterval = 50
+        let lessonLengthChoices = [1200, 1500, 1800]
         // The 600-step lesson-recipe check (amendment E7) is accounted, not thrown, so a
-        // failing candidate still reports every metric.
+        // failing candidate still reports every metric. It covers steps <= 600 only; the
+        // E7' counters below cover all `lessonHorizonSteps`.
         var lessonStepsValidated = 0
         var lessonProjectionFailures = 0
         var lessonCapHits = 0
@@ -3648,7 +3654,16 @@ private struct Fluid3DChecks {
         var lessonMinimumReductionWhereActive: Float?
         var lessonCheckpoints: [[String: Any]] = []
         var lessonVolumePeakAtEnd: Float = 0
-        for step in 1...lessonStepCount {
+        var horizonStepsValidated = 0
+        var horizonProjectionFailures = 0
+        var horizonCapHits = 0
+        var horizonFirstFailure: String?
+        var horizonMaximumIterations = 0
+        var horizonMaximumInputDivergence: Float = 0
+        var horizonReductionActiveSteps = 0
+        var horizonMinimumReductionWhereActive: Float?
+        var horizonCheckpoints: [[String: Any]] = []
+        for step in 1...lessonHorizonSteps {
             if step <= originalWindowSteps {
                 advanceProbePaths(&probePaths, with: activeVelocity, grid: grid)
             }
@@ -3675,22 +3690,39 @@ private struct Fluid3DChecks {
             if step <= originalWindowSteps, let violation {
                 throw Fluid3DHarnessError.assertion(violation)
             }
-            if diagnostics.capHit { lessonCapHits += 1 }
-            lessonMaximumIterations = max(lessonMaximumIterations, diagnostics.iterations)
-            lessonMaximumInputDivergence = max(lessonMaximumInputDivergence, diagnostics.inputDivergenceDTInf)
+            if diagnostics.capHit { horizonCapHits += 1 }
+            horizonMaximumIterations = max(horizonMaximumIterations, diagnostics.iterations)
+            horizonMaximumInputDivergence = max(horizonMaximumInputDivergence, diagnostics.inputDivergenceDTInf)
             if diagnostics.inputDivergenceDTInf >= 1e-3 {
-                lessonReductionActiveSteps += 1
-                lessonMinimumReductionWhereActive = min(
-                    lessonMinimumReductionWhereActive ?? diagnostics.divergenceReduction,
+                horizonReductionActiveSteps += 1
+                horizonMinimumReductionWhereActive = min(
+                    horizonMinimumReductionWhereActive ?? diagnostics.divergenceReduction,
                     diagnostics.divergenceReduction
                 )
             }
+            if step <= lessonStepCount {
+                if diagnostics.capHit { lessonCapHits += 1 }
+                lessonMaximumIterations = max(lessonMaximumIterations, diagnostics.iterations)
+                lessonMaximumInputDivergence = max(lessonMaximumInputDivergence, diagnostics.inputDivergenceDTInf)
+                if diagnostics.inputDivergenceDTInf >= 1e-3 {
+                    lessonReductionActiveSteps += 1
+                    lessonMinimumReductionWhereActive = min(
+                        lessonMinimumReductionWhereActive ?? diagnostics.divergenceReduction,
+                        diagnostics.divergenceReduction
+                    )
+                }
+            }
             if let violation {
-                lessonProjectionFailures += 1
-                lessonFirstFailure = "step \(step): \(violation)"
+                horizonProjectionFailures += 1
+                horizonFirstFailure = "step \(step): \(violation)"
+                if step <= lessonStepCount {
+                    lessonProjectionFailures += 1
+                    lessonFirstFailure = horizonFirstFailure
+                }
                 break
             }
-            lessonStepsValidated += 1
+            horizonStepsValidated += 1
+            if step <= lessonStepCount { lessonStepsValidated += 1 }
             if step <= originalWindowSteps {
                 maximumIterations = max(maximumIterations, diagnostics.iterations)
                 statusSummaries.append([
@@ -3739,7 +3771,7 @@ private struct Fluid3DChecks {
                 activeVelocity = try readActiveVelocity(simulation)
             }
 
-            if checkpointSteps.contains(step) {
+            if step % checkpointInterval == 0 {
                 let fields = try scanSimulation(simulation)
                 let dye = fields["dye/ping"]!
                 let image = try captureSlice(
@@ -3752,17 +3784,35 @@ private struct Fluid3DChecks {
                 try compareSliceImage(image, concentrations: slice)
                 let statistics = volumeStatistics(dye, nx: grid.nx, ny: grid.ny, nz: grid.nz)
                 let volumePeak = dye.max() ?? 0
-                if step == lessonStepCount { lessonVolumePeakAtEnd = volumePeak }
-                lessonCheckpoints.append([
+                let display = displayMetrics(image)
+                let finite = (statistics["finite"] as? Bool ?? false) && volumePeak.isFinite
+                    && fields.values.allSatisfy { $0.allSatisfy { $0.isFinite } }
+                let capture = String(format: "recipe-step-%03d.ppm", step)
+                horizonCheckpoints.append([
                     "step": step,
                     "slicePeak": slice.max() ?? 0,
                     "sliceAreaAtLeast0_1": slice.filter { $0 >= 0.1 }.count,
                     "sliceCountAtLeast0_02": slice.filter { $0 >= 0.02 }.count,
+                    "displayVisibleAreaL50": display.visibleAreaL50,
+                    "sliceMaximumLightness": display.maximumLightness,
                     "volumePeak": volumePeak,
                     "volumeMass": statistics["mass"] ?? 0,
-                    "finite": statistics["finite"] as? Bool ?? false,
-                    "sliceCapture": String(format: "recipe-step-%03d.ppm", step),
+                    "finite": finite,
+                    "sliceCapture": capture,
                 ])
+                if checkpointSteps.contains(step) {
+                    if step == lessonStepCount { lessonVolumePeakAtEnd = volumePeak }
+                    lessonCheckpoints.append([
+                        "step": step,
+                        "slicePeak": slice.max() ?? 0,
+                        "sliceAreaAtLeast0_1": slice.filter { $0 >= 0.1 }.count,
+                        "sliceCountAtLeast0_02": slice.filter { $0 >= 0.02 }.count,
+                        "volumePeak": volumePeak,
+                        "volumeMass": statistics["mass"] ?? 0,
+                        "finite": statistics["finite"] as? Bool ?? false,
+                        "sliceCapture": capture,
+                    ])
+                }
             }
         }
 
@@ -3898,11 +3948,175 @@ private struct Fluid3DChecks {
             "volumePeakMinimumAt600": 0.05,
             "checkpoints": lessonCheckpoints,
         ]
-        let allFailures = calibratedFailures + lessonFailures
+        // Larger-blob, square-root display and 3D lesson-length amendment (docs/3d-numerical-contract.md,
+        // gates S1, S2, R1 and E7'). Every display metric is computed from the production captures.
+        let largerBlobHeading = "Larger-blob, square-root display and 3D lesson-length amendment"
+            + " — 2026-11-21 (UAT G-07-2 re-observation)"
+        let largerBlobGateValues: [String: Any] = [
+            "step0SectionAreaMinimum": 250,
+            "step0DisplayVisibleAreaMinimum": 300,
+            "displayLightnessThreshold": 50,
+            "fadeFraction": 0.5,
+            "returnDisplayVisibleAreaMinimum": 150,
+            "returnMaximumLightnessMinimum": 60,
+            "returnTailSteps": 100,
+            "noFadeVisibleAreaMinimum": 150,
+            "noFadeWindowSteps": 1200,
+            "lessonLengthChoices": lessonLengthChoices,
+            "checkpointInterval": checkpointInterval,
+        ]
+        let stepZeroDisplay = displayMetrics(stepZero.image)
+        let displayPoints: [(step: Int, visible: Int, lightness: Double)] =
+            [(0, stepZeroDisplay.visibleAreaL50, stepZeroDisplay.maximumLightness)]
+            + horizonCheckpoints.map {
+                ($0["step"] as! Int, $0["displayVisibleAreaL50"] as! Int, $0["sliceMaximumLightness"] as! Double)
+            }
+        let visibleByStep = Dictionary(uniqueKeysWithValues: displayPoints.map { ($0.step, $0.visible) })
+        let lightnessByStep = Dictionary(uniqueKeysWithValues: displayPoints.map { ($0.step, $0.lightness) })
+        let step0Area = areaByStep[0] ?? 0
+        let step0Visible = stepZeroDisplay.visibleAreaL50
+        var fadeStep: Int?
+        for point in displayPoints where point.step >= checkpointInterval {
+            if Double(point.visible) <= 0.5 * Double(step0Visible) {
+                fadeStep = point.step
+                break
+            }
+        }
+        var returnStep: Int?
+        var derivedLessonSteps: Int?
+        var minimumVisibleThroughNoFade: Int?
+        var returnVisibilityPassed = false
+        if let fade = fadeStep {
+            for point in displayPoints where point.step > fade {
+                let following = visibleByStep[point.step + checkpointInterval]
+                let notDecreasing = point.step == lessonHorizonSteps || (following.map { point.visible >= $0 } ?? false)
+                if point.visible >= 150 && notDecreasing {
+                    returnStep = point.step
+                    break
+                }
+            }
+            if let candidate = returnStep, candidate + 100 <= lessonHorizonSteps,
+               (lightnessByStep[candidate] ?? 0) >= 60 {
+                returnVisibilityPassed = true
+                derivedLessonSteps = lessonLengthChoices.first { $0 >= candidate + 100 }
+            }
+        } else {
+            let window = displayPoints.filter { $0.step <= 1200 }
+            minimumVisibleThroughNoFade = window.map(\.visible).min()
+            if window.count == 1200 / checkpointInterval + 1, (minimumVisibleThroughNoFade ?? 0) >= 150 {
+                returnVisibilityPassed = true
+                derivedLessonSteps = 1200
+            }
+        }
+        var largerBlobFailures: [String] = []
+        if step0Area < 250 { largerBlobFailures.append("S1 step-0 section area \(step0Area) < 250") }
+        if step0Visible < 300 {
+            largerBlobFailures.append("S2 step-0 display-visible area \(step0Visible) < 300")
+        }
+        if !returnVisibilityPassed {
+            largerBlobFailures.append(
+                "R1 return visibility: fadeStep=\(fadeStep.map(String.init) ?? "none"), "
+                + "returnStep=\(returnStep.map(String.init) ?? "none"), "
+                + "returnDisplayVisibleArea=\(returnStep.flatMap { visibleByStep[$0] }.map(String.init) ?? "none"), "
+                + "returnMaximumLightness=\(returnStep.flatMap { lightnessByStep[$0] }.map { String($0) } ?? "none"), "
+                + "minimumVisibleAreaThroughNoFadeWindow=\(minimumVisibleThroughNoFade.map(String.init) ?? "n/a")"
+            )
+        }
+        var observedLarger: [String: Any] = [
+            "step0SectionArea": step0Area,
+            "step0DisplayVisibleArea": step0Visible,
+            "fadeStep": fadeStep.map { $0 as Any } ?? NSNull(),
+            "returnStep": returnStep.map { $0 as Any } ?? NSNull(),
+            "returnDisplayVisibleArea": returnStep.flatMap { visibleByStep[$0] }.map { $0 as Any } ?? NSNull(),
+            "returnMaximumLightness": returnStep.flatMap { lightnessByStep[$0] }.map { $0 as Any } ?? NSNull(),
+            "derivedLessonSteps": derivedLessonSteps.map { $0 as Any } ?? NSNull(),
+        ]
+        if fadeStep == nil {
+            observedLarger["minimumVisibleAreaThroughNoFadeWindow"] =
+                minimumVisibleThroughNoFade.map { $0 as Any } ?? NSNull()
+        }
+        let largerBlobGates: [String: Any] = [
+            "amendment": largerBlobHeading,
+            "gates": largerBlobGateValues,
+            "observed": observedLarger,
+            "passed": largerBlobFailures.isEmpty,
+        ]
+
+        let expectedHorizonCheckpoints = lessonHorizonSteps / checkpointInterval
+        let horizonFinite = horizonCheckpoints.count == expectedHorizonCheckpoints
+            && horizonCheckpoints.allSatisfy { $0["finite"] as? Bool == true }
+        let volumePeakByStep = Dictionary(uniqueKeysWithValues: horizonCheckpoints.map {
+            ($0["step"] as! Int, $0["volumePeak"] as! Float)
+        })
+        let volumePeakAtLessonEnd = derivedLessonSteps.flatMap { volumePeakByStep[$0] }
+        let volumePeakAtHorizon = volumePeakByStep[lessonHorizonSteps]
+        var threeDFailures: [String] = []
+        if horizonStepsValidated != lessonHorizonSteps {
+            threeDFailures.append(
+                "E7' 1800-step lesson solver: validated \(horizonStepsValidated) of \(lessonHorizonSteps) steps"
+            )
+        }
+        if horizonProjectionFailures != 0 {
+            threeDFailures.append(
+                "E7' 1800-step lesson solver: projection failure: \(horizonFirstFailure ?? "unknown")"
+            )
+        }
+        if horizonCapHits != 0 { threeDFailures.append("E7' 1800-step lesson solver: cap hits: \(horizonCapHits)") }
+        if !(Double(horizonMaximumInputDivergence) <= 9e-4) {
+            threeDFailures.append(
+                "E7' 1800-step lesson solver: maximum input dt*||Du*||inf \(horizonMaximumInputDivergence) > 9e-4"
+            )
+        }
+        if horizonReductionActiveSteps != 0 {
+            threeDFailures.append(
+                "E7' 1800-step lesson solver: reduction gate active on \(horizonReductionActiveSteps) steps"
+            )
+        }
+        if horizonMaximumIterations >= PressureProjection3D.maximumIterations {
+            threeDFailures.append(
+                "E7' 1800-step lesson solver: maximum iterations \(horizonMaximumIterations) reached the cap"
+            )
+        }
+        if !horizonFinite {
+            threeDFailures.append(
+                "E7' 1800-step lesson solver: nonfinite or missing checkpoint (\(horizonCheckpoints.count) recorded)"
+            )
+        }
+        if derivedLessonSteps == nil {
+            threeDFailures.append(
+                "E7' 1800-step lesson volume: no derived lesson length, so the volume dye peak is not evaluable"
+            )
+        } else if !((volumePeakAtLessonEnd ?? 0) >= 0.05) {
+            threeDFailures.append(
+                "E7' 1800-step lesson volume: dye peak \(volumePeakAtLessonEnd.map { String($0) } ?? "missing")"
+                + " at derived length \(derivedLessonSteps!) < 0.05"
+            )
+        }
+        let threeDLesson: [String: Any] = [
+            "horizonSteps": lessonHorizonSteps,
+            "stepsValidated": horizonStepsValidated,
+            "projectionFailures": horizonProjectionFailures,
+            "capHits": horizonCapHits,
+            "maximumIterations": horizonMaximumIterations,
+            "maximumInputDivergenceDTInf": horizonMaximumInputDivergence,
+            "inputDivergenceMarginLimit": 9e-4,
+            "reductionGateActiveSteps": horizonReductionActiveSteps,
+            "minimumReductionWhereGateActive": horizonMinimumReductionWhereActive.map { Double($0) as Any } ?? NSNull(),
+            "finite": horizonFinite,
+            "derivedLessonSteps": derivedLessonSteps.map { $0 as Any } ?? NSNull(),
+            "volumePeakAtLessonEnd": volumePeakAtLessonEnd.map { $0 as Any } ?? NSNull(),
+            "volumePeakAtHorizon": volumePeakAtHorizon.map { $0 as Any } ?? NSNull(),
+            "volumePeakMinimum": 0.05,
+            "checkpoints": horizonCheckpoints,
+        ]
+
+        let allFailures = calibratedFailures + lessonFailures + largerBlobFailures + threeDFailures
         if !allFailures.isEmpty {
             let metrics: [String: Any] = [
                 "calibratedEarlyWindow": calibratedEarlyWindow,
                 "lessonRecipe600": lessonRecipe600,
+                "largerBlobGates": largerBlobGates,
+                "threeDLesson": threeDLesson,
                 "lessonRecipe": [
                     "seedMaximumVectorSpeed": lesson.maximumVectorSpeed,
                     "blobCenter": [lesson.blobCenter.x, lesson.blobCenter.y, lesson.blobCenter.z],
@@ -3997,6 +4211,8 @@ private struct Fluid3DChecks {
                     "slicePeak": observation.slice.max() ?? 0,
                     "sliceCountAtLeast0_02": observation.slice.filter { $0 >= 0.02 }.count,
                     "sliceAreaAtLeast0_1": sectionArea(observation.slice),
+                    "displayVisibleAreaL50": displayMetrics(observation.image).visibleAreaL50,
+                    "sliceMaximumLightness": displayMetrics(observation.image).maximumLightness,
                     "sliceRMSFromStep0": rmsDifference(stepZero.slice, observation.slice),
                     "volumeStatistics": observation.volumeStatistics,
                     "projection": projectionSummary(observation.diagnostics),
@@ -4016,6 +4232,9 @@ private struct Fluid3DChecks {
             ],
             "calibratedEarlyWindow": calibratedEarlyWindow,
             "lessonRecipe600": lessonRecipe600,
+            "largerBlobGates": largerBlobGates,
+            "threeDLesson": threeDLesson,
+            "derivedLessonSteps": derivedLessonSteps.map { $0 as Any } ?? NSNull(),
             "velocityChangeMaxAbsolute": velocityChanges,
             "velocityChangeNormalizedByResetSpeed": velocityChangeRatios,
             "depthVariationMaxAbsolute": depthVariation,
@@ -4032,7 +4251,7 @@ private struct Fluid3DChecks {
             "captures": ([stepZero, stepOne] + [step10Observation, step20Observation].compactMap { $0 }
                          + [step24, step48, step72]).flatMap {
                 [$0.sliceCapture, $0.stateCapture["file"] as! String]
-            } + lessonCheckpoints.compactMap { $0["sliceCapture"] as? String },
+            } + horizonCheckpoints.compactMap { $0["sliceCapture"] as? String },
         ]
     }
 
@@ -4217,6 +4436,32 @@ private struct Fluid3DChecks {
         try require(withinQuantization,
                     "\(label) RGB mismatch at (\(x),\(y)): actual=\(actual), expected=\(expected) ±1 UNORM code")
         try require(image.pixels[offset + 3] == 255, "\(label) alpha must remain opaque")
+    }
+
+    /// CIE L* of one encoded sRGB display pixel (amendment 2026-11-21, "Display basis").
+    private static func displayLightness(red: UInt8, green: UInt8, blue: UInt8) -> Double {
+        func linear(_ byte: UInt8) -> Double {
+            let value = Double(byte) / 255
+            return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        let luminance = 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        return luminance > 216.0 / 24389.0 ? 116 * cbrt(luminance) - 16 : (24389.0 / 27.0) * luminance
+    }
+
+    /// Display metrics of one production capture: the count of pixels with L* >= 50 (V50)
+    /// and the largest pixel L*. Pixels are BGRA bytes.
+    private static func displayMetrics(_ image: SliceImage) -> (visibleAreaL50: Int, maximumLightness: Double) {
+        var visible = 0
+        var maximum = 0.0
+        for pixel in 0..<(image.width * image.height) {
+            let offset = pixel * 4
+            let lightness = displayLightness(
+                red: image.pixels[offset + 2], green: image.pixels[offset + 1], blue: image.pixels[offset]
+            )
+            if lightness >= 50 { visible += 1 }
+            maximum = max(maximum, lightness)
+        }
+        return (visible, maximum)
     }
 
     private static func writePPM(_ image: SliceImage, to url: URL) throws {
