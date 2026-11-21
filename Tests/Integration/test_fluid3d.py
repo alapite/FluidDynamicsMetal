@@ -2281,6 +2281,60 @@ class Fluid3DTests(unittest.TestCase):
         errors = _validate_fixture_metrics("spatial-slices", report)
         self.assertIn("spatial-slices must verify all 12 projected cube edges", errors)
 
+    def test_slice_palette_evidence_requires_square_root_transfer(self):
+        def passing_report() -> dict:
+            return {
+                "result": {
+                    "passed": True,
+                    "fixture": "slice-palette",
+                    "renderingReadOnly": True,
+                    "finite": True,
+                    "sampledPlanes": [31, 32],
+                    "sampleWeights": [0.5, 0.5],
+                    "displayTransfer": "square-root",
+                    "paletteStops": [
+                        {"displayValue": 0.0, "concentration": 0.0, "rgb": [0, 0, 0]},
+                        {"displayValue": 0.5, "concentration": 0.25, "rgb": [237, 139, 35]},
+                        {"displayValue": 1.0, "concentration": 1.0, "rgb": [255, 241, 214]},
+                    ],
+                    "transferSamples": [
+                        {"concentration": 0.0, "rgb": [0, 0, 0]},
+                        {"concentration": 0.015625, "rgb": [59, 35, 9]},
+                        {"concentration": 0.25, "rgb": [237, 139, 35]},
+                        {"concentration": 0.5, "rgb": [244, 181, 109]},
+                        {"concentration": 0.75, "rgb": [250, 214, 166]},
+                        {"concentration": 1.0, "rgb": [255, 241, 214]},
+                        {"concentration": 1.25, "rgb": [255, 241, 214]},
+                    ],
+                }
+            }
+
+        self.assertEqual(_validate_fixture_metrics("slice-palette", passing_report()), [])
+
+        def mutated(mutate) -> dict:
+            report = passing_report()
+            mutate(report["result"])
+            return report
+
+        mutations = {
+            "missing displayTransfer": lambda r: r.pop("displayTransfer"),
+            "linear displayTransfer": lambda r: r.__setitem__("displayTransfer", "linear"),
+            "linear stop concentrations": lambda r: r["paletteStops"][1].__setitem__("concentration", 0.5),
+            "wrong display values": lambda r: r["paletteStops"][1].__setitem__("displayValue", 0.25),
+            "wrong amber rgb": lambda r: r["paletteStops"][1].__setitem__("rgb", [119, 70, 18]),
+            "wrong cream rgb": lambda r: r["paletteStops"][2].__setitem__("rgb", [255, 241, 215]),
+            "missing quarter sample": lambda r: r.__setitem__(
+                "transferSamples", [s for s in r["transferSamples"] if s["concentration"] != 0.25]
+            ),
+            "dim quarter sample": lambda r: [
+                s.__setitem__("rgb", [119, 70, 18]) for s in r["transferSamples"] if s["concentration"] == 0.25
+            ],
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(mutation=name):
+                errors = _validate_fixture_metrics("slice-palette", mutated(mutate))
+                self.assertTrue(errors, f"{name} must be rejected")
+
     def test_storage_and_abi(self):
         self.run_production_fixture("storage-abi")
 
