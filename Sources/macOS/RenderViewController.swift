@@ -71,8 +71,8 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private let threeDHeading = NSTextField(wrappingLabelWithString: "3D Dye Advection")
     private let threeDSlice = NSTextField(wrappingLabelWithString: "XY slice · Z depth: 50%")
     private let threeDConcentration = NSTextField(labelWithString: "Dye concentration")
-    private let threeDLegend = NSTextField(wrappingLabelWithString: "Less dye → More dye")
-    private let threeDNote = NSTextField(wrappingLabelWithString: "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; dye can move out of the plane. Pale-cyan dots are passive tracers. Tracers behind the opaque slice are hidden, even where the slice is black. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
+    private let threeDLegend = NSTextField(wrappingLabelWithString: "Less dye → More dye · square-root scale")
+    private let threeDNote = NSTextField(wrappingLabelWithString: "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; a square-root brightness scale makes faint dye easier to see. Dye can move out of the plane and back. Pale-cyan dots are passive tracers. Tracers behind the opaque slice are hidden, even where the slice is black. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
     private let inspectionSliceStack = NSStackView()
     private let inspectionTracerStack = NSStackView()
     private let inspectionCameraStack = NSStackView()
@@ -552,7 +552,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         threeDConcentration.setAccessibilityLabel("Dye concentration")
         threeDLegend.font = .systemFont(ofSize: 11, weight: .regular)
         threeDLegend.setAccessibilityIdentifier("lesson3d.legend")
-        threeDLegend.setAccessibilityLabel("Dye concentration, less dye to more dye")
+        threeDLegend.setAccessibilityLabel("Dye concentration, less dye to more dye, square-root brightness scale")
         threeDNote.font = .systemFont(ofSize: 13, weight: .regular)
         threeDNote.setAccessibilityIdentifier("lesson3d.note")
         threeDNote.setAccessibilityLabel(threeDNote.stringValue)
@@ -1423,23 +1423,19 @@ private final class ColourLegendView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         if isThreeD {
-            let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
-            let paletteStops = FieldVisualization3D.paletteStops
-            let colors = paletteStops.map { stop in
-                NSColor(srgbRed: CGFloat(stop.color.x), green: CGFloat(stop.color.y),
-                        blue: CGFloat(stop.color.z), alpha: 1).cgColor
-            } as CFArray
-            let locations = paletteStops.map { CGFloat($0.concentration) }
-            if let gradient = CGGradient(colorsSpace: colorSpace, colors: colors,
-                                         locations: locations),
-               let context = NSGraphicsContext.current?.cgContext {
-                context.saveGState()
-                context.clip(to: bounds)
-                context.drawLinearGradient(gradient,
-                                          start: CGPoint(x: bounds.minX, y: bounds.midY),
-                                          end: CGPoint(x: bounds.maxX, y: bounds.midY),
-                                          options: [])
-                context.restoreGState()
+            // Paint one column per backing pixel from the same transfer the slice
+            // shaders use, so the legend cannot diverge from the displayed colours.
+            // The horizontal axis stays linear in concentration.
+            let backingScale = window?.backingScaleFactor ?? 1
+            let columnCount = max(1, Int((bounds.width * backingScale).rounded()))
+            let columnWidth = bounds.width / CGFloat(columnCount)
+            for column in 0..<columnCount {
+                let concentration = Float((Double(column) + 0.5) / Double(columnCount))
+                let color = FieldVisualization3D.encodedColor(for: concentration)
+                NSColor(srgbRed: CGFloat(color.x), green: CGFloat(color.y),
+                        blue: CGFloat(color.z), alpha: 1).setFill()
+                NSRect(x: bounds.minX + CGFloat(column) * columnWidth, y: bounds.minY,
+                       width: columnWidth, height: bounds.height).fill()
             }
         } else {
             let colors = field.palette.map {
