@@ -15,7 +15,7 @@ The post-v1.0 educational release (`07703e2`, documented 2026-10-13) established
 
 ## Phases
 
-- [ ] **Phase 7: First 3D Fluid Vertical Slice** — All 9 original plans are closed; phase-level user-facing acceptance remains incomplete, with six requirements pending manual acceptance. UAT 2026-11-20 gap closure (G-07-2, G-07-5): 4 plans (07-10 to 07-13) planned.
+- [ ] **Phase 7: First 3D Fluid Vertical Slice** — All 9 original plans are closed; phase-level user-facing acceptance remains incomplete, with six requirements pending manual acceptance. UAT 2026-11-20 gap closure (G-07-2, G-07-5): 4 plans (07-10 to 07-13) planned. 2026-11-21 G-07-2 re-plan after 07-12: 07-14 to 07-17 added, and 07-13 re-sequenced to run last.
 - [ ] **Phase 8: Spatial Inspection** — Explore depth using camera controls, movable slices, and passive tracers without changing the experiment.
 - [ ] **Phase 9: Repeatable 3D Advection Lesson** — Compare initial speeds through an explained, restartable 600-step lesson.
 - [ ] **Phase 10: Volume View and Measured Release Quality** — View the dye volume and meet the measured performance and regression contract.
@@ -34,7 +34,7 @@ The post-v1.0 educational release (`07703e2`, documented 2026-10-13) established
 3. App inactivity freezes evolution and reactivation introduces no catch-up steps; switching back to 2D restores the established mode-selection/reset behaviour without stale input.
 4. The production encoder passes documented three-axis advection, compatible projection, all-six-face boundary, and finite-value fixtures. Reference results and tolerances are defined before acceptance; both pressure residual and post-projection divergence are measured.
 
-**Plans**: 12/13 plans executed (9 original plans in 8 waves, all closed; 4 UAT gap-closure plans in 3 waves)
+**Plans**: 12/17 plans executed (9 original plans in 8 waves, all closed; 8 UAT gap-closure plans in 7 gap waves)
 
 Plans:
 **Wave 1**
@@ -81,9 +81,27 @@ Plans:
 
 - [x] 07-12-PLAN.md — Prepare the exact final app and obtain the user's blocking re-observation of UAT tests 2 and 5. *(Closed with issues 2026-11-21: G-07-5 passed on re-observation; G-07-2 still OPEN, so 07-13 is blocked pending replan.)*
 
-**Gap Wave 3** *(blocked on 07-12 approval)*
+**G-07-2 re-plan (2026-11-21; user-selected fixes: brighter low-concentration display, bigger blob, longer 3D lesson)**
 
-- [ ] 07-13-PLAN.md — Regenerate fresh Phase 7/Phase 8 evidence through one final matrix and append dated gap-closure sections to both verification reports.
+**Gap Wave 3**
+
+- [ ] 07-14-PLAN.md — Fixed square-root display transfer in both 3D slice shaders, the Swift palette and the native legend, with honest copy. Adds the inspection-contract amendment and repin, and repairs the stale PHASE7_HASH.
+
+**Gap Wave 4** *(blocked on 07-14)*
+
+- [ ] 07-15-PLAN.md — Preregister the S1/S2/R1/E7' and lesson-length amendment, show it RED on the 07-11 recipe, calibrate a larger blob (speed 0.17) through an 1800-step production fixture that derives the 3D lesson length, and add fail-closed capture-level validation.
+
+**Gap Wave 5** *(blocked on 07-15)*
+
+- [ ] 07-16-PLAN.md — Ship the evidence-derived 3D lesson length as a mode-specific limit (2D stays 600), with state, harness and UI tests, an evidence cross-check, README updates, dated UI-SPEC amendments for the display copy and lesson length, and an explicit Phase 9 handoff.
+
+**Gap Wave 6** *(blocked on 07-16)*
+
+- [ ] 07-17-PLAN.md — Build and identify the exact app, then obtain the user's blocking re-observation of UAT test 2: returning-dye brightness, starting patch size and run length. Records a machine-checkable g07_2_* approval marker set only from the user's response.
+
+**Gap Wave 7** *(blocked on 07-17 approval, enforced by a machine-checkable gate; revised 2026-11-21)*
+
+- [ ] 07-13-PLAN.md — Regenerate fresh Phase 7/Phase 8 evidence through one final matrix and append dated gap-closure sections to both verification reports, covering 07-10 to 07-17.
 
 **Execution status (2026-11-13):** All nine plans are closed across eight waves. Plan 07-09 closed the documentation work, but the human visual/accessibility/native-interaction review was **not performed**; its checklist remains unchecked and this is not a human-review PASS. SIM-04, SIM-05, SIM-06, LES-01, LES-02, and LES-06 remain pending manual acceptance; VER-03 is complete from automated production-kernel evidence. Actual macOS 26 runtime and physical-device multitouch remain **NOT TESTED**; displayed frame pacing remains **NOT MEASURED**.
 
