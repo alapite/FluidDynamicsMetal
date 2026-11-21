@@ -1640,15 +1640,15 @@ def synthetic_evolution_visibility_report() -> dict:
         }
 
     observations = [
-        observation(0, 0.67, 160, 0.0, 156),
+        observation(0, 0.67, 160, 0.0, 260),
         observation(1, 0.69, 162, 0.0034, 160),
         observation(10, 0.80, 190, 0.0304, 193),
         observation(20, 0.88, 215, 0.0527, 224),
         observation(24, 0.90, 220, 0.0594, 231),
-        observation(48, 0.905, 240, 0.078, 257),
+        observation(48, 0.905, 240, 0.078, 360),
         observation(72, 0.745, 250, 0.072, 255),
     ]
-    return {
+    return add_synthetic_larger_blob_lesson({
         "result": {
             "passed": True,
             "fixture": "evolution-visibility",
@@ -1683,8 +1683,8 @@ def synthetic_evolution_visibility_report() -> dict:
                     "step10RMSFromStep0": 0.0304,
                     "step20RMSFromStep0": 0.0527,
                     "step10EncodedChangeCount": 160,
-                    "sectionArea": {"0": 156, "10": 193, "20": 224, "24": 231, "48": 257},
-                    "step48SectionAreaRelativeChange": (257 - 156) / 156,
+                    "sectionArea": {"0": 260, "10": 193, "20": 224, "24": 231, "48": 360},
+                    "step48SectionAreaRelativeChange": (360 - 260) / 260,
                     "earlyWindowPeaks": {"10": 0.80, "20": 0.88, "24": 0.90, "48": 0.905},
                 },
                 "passed": True,
@@ -1716,10 +1716,225 @@ def synthetic_evolution_visibility_report() -> dict:
                 ],
             },
         },
+    })
+
+
+def add_synthetic_larger_blob_lesson(report: dict) -> dict:
+    """Give a synthetic evolution-visibility report consistent larger-blob and 1800-step lesson blocks.
+
+    The values are literal and synthetic (never written to .build): V50 310 at step 0, a fade at
+    step 300, a return at step 950 and a derived lesson length of 1200.
+    """
+    result = report["result"]
+    step0 = next(item for item in result["observations"] if item["step"] == 0)
+    step0["displayVisibleAreaL50"] = 310
+    step0["sliceMaximumLightness"] = 86.1
+    v50 = {50: 300, 100: 280, 150: 240, 200: 200, 250: 170, 300: 140, 350: 120, 400: 100, 450: 95,
+           500: 90, 550: 92, 600: 96, 650: 100, 700: 110, 750: 120, 800: 130, 850: 140, 900: 150,
+           950: 165, 1000: 160, 1050: 150, 1100: 140}
+    checkpoints = []
+    for step in range(50, 1801, 50):
+        checkpoints.append({
+            "step": step,
+            "slicePeak": 0.5,
+            "sliceAreaAtLeast0_1": 200,
+            "sliceCountAtLeast0_02": 300,
+            "displayVisibleAreaL50": v50.get(step, 130 - (step - 1100) // 50),
+            "sliceMaximumLightness": 70.5 if step == 950 else 80.0,
+            "volumePeak": {1200: 0.33, 1800: 0.22}.get(step, 0.5),
+            "volumeMass": 4300.0,
+            "finite": True,
+            "sliceCapture": f"recipe-step-{step:03d}.ppm",
+        })
+    result["largerBlobGates"] = {
+        "amendment": "Larger-blob, square-root display and 3D lesson-length amendment — 2026-11-21 "
+                     "(UAT G-07-2 re-observation)",
+        "gates": {
+            "step0SectionAreaMinimum": 250,
+            "step0DisplayVisibleAreaMinimum": 300,
+            "displayLightnessThreshold": 50,
+            "fadeFraction": 0.5,
+            "returnDisplayVisibleAreaMinimum": 150,
+            "returnMaximumLightnessMinimum": 60,
+            "returnTailSteps": 100,
+            "noFadeVisibleAreaMinimum": 150,
+            "noFadeWindowSteps": 1200,
+            "lessonLengthChoices": [1200, 1500, 1800],
+            "checkpointInterval": 50,
+        },
+        "observed": {
+            "step0SectionArea": step0["sliceAreaAtLeast0_1"],
+            "step0DisplayVisibleArea": 310,
+            "fadeStep": 300,
+            "returnStep": 950,
+            "returnDisplayVisibleArea": 165,
+            "returnMaximumLightness": 70.5,
+            "derivedLessonSteps": 1200,
+        },
+        "passed": True,
     }
+    result["threeDLesson"] = {
+        "horizonSteps": 1800,
+        "stepsValidated": 1800,
+        "projectionFailures": 0,
+        "capHits": 0,
+        "maximumIterations": 136,
+        "maximumInputDivergenceDTInf": 7.5e-4,
+        "inputDivergenceMarginLimit": 9e-4,
+        "reductionGateActiveSteps": 0,
+        "minimumReductionWhereGateActive": None,
+        "finite": True,
+        "derivedLessonSteps": 1200,
+        "volumePeakAtLessonEnd": 0.33,
+        "volumePeakAtHorizon": 0.22,
+        "volumePeakMinimum": 0.05,
+        "checkpoints": checkpoints,
+    }
+    result["derivedLessonSteps"] = 1200
+    return report
+
+
+def _write_test_ppm(path: Path, lit_pixels: int, color: tuple[int, int, int]) -> None:
+    pixels = bytearray(64 * 64 * 3)
+    for index in range(lit_pixels):
+        pixels[3 * index:3 * index + 3] = bytes(color)
+    path.write_bytes(b"P6\n64 64\n255\n" + bytes(pixels))
 
 
 class Fluid3DTests(unittest.TestCase):
+    def test_evolution_visibility_evidence_requires_larger_blob_return_and_lesson_horizon(self):
+        report = synthetic_evolution_visibility_report()
+        self.assertEqual(_validate_fixture_metrics("evolution-visibility", report), [])
+        result = report["result"]
+        self.assertEqual(result["largerBlobGates"]["observed"]["fadeStep"], 300)
+
+        def observation(candidate: dict, step: int) -> dict:
+            return next(item for item in candidate["result"]["observations"] if item["step"] == step)
+
+        def checkpoint(candidate: dict, step: int) -> dict:
+            return next(item for item in candidate["result"]["threeDLesson"]["checkpoints"] if item["step"] == step)
+
+        def set_step0_area(value: int):
+            def mutate(candidate: dict) -> None:
+                observation(candidate, 0)["sliceAreaAtLeast0_1"] = value
+                candidate["result"]["largerBlobGates"]["observed"]["step0SectionArea"] = value
+                window = candidate["result"]["calibratedEarlyWindow"]["observed"]
+                window["sectionArea"]["0"] = value
+                window["step48SectionAreaRelativeChange"] = abs(window["sectionArea"]["48"] - value) / value
+            return mutate
+
+        def set_step0_v50(value: int):
+            def mutate(candidate: dict) -> None:
+                observation(candidate, 0)["displayVisibleAreaL50"] = value
+                candidate["result"]["largerBlobGates"]["observed"]["step0DisplayVisibleArea"] = value
+            return mutate
+
+        def no_return(candidate: dict) -> None:
+            for item in candidate["result"]["threeDLesson"]["checkpoints"]:
+                if item["step"] > 300:
+                    item["displayVisibleAreaL50"] = 149
+
+        def dim_return(candidate: dict) -> None:
+            checkpoint(candidate, 950)["sliceMaximumLightness"] = 59.9
+            candidate["result"]["largerBlobGates"]["observed"]["returnMaximumLightness"] = 59.9
+
+        def late_return(candidate: dict) -> None:
+            for item in candidate["result"]["threeDLesson"]["checkpoints"]:
+                if item["step"] > 300:
+                    item["displayVisibleAreaL50"] = {1750: 160, 1800: 150}.get(item["step"], 120)
+            observed = candidate["result"]["largerBlobGates"]["observed"]
+            observed["returnStep"] = 1750
+            observed["returnDisplayVisibleArea"] = 160
+
+        def set_observed(key: str, value):
+            def mutate(candidate: dict) -> None:
+                candidate["result"]["largerBlobGates"]["observed"][key] = value
+            return mutate
+
+        def set_gate(key: str, value):
+            def mutate(candidate: dict) -> None:
+                candidate["result"]["largerBlobGates"]["gates"][key] = value
+            return mutate
+
+        def set_lesson(key: str, value):
+            def mutate(candidate: dict) -> None:
+                candidate["result"]["threeDLesson"][key] = value
+            return mutate
+
+        def nonfinite_checkpoint(candidate: dict) -> None:
+            checkpoint(candidate, 600)["finite"] = False
+
+        def missing_checkpoint(candidate: dict) -> None:
+            del candidate["result"]["threeDLesson"]["checkpoints"][5]
+
+        def set_recipe(key: str, value):
+            def mutate(candidate: dict) -> None:
+                candidate["result"]["recipe"][key] = value
+            return mutate
+
+        def thin_wall(candidate: dict) -> None:
+            candidate["result"]["recipe"]["blobRadius"] = 0.26
+            candidate["result"]["recipe"]["blobCenter"] = [0.70, 0.44, 0.62]
+
+        mutations = [
+            ("S1 249", set_step0_area(249), "S1"),
+            ("S2 299", set_step0_v50(299), "S2"),
+            ("fade without return", no_return, "R1"),
+            ("return lightness", dim_return, "R1"),
+            ("return in final 100 steps", late_return, "R1"),
+            ("derived lesson length", set_observed("derivedLessonSteps", 1500), "derivedLessonSteps"),
+            ("emitted gates", set_gate("step0SectionAreaMinimum", 200), "largerBlobGates gates"),
+            ("1799 steps", set_lesson("stepsValidated", 1799), "stepsValidated"),
+            ("cap hit", set_lesson("capHits", 1), "capHits"),
+            ("input", set_lesson("maximumInputDivergenceDTInf", 9.1e-4), "input divergence"),
+            ("reduction active", set_lesson("reductionGateActiveSteps", 1), "reduction gate"),
+            ("nonfinite checkpoint", nonfinite_checkpoint, "checkpoint"),
+            ("checkpoint steps", missing_checkpoint, "checkpoint"),
+            ("volume peak", set_lesson("volumePeakAtLessonEnd", 0.049), "volume"),
+            ("radius", set_recipe("blobRadius", 0.27), "radius"),
+            ("peak", set_recipe("blobPeak", 1.3), "peak"),
+            ("wall clearance", thin_wall, "wall clearance"),
+        ]
+        for name, mutate, expected in mutations:
+            changed = copy.deepcopy(report)
+            mutate(changed)
+            errors = _validate_fixture_metrics("evolution-visibility", changed)
+            with self.subTest(mutation=name):
+                self.assertTrue(errors, f"{name} was accepted")
+                self.assertTrue(any(expected in error for error in errors),
+                                f"{name}: no error mentions {expected!r}: {errors}")
+        for key in ("largerBlobGates", "threeDLesson"):
+            changed = copy.deepcopy(report)
+            del changed["result"][key]
+            with self.subTest(omitted=key):
+                self.assertTrue(_validate_fixture_metrics("evolution-visibility", changed))
+
+        # Display captures: V50 and maximum L* are recomputed from the PPM bytes.
+        amber = (237, 139, 35)
+        self.assertAlmostEqual(_display_lightness(*amber), 67.0, delta=0.2)
+        self.assertAlmostEqual(_display_lightness(255, 241, 214), 95.6, delta=0.2)
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            _write_test_ppm(folder / "black.ppm", 0, (0, 0, 0))
+            _write_test_ppm(folder / "amber.ppm", 300, amber)
+
+            def capture_result(emitted_amber: int) -> dict:
+                return {
+                    "observations": [
+                        {"step": 0, "sliceCapture": "black.ppm", "displayVisibleAreaL50": 0,
+                         "sliceMaximumLightness": 0.0},
+                        {"step": 1, "sliceCapture": "amber.ppm", "displayVisibleAreaL50": emitted_amber,
+                         "sliceMaximumLightness": _display_lightness(*amber)},
+                    ],
+                    "threeDLesson": {"checkpoints": []},
+                }
+
+            self.assertEqual(_validate_evolution_display_captures(capture_result(300), folder), [])
+            self.assertTrue(_validate_evolution_display_captures(capture_result(301), folder))
+            missing = capture_result(300)
+            missing["observations"][1]["sliceCapture"] = "absent.ppm"
+            self.assertTrue(_validate_evolution_display_captures(missing, folder))
+
     def test_inspection_evidence_schema(self):
         # Explicitly synthetic: schema validity never constitutes an actual run.
         self.assertIn("validate_inspection_manifest", globals(),
@@ -1897,9 +2112,9 @@ class Fluid3DTests(unittest.TestCase):
 
         def small_area_change(candidate: dict) -> None:
             observed = candidate["result"]["calibratedEarlyWindow"]["observed"]
-            observed["sectionArea"]["48"] = 187
-            observed["step48SectionAreaRelativeChange"] = (187 - 156) / 156
-            observation(candidate, 48)["sliceAreaAtLeast0_1"] = 187
+            observed["sectionArea"]["48"] = 290
+            observed["step48SectionAreaRelativeChange"] = (290 - 260) / 260
+            observation(candidate, 48)["sliceAreaAtLeast0_1"] = 290
 
         mutations = [
             ("missing step 10", drop_observation(10), "missing step 10"),
