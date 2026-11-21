@@ -36,6 +36,14 @@ enum SimulationMode: Equatable {
     var experiment: ExperimentID? { if case let .experiment(id) = self { return id }; return nil }
     var is3D: Bool { self == .dyeAdvection3D }
     var isLesson: Bool { self != .freePlay }
+    /// The step at which this mode's lesson completes; nil for Free Play, which never completes.
+    var lessonStepLimit: Int? {
+        switch self {
+        case .freePlay: return nil
+        case .experiment: return SimulationState.lessonSteps
+        case .dyeAdvection3D: return SimulationState.threeDLessonSteps
+        }
+    }
     static var twoDimensionalModes: [SimulationMode] { [.freePlay] + ExperimentID.allCases.map { .experiment($0) } }
     static var macModes: [SimulationMode] { twoDimensionalModes + [.dyeAdvection3D] }
     // Compatibility list for existing positional 2D selectors. Platform UI should use an explicit list.
@@ -163,8 +171,18 @@ struct SimulationState {
     private var freePlayTuning = SimulationTuning()
     private var freePlayField: DisplayField = .density
     private var freePlayOptions = DisplayOptions()
+    /// Length of the three 2D lessons, in accepted steps.
     static let lessonSteps = 600
-    var complete: Bool { mode.isLesson && stepCount >= Self.lessonSteps }
+    /// Length of the 3D Dye Advection lesson, in accepted steps. It equals the derivedLessonSteps
+    /// measured by the evolution-visibility fixture on the shipped recipe (seed speed 0.155) under
+    /// the "Larger-blob, square-root display and 3D lesson-length amendment" in
+    /// docs/3d-numerical-contract.md (07-15 evidence: fade at step 300, return at step 950).
+    /// Phase 9 must reconcile it with LES-05's 600 steps (ROADMAP Phase 9 handoff from 07-16).
+    static let threeDLessonSteps = 1200
+    var complete: Bool {
+        guard let limit = mode.lessonStepLimit else { return false }
+        return stepCount >= limit
+    }
     var shouldAdvance: Bool { !userPaused && !inactive && !resetting && !complete }
     var canStep: Bool { userPaused && !inactive && !resetting && !complete }
     var acceptsInput: Bool { mode == .freePlay && shouldAdvance }
@@ -191,7 +209,8 @@ struct SimulationState {
         if !userPaused { pendingSteps = 0 }
     }
     @discardableResult mutating func requestSingleStep() -> Bool {
-        guard canStep, !mode.isLesson || pendingSteps < Self.lessonSteps - stepCount else { return false }
+        guard canStep else { return false }
+        if let limit = mode.lessonStepLimit, pendingSteps >= limit - stepCount { return false }
         pendingSteps += 1; return true
     }
     mutating func cancelPendingSteps() { pendingSteps = 0 }
