@@ -4092,6 +4092,12 @@ private struct Fluid3DChecks {
                 + " at derived length \(derivedLessonSteps!) < 0.05"
             )
         }
+        if derivedLessonSteps != SimulationState.threeDLessonSteps {
+            threeDFailures.append(
+                "L1 shipped 3D lesson length: SimulationState.threeDLessonSteps \(SimulationState.threeDLessonSteps)"
+                + " differs from derivedLessonSteps \(derivedLessonSteps.map { String($0) } ?? "none")"
+            )
+        }
         let threeDLesson: [String: Any] = [
             "horizonSteps": lessonHorizonSteps,
             "stepsValidated": horizonStepsValidated,
@@ -4107,6 +4113,7 @@ private struct Fluid3DChecks {
             "volumePeakAtLessonEnd": volumePeakAtLessonEnd.map { $0 as Any } ?? NSNull(),
             "volumePeakAtHorizon": volumePeakAtHorizon.map { $0 as Any } ?? NSNull(),
             "volumePeakMinimum": 0.05,
+            "shippedLessonSteps": SimulationState.threeDLessonSteps,
             "checkpoints": horizonCheckpoints,
         ]
 

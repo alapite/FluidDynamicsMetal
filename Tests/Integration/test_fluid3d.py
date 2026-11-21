@@ -370,6 +370,36 @@ def _validate_larger_blob_lesson(result: dict, by_step: dict) -> list[str]:
     return errors
 
 
+def _shipped_three_d_lesson_steps() -> int | None:
+    """Parse SimulationState.threeDLessonSteps from the shared source (None when absent)."""
+    source = (ROOT / "Sources/Shared/SimulationState.swift").read_text(encoding="utf-8")
+    match = re.search(r"^\s*static let threeDLessonSteps = (\d+)\s*$", source, re.MULTILINE)
+    return int(match.group(1)) if match else None
+
+
+def _validate_shipped_lesson_length(result: dict) -> list[str]:
+    """Gate L1: the shipped 3D lesson length equals the source constant and the evidence-derived length."""
+    lesson = result.get("threeDLesson") if isinstance(result, dict) else None
+    if not isinstance(lesson, dict):
+        return ["evolution-visibility threeDLesson is missing, so the shipped lesson length cannot be checked"]
+    errors: list[str] = []
+    source_value = _shipped_three_d_lesson_steps()
+    if source_value is None:
+        errors.append("SimulationState.threeDLessonSteps is missing from Sources/Shared/SimulationState.swift")
+    shipped = lesson.get("shippedLessonSteps")
+    if shipped != source_value:
+        errors.append(
+            f"evolution-visibility threeDLesson shippedLessonSteps {shipped} differs from "
+            f"SimulationState.threeDLessonSteps {source_value}"
+        )
+    derived = lesson.get("derivedLessonSteps")
+    if derived != source_value:
+        errors.append(
+            f"L1 shipped 3D lesson length {source_value} differs from the evidence derivedLessonSteps {derived}"
+        )
+    return errors
+
+
 def _validate_evolution_display_captures(result: dict, evidence_dir: Path) -> list[str]:
     """Recompute V50 and maximum L* from each sliceCapture PPM and require agreement with the emitted values."""
     errors: list[str] = []
@@ -3259,7 +3289,8 @@ class Fluid3DTests(unittest.TestCase):
                 print(f"RECIPE EVIDENCE: {recipe_path}")
             if fixture == "evolution-visibility":
                 capture_errors = _validate_evolution_display_captures(report["result"], evidence_dir)
-                self.assertEqual(capture_errors, [], "evolution-visibility display captures disagree with the report")
+                capture_errors += _validate_shipped_lesson_length(report["result"])
+                self.assertEqual(capture_errors, [], "evolution-visibility display captures or shipped lesson length disagree with the report")
             print(f"PASS: {fixture}; evidence: {report_path}")
             return result
 
