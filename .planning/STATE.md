@@ -5,10 +5,10 @@ milestone_name: 3D Teaching Foundation
 current_phase: 07
 current_phase_name: First 3D Fluid Vertical Slice
 status: executing
-stopped_at: Completed 07-14-PLAN.md
+stopped_at: 07-15 Task 1 halt rule (E7' solver gate at speed 0.17); replan chosen
 last_updated: "2026-11-21T09:15:37.886Z"
 last_activity: 2026-11-21
-last_activity_desc: Phase 07 execution started
+last_activity_desc: 07-15 halted at blocking-human checkpoint; user chose lower seed speed (replan)
 state_head: 3576a540441961bbdcf480064b503f8507e638a4
 progress:
   total_phases: 4
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 ## Current Position
 
 Phase: 07 (First 3D Fluid Vertical Slice) — EXECUTING
-Plan: 14 of 17
-Status: Ready to execute
-Last activity: 2026-11-21 — Phase 07 execution started
+Plan: 15 of 17 (halted, needs replan)
+Status: Blocked — 07-15 awaiting replan
+Last activity: 2026-11-21 — 07-14 complete; 07-15 halted at Task 1 RED (E7' solver gate)
 
 Progress: [███░░░░░░░] 25% of currently planned v1.1 plans closed (17/18); Phase 8 is 8/9. The one plan-closed phase in frontmatter is Phase 7, not a human-acceptance claim. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
 
@@ -84,6 +84,8 @@ Progress: [███░░░░░░░] 25% of currently planned v1.1 plans c
 - [Phase 07]: 07-10: paused 2D presentation and paused Step drain route through MTKView.draw() when the renderer is the MTKView delegate (drawingPresentationOnly flag keeps presentation redraws from consuming steps); delegate-less fixtures keep drawPresentationOnly. SimulationControlsPanel forwards Command-M to the canvas; no inactive indicator added (panel is hidden when inactive/minimized). — MTKView retires its current drawable only at the end of draw(), so reads outside draw() reuse an already-presented drawable (G-07-5). Headless spy is the deterministic proof; the real-window UI test also passed pre-fix and is a guard only. SIM-06/LES-06 stay pending for 07-12 human re-observation.
 - [Phase 07]: 07-11: Human-calibrated early-window gates (E1-E7) are an additive dated amendment after END PREREGISTERED CONTRACT, committed and shown RED on the original recipe before any recipe value changed. Shipped lesson recipe is speed 0.17, centre (0.66, 0.44, 0.59), radius 0.17: slice RMS 0.030 at step 10, 160 encoded-change samples, section area 156 to 257 by step 48, 600 production steps accepted (max input 7.61e-4, 144 iterations). Solver, shaders, tolerances and contract prefix hash unchanged. The opaque single-slice depth limit stays Phase 10 scope; numeric gates are not human acceptance (07-12). — UAT G-07-2: original recipe changed visibly only at steps 35-46. Phase 9 solver-cliff constraint: input divergence ~speed^2 crosses 1e-3 near x1.62 of the 0.12 seed; speeds in x1.6-x3.3 risk the 1000x reduction rule (x3 hard-failed at step 164); stay outside or add in-solver PCG margin, never relax the rule.
 - [Phase 07]: 07-14: Fixed square-root display transfer d=sqrt(clamp(c,0,1)) ahead of the unchanged amber palette in both 3D slice shaders, Swift encodedColor and the per-column native legend; presentation-only, no per-frame normalisation. Inspection contract amended 2026-11-21 (new SHA-256 ac824cff) and PHASE7_HASH repinned to be79b1bc. — Gap-round decision 1 (UAT G-07-2): returning dye too dim; UI-SPECs forbid auto-range and it would hide thinning. Square root maps the 0.201 returning peak to d=0.448.
+
+- [Phase 07]: 07-15 halt (2026-11-21): user chose option 1, lowering the 3D seed speed below 0.17 (envelope [0.12, 0.17]; ~0.15 or lower estimated from input ~speed^2) to keep the 1800-step projection input <= 9e-4 with the 1000x rule never active. Never relax E7'/D-17. 07-15 (speed-fixed wording, E7') and likely 07-16 (lesson length) must be replanned; R1 and derivedLessonSteps must be re-derived at the new speed.
 
 ### Pending Todos
 
@@ -152,14 +154,17 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 | Phase 08 P02 | 65 min | 2 tasks | 4 files |
 | Phase 08 P07 | approximately 95 min | 2 tasks | 6 implementation/test files |
 | Phase 08 P08 | approximately 63 min | 2 tasks | 5 task/review files |
+- Phase 07 07-15 BLOCKED (2026-11-21): Task 1 RED run on the 07-11 recipe failed blob-independent E7' at speed 0.17 over 1800 steps: max input dt*||Du*||inf 1.1625e-3 > 9e-4 and 1000x rule active on 126 steps (min 1006.8x; never failed; 600-step subset 7.608e-4, 0 active). On the sqrt display the 07-11 recipe fades at step 150, best return V50 52 at step 650 (gate 150), gone by 1350. Uncommitted Task 1 Steps A/B remain in the working tree (docs/3d-numerical-contract.md amendment, PHASE7_HASH 7a6f3fb7 in test_inspection3d_reference.py, test_fluid3d.py/.swift 1800-step harness); patch copy at .build/fluid3d-evidence/recipe-candidates/0715-task1-uncommitted.patch, RED log 0715-RED.log. Repin PHASE7_HASH if the amendment changes.
 
 ## Session Continuity
 
 Last session: 2026-11-21T09:15:37.789Z
-Stopped at: Completed 07-14-PLAN.md
+Stopped at: 07-15 Task 1 halt — replan with lower seed speed
 Resume file: None
 
 ## Operator Next Steps
+
+- Phase 7 gap closure (2026-11-21): 07-14 complete. 07-15 halted at Task 1 (E7' solver gate fails at speed 0.17 over 1800 steps); user chose to lower the seed speed. Next: `/gsd-plan-phase 7 --gaps` to revise 07-15 (and 07-16 lesson length), reusing the uncommitted Task 1 work, then `/gsd-execute-phase 7 --gaps-only`. 07-17 and 07-13 must not run before then.
 
 - Phase 7 gap closure: 07-12 recorded G-07-5 human re-observation PASS (and Command-M PASS) but G-07-2 OPEN (3D slice: returning dye very dim, patch small, run length too short; see `07-12-SUMMARY.md`). Do NOT run 07-13. Next: `/gsd-plan-phase 7 --gaps` or `/gsd-verify-work 7` to diagnose and replan G-07-2. UAT results and requirement statuses are owned by `/gsd-verify-work`.
 - Next is 08-09 / Wave 9 mandatory actual human review; do not auto-approve it. Read `08-08-SUMMARY.md`, `08-08-REVIEW.md` and `docs/3d-phase8-verification.md` for the fresh full matrix, retained failures/retries, actual manifest/app/capture paths and unchecked human checklist. Eight of nine plans are complete; 08-09 and phase-level verification remain pending. Keep all five Phase 8 requirements pending; no auto-advance or phase completion was performed.
