@@ -92,19 +92,34 @@ inline float fluid3DSampleCentralXY(
     return mix(lowerPlane, upperPlane, fraction.z);
 }
 
+// Fixed square-root display transfer (docs/3d-inspection-contract.md, square-root
+// display transfer amendment). Presentation-only; mirrors
+// FieldVisualization3D.displayValue(forConcentration:). sqrt rather than pow:
+// pow at 0 is not guaranteed under fast math.
+inline float fluid3DDisplayValue(float concentration) {
+    return sqrt(clamp(concentration, 0.0f, 1.0f));
+}
+
+// The palette stops are display values d; the palette is already expressed in
+// encoded channel values.
+inline float3 fluid3DEncodedPaletteColor(
+    float concentration,
+    constant Fluid3DSlicePalette &palette) {
+    float value = fluid3DDisplayValue(concentration);
+    if (value <= palette.stops.y) {
+        float amount = (value - palette.stops.x) / (palette.stops.y - palette.stops.x);
+        return mix(palette.black.rgb, palette.amber.rgb, amount);
+    }
+    float amount = (value - palette.stops.y) / (palette.stops.z - palette.stops.y);
+    return mix(palette.amber.rgb, palette.cream.rgb, amount);
+}
+
 fragment float4 fluid3DFixedSlice(
     Fluid3DSliceVertexOutput input [[stage_in]],
     texture3d<float, access::read> dye [[texture(0)]],
     constant Fluid3DSlicePalette &palette [[buffer(0)]]) {
-    float concentration = clamp(fluid3DSampleCentralXY(dye, input.worldXY), 0.0f, 1.0f);
-    float3 encodedRGB;
-    if (concentration <= palette.stops.y) {
-        float amount = (concentration - palette.stops.x) / (palette.stops.y - palette.stops.x);
-        encodedRGB = mix(palette.black.rgb, palette.amber.rgb, amount);
-    } else {
-        float amount = (concentration - palette.stops.y) / (palette.stops.z - palette.stops.y);
-        encodedRGB = mix(palette.amber.rgb, palette.cream.rgb, amount);
-    }
+    float concentration = fluid3DSampleCentralXY(dye, input.worldXY);
+    float3 encodedRGB = fluid3DEncodedPaletteColor(concentration, palette);
     // The palette is already expressed in encoded channel values. The
     // non-sRGB bgra8Unorm render target stores these values without another OETF.
     return float4(encodedRGB, 1.0f);
@@ -160,16 +175,8 @@ fragment float4 fluid3DSpatialSlice(
     Fluid3DSpatialSliceOutput input [[stage_in]],
     texture3d<float, access::read> dye [[texture(0)]],
     constant Fluid3DSlicePalette &palette [[buffer(0)]]) {
-    float concentration = clamp(fluid3DSampleSpatial(dye, input.worldPosition), 0.0f, 1.0f);
-    float3 encodedRGB;
-    if (concentration <= palette.stops.y) {
-        float amount = (concentration - palette.stops.x) / (palette.stops.y - palette.stops.x);
-        encodedRGB = mix(palette.black.rgb, palette.amber.rgb, amount);
-    } else {
-        float amount = (concentration - palette.stops.y) / (palette.stops.z - palette.stops.y);
-        encodedRGB = mix(palette.amber.rgb, palette.cream.rgb, amount);
-    }
-    return float4(encodedRGB, 1.0f);
+    float concentration = fluid3DSampleSpatial(dye, input.worldPosition);
+    return float4(fluid3DEncodedPaletteColor(concentration, palette), 1.0f);
 }
 
 vertex Fluid3DSpatialTracerOutput fluid3DSpatialTracerVertex(

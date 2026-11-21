@@ -88,6 +88,12 @@ final class FieldVisualization3D {
         )
     }
 
+    /// Palette stops for the fixed 3D dye display. `concentration` is the
+    /// display value d at which each stop applies, where
+    /// d = sqrt(clamp(concentration, 0, 1)) (see `displayValue(forConcentration:)`),
+    /// so the stops sit at concentration 0, 0.25 and 1. The Metal shaders mirror
+    /// this transfer in `fluid3DDisplayValue`. The field name is kept for source
+    /// compatibility with existing consumers.
     static let paletteStops: [PaletteStop] = [
         PaletteStop(concentration: 0, color: SIMD3<Float>(0, 0, 0)),
         PaletteStop(concentration: 0.5, color: SIMD3<Float>(Float(237) / 255, Float(139) / 255, Float(35) / 255)),
@@ -487,11 +493,17 @@ final class FieldVisualization3D {
         precondition(MemoryLayout<SpatialTracerUniforms>.alignment == 16)
     }
 
+    /// Fixed square-root display transfer, d = sqrt(clamp(c, 0, 1)). It is
+    /// presentation-only and identical to `fluid3DDisplayValue` in Shaders3D.metal.
+    static func displayValue(forConcentration concentration: Float) -> Float {
+        min(1, max(0, concentration)).squareRoot()
+    }
+
     /// Encoded-channel color for the fixed transfer function, also suitable
     /// for a native legend. A nonfinite input remains nonfinite, not black.
     static func encodedColor(for concentration: Float) -> SIMD4<Float> {
         guard concentration.isFinite else { return SIMD4<Float>(repeating: .nan) }
-        let value = min(1, max(0, concentration))
+        let value = displayValue(forConcentration: concentration)
         let lowStop = paletteStops[0]
         let middleStop = paletteStops[1]
         let highStop = paletteStops[2]
