@@ -5,16 +5,16 @@ milestone_name: 3D Teaching Foundation
 current_phase: 07
 current_phase_name: First 3D Fluid Vertical Slice
 status: executing
-stopped_at: "Completed 07-12-PLAN.md checkpoint with issues: G-07-5 passed, G-07-2 open; 07-13 not started"
-last_updated: "2026-11-21T09:02:41.449Z"
+stopped_at: Completed 07-14-PLAN.md
+last_updated: "2026-11-21T09:15:37.886Z"
 last_activity: 2026-11-21
 last_activity_desc: Phase 07 execution started
-state_head: 903e7d971b088413148dd8275a2aa54a90e75fd2
+state_head: 3576a540441961bbdcf480064b503f8507e638a4
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 26
-  completed_plans: 20
+  completed_plans: 21
   percent: 25
 ---
 
@@ -30,8 +30,8 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 ## Current Position
 
 Phase: 07 (First 3D Fluid Vertical Slice) — EXECUTING
-Plan: 13 of 17
-Status: Executing Phase 07
+Plan: 14 of 17
+Status: Ready to execute
 Last activity: 2026-11-21 — Phase 07 execution started
 
 Progress: [███░░░░░░░] 25% of currently planned v1.1 plans closed (17/18); Phase 8 is 8/9. The one plan-closed phase in frontmatter is Phase 7, not a human-acceptance claim. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
@@ -54,6 +54,7 @@ Progress: [███░░░░░░░] 25% of currently planned v1.1 plans c
 | Phase 07 P10 | 57 min | 2 tasks | 4 files |
 | Phase 07 P11 | 17 min | 2 tasks | 4 files |
 | Phase 07 P12 | human-gated (Task 1 ~51 s) | 2 tasks | 0 files |
+| Phase 07 P14 | 11 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,7 @@ Progress: [███░░░░░░░] 25% of currently planned v1.1 plans c
 - 2026-11-15: 08-08 requires all six fresh matrix categories and separates synthetic schema validity from actual inspection acceptance; keep legacy benchmark semantics, retained failure/retry history and all pending human/runtime/device/pacing boundaries.
 - [Phase 07]: 07-10: paused 2D presentation and paused Step drain route through MTKView.draw() when the renderer is the MTKView delegate (drawingPresentationOnly flag keeps presentation redraws from consuming steps); delegate-less fixtures keep drawPresentationOnly. SimulationControlsPanel forwards Command-M to the canvas; no inactive indicator added (panel is hidden when inactive/minimized). — MTKView retires its current drawable only at the end of draw(), so reads outside draw() reuse an already-presented drawable (G-07-5). Headless spy is the deterministic proof; the real-window UI test also passed pre-fix and is a guard only. SIM-06/LES-06 stay pending for 07-12 human re-observation.
 - [Phase 07]: 07-11: Human-calibrated early-window gates (E1-E7) are an additive dated amendment after END PREREGISTERED CONTRACT, committed and shown RED on the original recipe before any recipe value changed. Shipped lesson recipe is speed 0.17, centre (0.66, 0.44, 0.59), radius 0.17: slice RMS 0.030 at step 10, 160 encoded-change samples, section area 156 to 257 by step 48, 600 production steps accepted (max input 7.61e-4, 144 iterations). Solver, shaders, tolerances and contract prefix hash unchanged. The opaque single-slice depth limit stays Phase 10 scope; numeric gates are not human acceptance (07-12). — UAT G-07-2: original recipe changed visibly only at steps 35-46. Phase 9 solver-cliff constraint: input divergence ~speed^2 crosses 1e-3 near x1.62 of the 0.12 seed; speeds in x1.6-x3.3 risk the 1000x reduction rule (x3 hard-failed at step 164); stay outside or add in-solver PCG margin, never relax the rule.
+- [Phase 07]: 07-14: Fixed square-root display transfer d=sqrt(clamp(c,0,1)) ahead of the unchanged amber palette in both 3D slice shaders, Swift encodedColor and the per-column native legend; presentation-only, no per-frame normalisation. Inspection contract amended 2026-11-21 (new SHA-256 ac824cff) and PHASE7_HASH repinned to be79b1bc. — Gap-round decision 1 (UAT G-07-2): returning dye too dim; UI-SPECs forbid auto-range and it would hide thinning. Square root maps the 0.201 returning peak to d=0.448.
 
 ### Pending Todos
 
@@ -153,8 +155,8 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 
 ## Session Continuity
 
-Last session: 2026-11-21T07:58:55.092Z
-Stopped at: Completed 07-12-PLAN.md checkpoint with issues: G-07-5 passed, G-07-2 open; 07-13 not started
+Last session: 2026-11-21T09:15:37.789Z
+Stopped at: Completed 07-14-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
