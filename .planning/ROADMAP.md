@@ -34,7 +34,7 @@ The post-v1.0 educational release (`07703e2`, documented 2026-10-13) established
 3. App inactivity freezes evolution and reactivation introduces no catch-up steps; switching back to 2D restores the established mode-selection/reset behaviour without stale input.
 4. The production encoder passes documented three-axis advection, compatible projection, all-six-face boundary, and finite-value fixtures. Reference results and tolerances are defined before acceptance; both pressure residual and post-projection divergence are measured.
 
-**Plans**: 11/13 plans executed (9 original plans in 8 waves, all closed; 4 UAT gap-closure plans in 3 waves)
+**Plans**: 12/13 plans executed (9 original plans in 8 waves, all closed; 4 UAT gap-closure plans in 3 waves)
 
 Plans:
 **Wave 1**
@@ -79,7 +79,7 @@ Plans:
 
 **Gap Wave 2** *(blocked on Gap Wave 1)*
 
-- [ ] 07-12-PLAN.md — Prepare the exact final app and obtain the user's blocking re-observation of UAT tests 2 and 5.
+- [x] 07-12-PLAN.md — Prepare the exact final app and obtain the user's blocking re-observation of UAT tests 2 and 5. *(Closed with issues 2026-11-21: G-07-5 passed on re-observation; G-07-2 still OPEN, so 07-13 is blocked pending replan.)*
 
 **Gap Wave 3** *(blocked on 07-12 approval)*
 
@@ -198,7 +198,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 7. First 3D Fluid Vertical Slice | 11/13 | Gap closure planned (UAT G-07-2, G-07-5); acceptance incomplete | — (original plans closed 2026-11-13) |
+| 7. First 3D Fluid Vertical Slice | 12/13 | Gap closure in progress (G-07-5 re-observed OK; G-07-2 open after 07-12); acceptance incomplete | — (original plans closed 2026-11-13) |
 | 8. Spatial Inspection | 8/9 | In Progress — next 08-09 / Wave 9 mandatory human review | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |

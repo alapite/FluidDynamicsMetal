@@ -5,16 +5,16 @@ milestone_name: 3D Teaching Foundation
 current_phase: 07
 current_phase_name: First 3D Fluid Vertical Slice
 status: executing
-stopped_at: Completed 07-11-PLAN.md
-last_updated: "2026-11-20T23:27:56.106Z"
+stopped_at: "Completed 07-12-PLAN.md checkpoint with issues: G-07-5 passed, G-07-2 open; 07-13 not started"
+last_updated: "2026-11-21T07:58:55.179Z"
 last_activity: 2026-11-20
 last_activity_desc: Phase 07 execution started
-state_head: 933bfcf35d54065307ae180658be233527300781
+state_head: fa35ab9ed0285579ad4c45a6b0e0c419c8880a21
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 22
-  completed_plans: 19
+  completed_plans: 20
   percent: 25
 ---
 
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 ## Current Position
 
 Phase: 07 (First 3D Fluid Vertical Slice) — EXECUTING
-Plan: 12 of 13
-Status: Ready to execute
-Last activity: 2026-11-20 — Phase 07 execution started
+Plan: 12 of 13 closed with issues; 07-13 NOT started (blocked)
+Status: Blocked - G-07-2 open after 07-12 human re-observation (G-07-5 passed). Needs /gsd-plan-phase 7 --gaps or /gsd-verify-work 7 before 07-13.
+Last activity: 2026-11-21 — 07-12 checkpoint resolved with issues
 
 Progress: [███░░░░░░░] 25% of currently planned v1.1 plans closed (17/18); Phase 8 is 8/9. The one plan-closed phase in frontmatter is Phase 7, not a human-acceptance claim. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
 
@@ -53,6 +53,7 @@ Progress: [███░░░░░░░] 25% of currently planned v1.1 plans c
 |------|----------|-------|-------|
 | Phase 07 P10 | 57 min | 2 tasks | 4 files |
 | Phase 07 P11 | 17 min | 2 tasks | 4 files |
+| Phase 07 P12 | human-gated (Task 1 ~51 s) | 2 tasks | 0 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,7 @@ Progress: [███░░░░░░░] 25% of currently planned v1.1 plans c
 - The 64³ wall/edge/corner pressure stress case converged at 317/320 iterations, leaving only three iterations of cap margin. This is measured numerical evidence, not a performance or cross-device guarantee. No cap or primary acceptance threshold was relaxed.
 - Phase 3 inline code review `03-REVIEW.md` records an advisory resample-pipeline failure-path warning; successful Mac/iOS user interaction and current GPU tests do not exercise that negative path.
 - Phase 9 (09-repeatable-3d-advection-lesson) solver-cliff constraint from 07-11: projection input divergence scales ~speed^2 and crosses 1e-3 near x1.62 of the 0.12 seed (~0.194); minimum 1000x-rule reductions were 1026x at x1.75, 1007x at x2.25, 995.3x at x3 (hard failure at step 164, finalAcceptanceFailed), >=1372x from x3.5. Any Phase 9 speed must stay outside that band or add in-solver PCG margin (continue to >=1500x when input >=1e-3); never relax the rule. The shipped 0.17 seed has max input 7.61e-4. The opaque single-slice depth limit remains Phase 10 scope.
+- Phase 07 G-07-2 OPEN (07-12, user 2026-11-21): 3D slice hard to interpret - returning dye very dim, initial patch small, run length too short (user saw 500 steps; lessons specified 600). 07-13 must NOT start; needs /gsd-plan-phase 7 --gaps or /gsd-verify-work 7.
 
 ## Deferred Items
 
@@ -151,11 +153,12 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 
 ## Session Continuity
 
-Last session: 2026-11-20T23:27:56.015Z
-Stopped at: Completed 07-11-PLAN.md
+Last session: 2026-11-21T07:58:55.092Z
+Stopped at: Completed 07-12-PLAN.md checkpoint with issues: G-07-5 passed, G-07-2 open; 07-13 not started
 Resume file: None
 
 ## Operator Next Steps
 
+- Phase 7 gap closure: 07-12 recorded G-07-5 human re-observation PASS (and Command-M PASS) but G-07-2 OPEN (3D slice: returning dye very dim, patch small, run length too short; see `07-12-SUMMARY.md`). Do NOT run 07-13. Next: `/gsd-plan-phase 7 --gaps` or `/gsd-verify-work 7` to diagnose and replan G-07-2. UAT results and requirement statuses are owned by `/gsd-verify-work`.
 - Next is 08-09 / Wave 9 mandatory actual human review; do not auto-approve it. Read `08-08-SUMMARY.md`, `08-08-REVIEW.md` and `docs/3d-phase8-verification.md` for the fresh full matrix, retained failures/retries, actual manifest/app/capture paths and unchecked human checklist. Eight of nine plans are complete; 08-09 and phase-level verification remain pending. Keep all five Phase 8 requirements pending; no auto-advance or phase completion was performed.
 - No remaining Phase 7 plans. When convenient, the user may complete the unchecked manual-review checklist in `docs/3d-phase7-verification.md`; record only actual observations. Do not treat the user-directed no-issues assumption as visual/interaction approval. Keep the six user-facing requirements pending; actual macOS 26 runtime and physical-device checks remain NOT TESTED, and displayed frame pacing remains NOT MEASURED.
