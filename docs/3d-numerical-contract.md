@@ -419,6 +419,56 @@ speeds 0.18 and 0.17 and the 07-15 RED run at 0.17.
 (h) These remain numeric gates, not human acceptance. Plan 07-17 is the
 blocking human checkpoint.
 
+**9. HALT-C record and finer seed-speed grid (2026-11-21).**
+
+(a) Item 8 record, from `0715-candidates.tsv`. Stage A at B2 over 1800 steps
+(maximum input `dt*||Du*||inf`; 0 reduction-active steps, 0 cap hits and 0
+projection failures in every run): 0.15 `6.691e-4`, 0.14 `5.651e-4`, 0.13
+`4.449e-4`, 0.12 `3.791e-4`. Every grid speed is admissible. No run exited 0:
+E2 bound every Stage-A run (margins 0.936, 0.878, 0.819, 0.760), falling with
+speed. At 0.15 the batch-1 margins were B1 0.950 (E2; also fails S2 and R1),
+B3 0.974 (E2 only; every other gate passes, derived lesson length 1200) and B4
+0.835 (E5). Batch 2 (peak 1.25) could not run:
+`FluidSimulation3D` rejects reset dye outside `0...1` and throws before any
+metrics, so the run had no `METRICS=` line, which repeated on the unchanged
+rerun. That is HALT-C. Every Stage-B run at 0.15 reproduced A015's solver
+statistics exactly, which confirms item 8(b).
+
+(b) User decision of 2026-11-21: add finer seed speeds between 0.15 and 0.17.
+The solver, the reset-dye validation, E2 and every other gate, threshold and
+tolerance are unchanged. Peak 1.25 cannot be reached on the unchanged solver,
+so item 8's peak-1.25 batches are void and no candidate in this item uses a
+peak other than 1. The item-6 envelope text is not edited.
+
+(c) Estimates, not measurements. Between 0.15 and 0.17 the measured maximum
+input follows roughly `s^4.4`, which gives about `8.9e-4` at 0.16, `8.3e-4` at
+0.1575 and `7.7e-4` at 0.155. E2 rose almost linearly with speed in Stage A,
+which puts B3's E2 margin at about 1.039, 1.023 and 1.007 at those speeds.
+These estimates choose the grid only; the 1800-step measurement decides.
+
+(d) Preregistered extension of the item-8 rule.
+
+- Extended grid, in order: `0.16, 0.1575, 0.155`, all strictly below 0.17.
+- Stage A'' (screen and candidates in one): B3 (centre `(0.64, 0.44, 0.62)`,
+  radius 0.24, peak 1) at every extended speed in order, always all three runs
+  (`B3-0160-P100`, `B3-0158-P100`, `B3-0155-P100`; IDs use speed x1000,
+  rounded). Item 8(b) and record (a) show that the solver statistics depend on
+  speed only, so B3 serves as the screen. Admissibility is the item-8 Stage-A
+  condition, unchanged.
+- Stage B'' runs only if the selection set is still empty after Stage A'':
+  B1, B2 and B4 at the highest admissible extended speed, peak 1.
+- Selection set: every run of item 8 or this item whose fixture run exited 0.
+  The selection metric and ties are those of item 8, unchanged.
+- Cap: at most 6 more candidate runs (3 + 3) plus one FINAL run that reruns the
+  winner.
+- Halts are those of item 8 (HALT-A: no admissible extended speed; HALT-B:
+  Stage B'' exhausted with an empty selection set; HALT-C: as defined in item
+  8). None of them widens anything; the human decides.
+- The grid, the blob set and the cap are not widened during execution.
+
+(e) These remain numeric gates, not human acceptance. Plan 07-17 is the
+blocking human checkpoint.
+
 The SHA-256 is computed over the exact UTF-8 bytes before the marker above, including the newline immediately preceding it. Results may be appended after the marker without changing the preregistered-contract hash. The reference driver pins the resulting digest and `--check-contract` fails if this prefix changes without an intentional review and test update.
 
 **Preregistered contract SHA-256:** `a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b`

@@ -16,7 +16,7 @@ SOURCE = ROOT / "Tests/Integration/inspection3d_reference.swift"
 BUILD = ROOT / ".build/inspection3d-reference"
 CONTRACT_HASH = "ac824cffb3cb3db141cf1c03f9425cd67797db0586246480a258ddd06a502cbb"
 # Tracks the complete amended numerical contract; repinned with each dated amendment (the prefix stays pinned by CONTRACT_HASH in test_fluid3d.py).
-PHASE7_HASH = "0120d3637a308302a903718326c3d04af546ef2740feeaddcf29fbf49a3ce1d4"
+PHASE7_HASH = "1f396b713eb126c084c71a3cd8465f264f869991db1be23ca6e87bb726aa8aa3"
 
 
 def validate_export(directory, contract_hash):
