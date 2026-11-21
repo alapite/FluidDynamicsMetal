@@ -519,6 +519,14 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         button(pauseButton, #selector(togglePause(_:)), "transport.pause")
         button(stepButton, #selector(singleStep(_:)), "transport.step")
         button(restartButton, #selector(restart(_:)), "transport.restart")
+        // Size Pause for its widest title so Run/Resume/Pause changes never move Step under the
+        // pointer (07-17: a second Step click landed on the widened "Resume" and ran the lesson).
+        let pauseTitles = ["Run", "Resume", "Pause"]
+        let pauseWidth = pauseTitles.map { title -> CGFloat in
+            pauseButton.title = title; return pauseButton.fittingSize.width
+        }.max() ?? 0
+        pauseButton.title = "Pause"
+        pauseButton.widthAnchor.constraint(equalToConstant: ceil(pauseWidth)).isActive = true
         primaryTransportRow.orientation = .horizontal
         primaryTransportRow.alignment = .centerY
         primaryTransportRow.spacing = 4
