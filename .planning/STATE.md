@@ -2,14 +2,14 @@
 gsd_state_version: "1.0"
 milestone: v1.1
 milestone_name: 3D Teaching Foundation
-current_phase: 07
+current_phase: 7
 current_phase_name: First 3D Fluid Vertical Slice
 status: executing
-stopped_at: 07-15/07-16 replanned for lowered seed speed (gap round, checker passed)
-last_updated: "2026-11-21T12:46:49.391Z"
+stopped_at: 07-15 HALT-C in Task 2 (E2 unmet at speeds <= 0.15; peak 1.25 rejected by reset-dye validation); user chose finer speeds 0.15-0.17
+last_updated: "2026-11-21T12:49:13.819Z"
 last_activity: 2026-11-21
-last_activity_desc: 07-15/07-16 revised for lower seed speed; 07-13/07-17 minimally edited; plan checker passed
-state_head: b8f1c12bbdbace7ded6ebb6a7e8f105712bec783
+last_activity_desc: 07-15 Task 1 committed (ef30a0b); Task 2 halted at HALT-C; replan for finer speed grid
+state_head: 845b678beaea020bfd3279f0cb326667add1b4a8
 progress:
   total_phases: 4
   completed_phases: 1
@@ -25,14 +25,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-11-06)
 
 **Core value:** People can interact with a responsive, visually familiar fluid simulation on both supported platforms and adjust it without editing source code.
-**Current focus:** Phase 07 — First 3D Fluid Vertical Slice
+**Current focus:** Phase 7 — First 3D Fluid Vertical Slice
 
 ## Current Position
 
-Phase: 07 (First 3D Fluid Vertical Slice) — READY TO EXECUTE
-Plan: 15 of 17 (revised, ready)
-Status: Ready to execute — revised 07-15 next (--gaps-only)
-Last activity: 2026-11-21 — 07-15/07-16 replanned (cd74eb9, b8f1c12): speed sweep 0.15–0.12 with pre-declared selection and HALT-A/B/C; 07-17 adds g07_2_d_early_motion
+Phase: 7 (First 3D Fluid Vertical Slice) — EXECUTING
+Plan: 15 of 17 (halted at HALT-C, needs replan)
+Status: Blocked — 07-15 awaiting replan (finer speed grid 0.15–0.17)
+Last activity: 2026-11-21 — 07-15 Task 1 RED committed (ef30a0b); Task 2 sweep halted at HALT-C
 
 Progress: [███░░░░░░░] 25% of currently planned v1.1 plans closed (17/18); Phase 8 is 8/9. The one plan-closed phase in frontmatter is Phase 7, not a human-acceptance claim. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
 
@@ -86,6 +86,8 @@ Progress: [███░░░░░░░] 25% of currently planned v1.1 plans c
 - [Phase 07]: 07-14: Fixed square-root display transfer d=sqrt(clamp(c,0,1)) ahead of the unchanged amber palette in both 3D slice shaders, Swift encodedColor and the per-column native legend; presentation-only, no per-frame normalisation. Inspection contract amended 2026-11-21 (new SHA-256 ac824cff) and PHASE7_HASH repinned to be79b1bc. — Gap-round decision 1 (UAT G-07-2): returning dye too dim; UI-SPECs forbid auto-range and it would hide thinning. Square root maps the 0.201 returning peak to d=0.448.
 
 - [Phase 07]: 07-15 halt (2026-11-21): user chose option 1, lowering the 3D seed speed below 0.17 (envelope [0.12, 0.17]; ~0.15 or lower estimated from input ~speed^2) to keep the 1800-step projection input <= 9e-4 with the 1000x rule never active. Never relax E7'/D-17. 07-15 (speed-fixed wording, E7') and likely 07-16 (lesson length) must be replanned; R1 and derivedLessonSteps must be re-derived at the new speed.
+
+- [Phase 07]: 07-15 HALT-C (2026-11-21, second halt): Task 1 RED preregistration committed as ef30a0b (amendment item 8, PHASE7_HASH 0120d363). Stage A at reference blob B2 (radius 0.24): every grid speed passes E7' with 1000x rule never active (max input 6.691e-4 at 0.15, 3.791e-4 at 0.12) but every run fails E2 (step-10 RMS; margin 0.936 at 0.15 falling to 0.760 at 0.12). Best Stage B candidate B3 (centre 0.64/0.44/0.62, r 0.24, peak 1, speed 0.15) passes every gate except E2 (margin 0.974); derived lesson length would be 1200. Peak-1.25 batch could not run: FluidSimulation3D reset validation rejects dye outside 0...1 (plan defect). 9/14 runs used, no FINAL. User decision: add finer speeds between 0.15 and 0.17 (e.g. 0.155, 0.16) by dated amendment; solver, E2 threshold and all gates unchanged. Extrapolated input (exponent ~4.4) is ~7.7e-4 at 0.155 and ~8.9e-4 at 0.16 (borderline) — estimates only. The peak range [1.0, 1.25] must also be resolved in the replan (drop 1.25 or justify), since the solver cannot accept it.
 
 ### Pending Todos
 
@@ -159,12 +161,12 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 ## Session Continuity
 
 Last session: 2026-11-21T09:15:37.789Z
-Stopped at: 07-15/07-16 replanned for lower seed speed
+Stopped at: 07-15 HALT-C — replan with finer speed grid 0.15–0.17
 Resume file: None
 
 ## Operator Next Steps
 
-- Phase 7 gap closure (2026-11-21): 07-14 complete. 07-15 halted at Task 1 (E7' solver gate fails at speed 0.17 over 1800 steps); user chose to lower the seed speed. Replanned 2026-11-21 (cd74eb9, b8f1c12; checker passed). Next: `/gsd-execute-phase 7 --gaps-only` (order 07-15 → 07-16 → 07-17 → 07-13). Revised 07-15 Task 1 commits the uncommitted Task 1 work once. 07-17 human review stays blocking.
+- Phase 7 gap closure (2026-11-21): 07-15 Task 1 committed (ef30a0b); Task 2 halted at HALT-C (E2 unmet at <= 0.15; peak 1.25 not runnable). User chose finer speeds between 0.15 and 0.17. Next: `/gsd-plan-phase 7 --gaps` to revise 07-15 Task 2 (amend item 8 grid, resolve the peak range) and re-check 07-16, then `/gsd-execute-phase 7 --gaps-only`. Evidence: `.build/fluid3d-evidence/recipe-candidates/0715-candidates.tsv`. 07-16, 07-17 and 07-13 must not run before then.
 
 - Phase 7 gap closure: 07-12 recorded G-07-5 human re-observation PASS (and Command-M PASS) but G-07-2 OPEN (3D slice: returning dye very dim, patch small, run length too short; see `07-12-SUMMARY.md`). Do NOT run 07-13. Next: `/gsd-plan-phase 7 --gaps` or `/gsd-verify-work 7` to diagnose and replan G-07-2. UAT results and requirement statuses are owned by `/gsd-verify-work`.
 - Next is 08-09 / Wave 9 mandatory actual human review; do not auto-approve it. Read `08-08-SUMMARY.md`, `08-08-REVIEW.md` and `docs/3d-phase8-verification.md` for the fresh full matrix, retained failures/retries, actual manifest/app/capture paths and unchecked human checklist. Eight of nine plans are complete; 08-09 and phase-level verification remain pending. Keep all five Phase 8 requirements pending; no auto-advance or phase completion was performed.
