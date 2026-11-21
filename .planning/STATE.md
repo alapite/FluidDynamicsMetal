@@ -30,8 +30,8 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 ## Current Position
 
 Phase: 07 (First 3D Fluid Vertical Slice) — READY TO EXECUTE
-Plan: 12 of 13 closed with issues; 07-13 NOT started (blocked)
-Status: Blocked - G-07-2 open after 07-12 human re-observation (G-07-5 passed). Needs /gsd-plan-phase 7 --gaps or /gsd-verify-work 7 before 07-13.
+Plan: 12 of 17 closed; gap plans 07-14..07-17 planned, 07-13 revised to run last (wave 7)
+Status: Ready to execute - G-07-2 gap closure planned (07-14 display transfer, 07-15 larger blob + lesson-length calibration, 07-16 3D-only lesson length, 07-17 human checkpoint, then 07-13). Run /gsd-execute-phase 7 --gaps-only.
 Last activity: 2026-11-21 — 07-12 checkpoint resolved with issues
 
 Progress: [███░░░░░░░] 25% of currently planned v1.1 plans closed (17/18); Phase 8 is 8/9. The one plan-closed phase in frontmatter is Phase 7, not a human-acceptance claim. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
