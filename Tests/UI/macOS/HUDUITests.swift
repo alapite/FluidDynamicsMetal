@@ -362,10 +362,12 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["lesson3d.slice"].value as? String, "XY slice · Z depth: 50%")
         XCTAssertEqual(app.staticTexts["lesson3d.slice"].label, "XY slice, Z depth 50 percent")
         XCTAssertEqual(app.staticTexts["lesson3d.concentration"].label, "Dye concentration")
-        XCTAssertEqual(app.staticTexts["lesson3d.legend"].value as? String, "Less dye → More dye")
-        XCTAssertEqual(app.staticTexts["lesson3d.legend"].label, "Dye concentration, less dye to more dye")
+        XCTAssertEqual(app.staticTexts["lesson3d.legend"].value as? String,
+                       "Less dye → More dye · square-root scale")
+        XCTAssertEqual(app.staticTexts["lesson3d.legend"].label,
+                       "Dye concentration, less dye to more dye, square-root brightness scale")
         XCTAssertEqual(app.staticTexts["lesson3d.note"].label,
-                       "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; dye can move out of the plane. Pale-cyan dots are passive tracers. Tracers behind the opaque slice are hidden, even where the slice is black. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
+                       "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; a square-root brightness scale makes faint dye easier to see. Dye can move out of the plane and back. Pale-cyan dots are passive tracers. Tracers behind the opaque slice are hidden, even where the slice is black. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.")
         for hiddenIdentifier in ["field.0", "overlay.0", "tuning.toggle", "about.toggle", "fieldLegend"] {
             XCTAssertFalse(app.descendants(matching: .any)[hiddenIdentifier].exists,
                             "Unsupported 2D content must be absent in 3D: \(hiddenIdentifier)")
@@ -872,7 +874,7 @@ final class HUDUITests: XCTestCase {
         )
         XCTAssertEqual(
             app.staticTexts["lesson3d.note"].label,
-            "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; dye can move out of the plane. Pale-cyan dots are passive tracers. Tracers behind the opaque slice are hidden, even where the slice is black. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds."
+            "This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; a square-root brightness scale makes faint dye easier to see. Dye can move out of the plane and back. Pale-cyan dots are passive tracers. Tracers behind the opaque slice are hidden, even where the slice is black. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds."
         )
 
         // The mode selector retains focus after choosing the lesson. Follow the
