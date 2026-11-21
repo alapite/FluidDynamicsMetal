@@ -2101,6 +2101,28 @@ def _write_test_ppm(path: Path, lit_pixels: int, color: tuple[int, int, int]) ->
 
 
 class Fluid3DTests(unittest.TestCase):
+    def test_shipped_three_d_lesson_length_matches_source(self):
+        shipped = _shipped_three_d_lesson_steps()
+        self.assertIn(shipped, (1200, 1500, 1800))
+
+        def result(shipped_value, derived_value) -> dict:
+            lesson = {"derivedLessonSteps": derived_value}
+            if shipped_value is not None:
+                lesson["shippedLessonSteps"] = shipped_value
+            return {"threeDLesson": lesson}
+
+        self.assertEqual(_validate_shipped_lesson_length(result(shipped, shipped)), [])
+        for name, candidate, expected in (
+            ("shipped off by one", result(shipped + 1, shipped), "shippedLessonSteps"),
+            ("missing shipped key", result(None, shipped), "shippedLessonSteps"),
+            ("derived mismatch", result(shipped, shipped + 300), "derivedLessonSteps"),
+        ):
+            errors = _validate_shipped_lesson_length(candidate)
+            with self.subTest(mutation=name):
+                self.assertTrue(errors, f"{name} was accepted")
+                self.assertTrue(any(expected in error for error in errors), f"{name}: {errors}")
+        self.assertTrue(_validate_shipped_lesson_length({}), "a missing threeDLesson block must be rejected")
+
     def test_evolution_visibility_evidence_requires_larger_blob_return_and_lesson_horizon(self):
         report = synthetic_evolution_visibility_report()
         self.assertEqual(_validate_fixture_metrics("evolution-visibility", report), [])
