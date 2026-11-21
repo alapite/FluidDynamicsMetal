@@ -16,15 +16,19 @@ enum ExperimentRecipes3D {
         var blobPeak: Float
     }
 
-    /// The shipped lesson recipe, calibrated against the human-calibrated early-window
-    /// amendment (UAT G-07-2). The blob starts slightly off the Z=0.5 equator in faster
-    /// flow so the fixed slice visibly changes within 10-20 steps, and the seed speed
-    /// stays below the 1000x projection-reduction activation band (input
-    /// `dt*||Du*||inf` <= 9e-4). Do not raise the speed without the Phase 9 constraint.
+    /// The shipped lesson recipe (UAT G-07-2). The seed speed was lowered from the 07-11
+    /// value 0.17 by the 2026-11-21 user decision, because 0.17 activated the 1000x
+    /// projection-reduction rule within the 1800-step lesson horizon. 0.155 was selected
+    /// by contract amendment items 8-9 so that E7' holds (input `dt*||Du*||inf` <= 9e-4,
+    /// with the rule never active over 1800 steps; measured 7.49e-4) while the step-10
+    /// early-window gate still passes. The blob is larger and sits slightly off the Z=0.5
+    /// equator so the step-0 slice (S1/S2) and its later return are clearly visible.
+    /// Do not raise the speed without re-measuring E7' over the lesson length and honouring
+    /// the Phase 9 solver-cliff record: 0.1575 already measured 9.11e-4.
     static let lesson = Parameters(
-        maximumVectorSpeed: 0.17,
-        blobCenter: SIMD3<Float>(0.66, 0.44, 0.59),
-        blobRadius: 0.17,
+        maximumVectorSpeed: 0.155,
+        blobCenter: SIMD3<Float>(0.64, 0.44, 0.62),
+        blobRadius: 0.24,
         blobPeak: 1
     )
 
