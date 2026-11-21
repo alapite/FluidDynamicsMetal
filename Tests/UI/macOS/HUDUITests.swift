@@ -1165,6 +1165,38 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["transport.step"].isEnabled)
     }
 
+    /// 07-17 review: Pause's title widened from "Run" to "Resume" after the first step, shifting Step
+    /// right so a second click at the same place resumed the lesson. Repeated clicks must keep stepping.
+    func testRepeatedStepClicksAtSamePlaceStayPaused() {
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        for (choose, title) in [({ selector.click(); selector.menuItems["3D Dye Advection"].click() }, "3D Dye Advection"),
+                                ({ self.command("2") }, "Dye carried by a flow")] as [(() -> Void, String)] {
+            choose()
+            assertSelectorValue(title, in: selector)
+            let counter = app.staticTexts["stepCount"]
+            XCTAssertTrue(counter.waitForExistence(timeout: 5))
+            let step = app.buttons["transport.step"]
+            let pause = app.buttons["transport.pause"]
+            let stepFrame = step.frame, pauseFrame = pause.frame
+            // A fixed screen point near Step's left edge, as a person clicking repeatedly would.
+            // Anchored to the selector, which does not move, so the point stays fixed on screen.
+            let anchor = selector.frame
+            let target = selector.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: stepFrame.minX + 8 - anchor.minX, dy: stepFrame.midY - anchor.minY))
+            for n in 1...3 {
+                target.click()
+                let reached = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Step \(n)"), object: counter)
+                XCTAssertEqual(XCTWaiter.wait(for: [reached], timeout: 5), .completed, "\(title): click \(n) did not show Step \(n)")
+            }
+            Thread.sleep(forTimeInterval: 1)
+            XCTAssertEqual(counter.value as? String, "Step 3", "\(title): repeated Step clicks resumed the lesson")
+            XCTAssertEqual(step.frame, stepFrame, "\(title): Step moved after stepping")
+            XCTAssertEqual(pause.frame, pauseFrame, "\(title): Pause/Run/Resume changed size after stepping")
+            command("r")
+        }
+    }
+
     private func command(_ key: String) {
         app.activate()
         app.typeKey(key, modifierFlags: .command)
