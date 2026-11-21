@@ -5,10 +5,10 @@ milestone_name: 3D Teaching Foundation
 current_phase: 7
 current_phase_name: First 3D Fluid Vertical Slice
 status: executing
-stopped_at: 07-15 HALT-C in Task 2 (E2 unmet at speeds <= 0.15; peak 1.25 rejected by reset-dye validation); user chose finer speeds 0.15-0.17
+stopped_at: Completed 07-15-PLAN.md (seed speed 0.155, blob B3, derived lesson length 1200)
 last_updated: "2026-11-21T12:49:13.819Z"
 last_activity: 2026-11-21
-last_activity_desc: 07-15 Task 1 committed (ef30a0b); Task 2 halted at HALT-C; replan for finer speed grid
+last_activity_desc: 07-15 complete via amendment item 9 (finer speed grid); 07-16 next
 state_head: 845b678beaea020bfd3279f0cb326667add1b4a8
 progress:
   total_phases: 4
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 ## Current Position
 
 Phase: 7 (First 3D Fluid Vertical Slice) — EXECUTING
-Plan: 15 of 17 (halted at HALT-C, needs replan)
-Status: Blocked — 07-15 awaiting replan (finer speed grid 0.15–0.17)
-Last activity: 2026-11-21 — 07-15 Task 1 RED committed (ef30a0b); Task 2 sweep halted at HALT-C
+Plan: 16 of 17 (07-16 next)
+Status: Ready to execute — 07-16 (lesson length 1200 at speed 0.155)
+Last activity: 2026-11-21 — 07-15 complete (cefdc4f item 9, a35e5fa recipe 0.155/B3, 97d9752 validator)
 
 Progress: [███░░░░░░░] 25% of currently planned v1.1 plans closed (17/18); Phase 8 is 8/9. The one plan-closed phase in frontmatter is Phase 7, not a human-acceptance claim. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
 
@@ -88,6 +88,8 @@ Progress: [███░░░░░░░] 25% of currently planned v1.1 plans c
 - [Phase 07]: 07-15 halt (2026-11-21): user chose option 1, lowering the 3D seed speed below 0.17 (envelope [0.12, 0.17]; ~0.15 or lower estimated from input ~speed^2) to keep the 1800-step projection input <= 9e-4 with the 1000x rule never active. Never relax E7'/D-17. 07-15 (speed-fixed wording, E7') and likely 07-16 (lesson length) must be replanned; R1 and derivedLessonSteps must be re-derived at the new speed.
 
 - [Phase 07]: 07-15 HALT-C (2026-11-21, second halt): Task 1 RED preregistration committed as ef30a0b (amendment item 8, PHASE7_HASH 0120d363). Stage A at reference blob B2 (radius 0.24): every grid speed passes E7' with 1000x rule never active (max input 6.691e-4 at 0.15, 3.791e-4 at 0.12) but every run fails E2 (step-10 RMS; margin 0.936 at 0.15 falling to 0.760 at 0.12). Best Stage B candidate B3 (centre 0.64/0.44/0.62, r 0.24, peak 1, speed 0.15) passes every gate except E2 (margin 0.974); derived lesson length would be 1200. Peak-1.25 batch could not run: FluidSimulation3D reset validation rejects dye outside 0...1 (plan defect). 9/14 runs used, no FINAL. User decision: add finer speeds between 0.15 and 0.17 (e.g. 0.155, 0.16) by dated amendment; solver, E2 threshold and all gates unchanged. Extrapolated input (exponent ~4.4) is ~7.7e-4 at 0.155 and ~8.9e-4 at 0.16 (borderline) — estimates only. The peak range [1.0, 1.25] must also be resolved in the replan (drop 1.25 or justify), since the solver cannot accept it.
+
+- [Phase 07]: 07-15 complete (2026-11-21): amendment item 9 (cefdc4f) preregistered B3 at 0.16/0.1575/0.155. Measured 1800-step max input 9.625e-4, 9.107e-4, 7.492e-4: only 0.155 passes E7' (margin 1.201) and E2 (margin 1.005, binding). Shipped recipe a35e5fa: speed 0.155, centre (0.64, 0.44, 0.62), radius 0.24, peak 1; S1 331, S2 V50 310, fade 300, return 950, derivedLessonSteps 1200, 136 iterations, 1000x rule never active. Peak 1.25 void (solver rejects reset dye > 1). Phase 9: input rises 22% between 0.155 and 0.1575, so speed choices must be measured, not interpolated. Validator 97d9752 recomputes the lesson length, V50 and max L* from checkpoints and capture PPMs.
 
 ### Pending Todos
 
@@ -161,12 +163,12 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 ## Session Continuity
 
 Last session: 2026-11-21T09:15:37.789Z
-Stopped at: 07-15 HALT-C — replan with finer speed grid 0.15–0.17
+Stopped at: Completed 07-15-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Phase 7 gap closure (2026-11-21): 07-15 Task 1 committed (ef30a0b); Task 2 halted at HALT-C (E2 unmet at <= 0.15; peak 1.25 not runnable). User chose finer speeds between 0.15 and 0.17. Next: `/gsd-plan-phase 7 --gaps` to revise 07-15 Task 2 (amend item 8 grid, resolve the peak range) and re-check 07-16, then `/gsd-execute-phase 7 --gaps-only`. Evidence: `.build/fluid3d-evidence/recipe-candidates/0715-candidates.tsv`. 07-16, 07-17 and 07-13 must not run before then.
+- Phase 7 gap closure (2026-11-21): 07-15 complete (speed 0.155, blob B3, derived lesson length 1200; see 07-15-SUMMARY.md). Next: 07-16 (set the 3D lesson length to 1200), then 07-17 (blocking human review), then 07-13 (full regression matrix).
 
 - Phase 7 gap closure: 07-12 recorded G-07-5 human re-observation PASS (and Command-M PASS) but G-07-2 OPEN (3D slice: returning dye very dim, patch small, run length too short; see `07-12-SUMMARY.md`). Do NOT run 07-13. Next: `/gsd-plan-phase 7 --gaps` or `/gsd-verify-work 7` to diagnose and replan G-07-2. UAT results and requirement statuses are owned by `/gsd-verify-work`.
 - Next is 08-09 / Wave 9 mandatory actual human review; do not auto-approve it. Read `08-08-SUMMARY.md`, `08-08-REVIEW.md` and `docs/3d-phase8-verification.md` for the fresh full matrix, retained failures/retries, actual manifest/app/capture paths and unchecked human checklist. Eight of nine plans are complete; 08-09 and phase-level verification remain pending. Keep all five Phase 8 requirements pending; no auto-advance or phase completion was performed.
