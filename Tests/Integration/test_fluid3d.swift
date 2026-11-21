@@ -3328,8 +3328,11 @@ private struct Fluid3DChecks {
         )
     }
 
+    /// Independent Double evaluation of the amended display rule
+    /// (docs/3d-inspection-contract.md, square-root display transfer amendment):
+    /// d = sqrt(clamp(c, 0, 1)), then black/amber/cream at d = 0/0.5/1.
     private static func expectedSpatialPaletteRGB(_ concentration: Double) -> SIMD3<Int> {
-        let value = min(1, max(0, concentration))
+        let value = (min(1, max(0, concentration))).squareRoot()
         let amber = SIMD3<Double>(237, 139, 35)
         let cream = SIMD3<Double>(255, 241, 214)
         let color = value <= 0.5
@@ -3361,6 +3364,21 @@ private struct Fluid3DChecks {
         metal: MetalDevice,
         referenceDirectory: URL
     ) throws -> [String: Any] {
+        // Pin the independent square-root formula to literal numbers before
+        // any production output is compared against it.
+        let transferAnchors: [(Double, SIMD3<Int>)] = [
+            (0, SIMD3<Int>(0, 0, 0)),
+            (1.0 / 64, SIMD3<Int>(59, 35, 9)),
+            (0.25, SIMD3<Int>(237, 139, 35)),
+            (0.5, SIMD3<Int>(244, 181, 109)),
+            (0.75, SIMD3<Int>(250, 214, 166)),
+            (1, SIMD3<Int>(255, 241, 214)),
+            (1.25, SIMD3<Int>(255, 241, 214)),
+        ]
+        for (concentration, expected) in transferAnchors {
+            try require(expectedSpatialPaletteRGB(concentration) == expected,
+                        "Independent square-root transfer anchor c=\(concentration) expected \(expected), got \(expectedSpatialPaletteRGB(concentration))")
+        }
         let visualization = try FieldVisualization3D(metal: metal)
         let simulation = try FluidSimulation3D(metal: metal)
         let evidenceDirectory = referenceDirectory.deletingLastPathComponent()
@@ -3383,30 +3401,31 @@ private struct Fluid3DChecks {
         )
         let landmarks = paletteCapture.images[0]
         let xOffset = 16
-        let paletteSamples: [(String, Int, SIMD3<Int>)] = [
-            ("zero", 6, SIMD3<Int>(0, 0, 0)),
-            ("quarter", 17, SIMD3<Int>(119, 70, 18)),
-            ("middle", 28, SIMD3<Int>(237, 139, 35)),
-            ("three-quarters", 39, SIMD3<Int>(246, 190, 125)),
-            ("one", 50, SIMD3<Int>(255, 241, 214)),
+        // Patch concentrations come from paletteAndOrientationDye's patch table.
+        let paletteSamples: [(String, Int, Double)] = [
+            ("zero", 6, 0),
+            ("quarter", 17, 0.25),
+            ("middle", 28, 0.5),
+            ("three-quarters", 39, 0.75),
+            ("one", 50, 1),
         ]
-        for (name, cellX, expected) in paletteSamples {
+        for (name, cellX, concentration) in paletteSamples {
             try assertRGB(
                 landmarks,
                 x: xOffset + cellX,
                 y: 63 - 8,
-                expected: expected,
+                expected: expectedSpatialPaletteRGB(concentration),
                 label: "palette stop \(name)"
             )
         }
         try assertRGB(landmarks, x: xOffset + 12, y: 63 - 12,
-                      expected: SIMD3<Int>(237, 139, 35), label: "lower-left landmark")
+                      expected: expectedSpatialPaletteRGB(0.5), label: "lower-left landmark")
         try assertRGB(landmarks, x: xOffset + 52, y: 63 - 52,
-                      expected: SIMD3<Int>(255, 241, 214), label: "upper-right landmark")
+                      expected: expectedSpatialPaletteRGB(1), label: "upper-right landmark")
         try assertRGB(landmarks, x: xOffset + 12, y: 63 - 52,
-                      expected: SIMD3<Int>(0, 0, 0), label: "opposite upper-left landmark")
+                      expected: expectedSpatialPaletteRGB(0), label: "opposite upper-left landmark")
         try assertRGB(landmarks, x: xOffset + 52, y: 63 - 12,
-                      expected: SIMD3<Int>(0, 0, 0), label: "opposite lower-right landmark")
+                      expected: expectedSpatialPaletteRGB(0), label: "opposite lower-right landmark")
         try assertRGB(landmarks, x: 4, y: 32, expected: SIMD3<Int>(0, 0, 0), label: "left letterbox")
         try assertRGB(landmarks, x: 90, y: 32, expected: SIMD3<Int>(0, 0, 0), label: "right letterbox")
         let palettePath = evidenceDirectory.appendingPathComponent("slice-palette-stops-orientation.ppm")
@@ -3423,7 +3442,7 @@ private struct Fluid3DChecks {
             sizes: [(96, 64)]
         )
         try assertRGB(midpointCapture.images[0], x: 48, y: 32,
-                      expected: SIMD3<Int>(237, 139, 35), label: "equal Z=0.5 midpoint of planes 31/32")
+                      expected: expectedSpatialPaletteRGB(0.5), label: "equal Z=0.5 midpoint of planes 31/32")
         let midpointPath = evidenceDirectory.appendingPathComponent("slice-palette-midpoint-z-31-32.ppm")
         try writePPM(midpointCapture.images[0], to: midpointPath)
 
@@ -3440,7 +3459,7 @@ private struct Fluid3DChecks {
         )
         for image in stepZeroCapture.images {
             try assertRGB(image, x: image.width / 2, y: image.height / 2,
-                          expected: SIMD3<Int>(237, 139, 35), label: "step-zero fixed palette/viewport")
+                          expected: expectedSpatialPaletteRGB(0.5), label: "step-zero fixed palette/viewport")
         }
         let stepZeroPath = evidenceDirectory.appendingPathComponent("slice-palette-step-0.ppm")
         try writePPM(stepZeroCapture.images[0], to: stepZeroPath)
@@ -3457,7 +3476,7 @@ private struct Fluid3DChecks {
         )
         for image in stepOneCapture.images {
             try assertRGB(image, x: image.width / 2, y: image.height / 2,
-                          expected: SIMD3<Int>(237, 139, 35), label: "step-one fixed palette/viewport")
+                          expected: expectedSpatialPaletteRGB(0.5), label: "step-one fixed palette/viewport")
         }
         let stepOnePath = evidenceDirectory.appendingPathComponent("slice-palette-step-1.ppm")
         try writePPM(stepOneCapture.images[1], to: stepOnePath)
@@ -3480,7 +3499,7 @@ private struct Fluid3DChecks {
             sizes: [(64, 64)]
         )
         try assertRGB(clampedCapture.images[0], x: 32, y: 32,
-                      expected: SIMD3<Int>(255, 241, 214), label: "concentration clamps at the cream stop")
+                      expected: expectedSpatialPaletteRGB(1.25), label: "concentration clamps at the cream stop")
         let clampPath = evidenceDirectory.appendingPathComponent("slice-palette-concentration-clamp.ppm")
         try writePPM(clampedCapture.images[0], to: clampPath)
 
@@ -3498,11 +3517,15 @@ private struct Fluid3DChecks {
             "sampleWeights": [0.5, 0.5],
             "orientation": ["x": "right", "y": "up"],
             "destinationPixelFormat": "bgra8Unorm; encoded palette channels stored without an additional sRGB transform",
+            "displayTransfer": "square-root",
             "paletteStops": [
-                ["concentration": 0.0, "rgb": [0, 0, 0]],
-                ["concentration": 0.5, "rgb": [237, 139, 35]],
-                ["concentration": 1.0, "rgb": [255, 241, 214]],
+                ["displayValue": 0.0, "concentration": 0.0, "rgb": [0, 0, 0]],
+                ["displayValue": 0.5, "concentration": 0.25, "rgb": [237, 139, 35]],
+                ["displayValue": 1.0, "concentration": 1.0, "rgb": [255, 241, 214]],
             ],
+            "transferSamples": transferAnchors.map { concentration, rgb in
+                ["concentration": concentration, "rgb": [rgb.x, rgb.y, rgb.z]] as [String: Any]
+            },
             "viewportSizes": sizes.map { [$0.0, $0.1] },
             "paletteInvariantAtSteps": [0, 1],
             "renderingReadOnly": true,

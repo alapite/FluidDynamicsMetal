@@ -145,3 +145,34 @@ Production GPU, routing, native controls and human review remain later plans.
 No FPS claim: displayed pacing NOT MEASURED; actual macOS26 and physical-device
 multitouch NOT TESTED. Phase 7 unperformed manual acceptance stays pending.
 Preserve the established 2D solver, shader names and Swift/Metal ABI unchanged.
+
+### Square-root display transfer amendment — 2026-11-21 (UAT G-07-2)
+
+Source: the 07-12 user report that returning dye is "very low" in brightness
+and hard to interpret, and the user's 2026-11-21 decision to brighten low
+concentrations in the display mapping without changing dye data.
+
+Rule: display value `d = sqrt(clamp(c, 0, 1))`, followed by encoded-channel
+piecewise-linear black/#ED8B23/#FFF1D6 at `d = 0/0.5/1`, which is concentration
+`c = 0/0.25/1`. The rule is fixed: no per-frame normalisation, no adaptive
+exposure and no brightness animation. It is identical in `fluid3DFixedSlice`,
+`fluid3DSpatialSlice`, `FieldVisualization3D.encodedColor(for:)` and the native
+legend. Values above 1 clamp to cream, a nonfinite concentration remains an
+error to detect, and the non-sRGB bgra8Unorm target convention is unchanged.
+The transfer is presentation-only: dye, velocity, pressure, tracer and status
+data are never read back through it or written by it.
+
+Supersession: this supersedes only the palette clause in "Finite-first
+acceptance" ("piecewise-linear black/#ED8B23/#FFF1D6 at concentration0/.5/1").
+The tolerance stays ±1 UNORM code against an independent Double evaluation of
+this rule.
+
+Nothing else changes: no numerical, tracer, camera, state, inventory or
+tolerance change.
+
+Phase 7 numerical contract: the prefix SHA-256 `a7768571` is immutable. Its
+complete-file hash advances only through dated additive amendments and is
+tracked by `PHASE7_HASH` in `Tests/Integration/test_inspection3d_reference.py`,
+which is repinned with each such amendment. The complete hash quoted at the top
+of this document (prefix `5fdc33b8`) is the historical 2026-11-13 value; plan
+07-11 advanced it.
