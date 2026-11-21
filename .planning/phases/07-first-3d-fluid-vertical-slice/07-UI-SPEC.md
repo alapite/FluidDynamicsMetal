@@ -287,3 +287,7 @@ The previously observed missing active Metal Toolchain remains an execution prer
 **Approval:** Approved 2026-11-06 after a distinct, read-only inline checker pass: five PASS, one non-blocking FLAG, zero BLOCK. The researcher/orchestrator applied this sign-off after review; no independent-agent review or implemented-UI verification claimed. No blocking revision loop was required.
 
 **Artifact evidence:** Structural checks found all 14 required contract sections, all 17 D-IDs and the seven standard new spacing tokens; Markdown has balanced fences and no trailing whitespace. Computed sRGB relative luminance at the three chosen stops is 0.0000 → 0.3659 → 0.8903. This checks the specified colors, not actual shader/legend output, display contrast or readability of a running lesson.
+
+## Square-root display transfer and 3D lesson-length amendment — 2026-11-21 (UAT G-07-2)
+
+In the Fixed 3D concentration palette, `t=clamp(concentration,0,1)` becomes `t=sqrt(clamp(concentration,0,1))` in both the shader and the legend; the black / `#ED8B23` / `#FFF1D6` stops and their positions are unchanged. The reused 3D lesson-cap fallback ("Experiment complete. Restart to compare.", with Run/Step disabled) now appears at 1200 steps (`SimulationState.threeDLessonSteps`); 2D lessons keep 600. Panel copy is now governed by the amendment of the same title in `.planning/phases/08-spatial-inspection/08-UI-SPEC.md`.

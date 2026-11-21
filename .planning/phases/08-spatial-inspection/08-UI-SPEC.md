@@ -292,3 +292,21 @@ Document new image fixtures separately from the historical fixed-square/fixed-sl
 **Approval:** Approved 2026-11-13 after a distinct read-only inline checker pass against all six dimensions, locked context and research: **five PASS, one FLAG, zero BLOCK**. The researcher/orchestrator applied this sign-off after review. No blocking revision was required; no independent-agent verification or implemented-UI acceptance is claimed.
 
 **Artifact evidence:** Structural checks passed for 14 core contract sections, all 21 context D-IDs, all five owned requirements, seven standard spacing tokens, three authored type sizes, balanced fences and absence of trailing whitespace/template placeholders. A separate design-formula sanity check covered 360 camera pose/aspect/zoom combinations, confirmed all cube corners fit at 100% zoom and near-plane clearance exceeds 0.05, checked 512 unique interior seeds and the endpoint/midpoint mapping. These inspect specified formulas only, not production camera matrices, GPU sampling, actual native layout, color readability or displayed performance.
+
+## Square-root display transfer and 3D lesson-length amendment — 2026-11-21 (UAT G-07-2)
+
+**User decisions (2026-11-21, gap round for UAT G-07-2):** (1) returning dye was too dim, so the fixed 3D concentration display gains a square-root transfer; auto-range and per-frame normalisation remain forbidden because they would hide thinning. (3) The 3D Dye Advection lesson runs longer than the shared 600 steps so the learner can see the patch fade and return.
+
+**Transfer rule** (from the dated amendment in `docs/3d-inspection-contract.md`): display value `d = sqrt(clamp(c,0,1))`, then the unchanged piecewise-linear palette stops black → `#ED8B23` (at d = 0.5) → `#FFF1D6`. Stop positions are display values. This is the "explicitly verified color-path amendment" anticipated by the Color section above; it is verified by 07-14's slice-palette and spatial fixtures (shader output, Swift `encodedColor` and native legend sampled against the same function).
+
+**Copy (supersedes the "Factual note" and "Concentration legend" rows of the Copywriting Contract; copied from `Sources/macOS/RenderViewController.swift`):**
+
+| Element | Shipped copy |
+|---------|--------------|
+| Concentration legend | **Dye concentration** / **Less dye → More dye · square-root scale** |
+| Legend accessibility label | **Dye concentration, less dye to more dye, square-root brightness scale** |
+| Factual note | **This slice shows dye carried by an evolving 3D flow. Brighter areas contain more dye; a square-root brightness scale makes faint dye easier to see. Dye can move out of the plane and back. Pale-cyan dots are passive tracers. Tracers behind the opaque slice are hidden, even where the slice is black. There is no explicit dye fading, but numerical advection can smooth the dye. Steps count solver advances, not seconds.** |
+
+The legend bar is drawn from `encodedColor` per backing-pixel column, so legend and slice share one transfer. A fixed scale, no per-frame normalisation and no adaptive exposure still apply.
+
+**3D lesson length:** the reused completion message **"Experiment complete. Restart to compare."** now appears at 1200 steps in 3D Dye Advection (`SimulationState.threeDLessonSteps`, measured by 07-15) and at 600 steps in the 2D lessons; Run and Step disable at that point as before. The **Step {n}** counter is unchanged (exact accepted-step integer, no seconds, no `{n}/N`). Reconciling the 3D length with LES-05's 600 steps is Phase 9 work (ROADMAP Phase 9 handoff from 07-16).

@@ -195,6 +195,8 @@ Planning focus: coherent world/texture/screen conventions, bounds and camera rec
 
 Planning focus: choose and validate an early comparison window or justified transport metric so circulation does not reverse the teaching claim. Capture representative lesson states and distinguish numerical diffusion from explicit decay. Calibrate speeds/seed parameters using numerical and visual evidence, not camera motion.
 
+**Handoff from Phase 7 gap closure (07-16):** On 2026-11-21 the user chose a longer Phase 7 3D lesson to close G-07-2. The shipped 3D lesson completes at 1200 steps (`SimulationState.threeDLessonSteps`, derived by the rule in the 2026-11-21 numerical-contract amendment); the 2D lessons keep 600. The Phase 7 recipe is now the 07-15 larger blob (centre (0.64, 0.44, 0.62), radius 0.24) at seed speed 0.155, shown with the square-root display. The speed was lowered from 0.17 by the 2026-11-21 user decision because over 1800 steps 0.17 activated the 1000x reduction rule (maximum input 1.1625e-3; see the 07-15 Stage A table); 0.1575 already measured 9.11e-4 against the 9e-4 limit. Success criterion 2 and LES-05 still say 600 and must be reconciled with the user during Phase 9 planning. The slow/normal/fast speeds of LES-04 must be re-measured against the solver over the reconciled lesson length. The 07-11 solver-cliff constraint (a 600-step measurement) still applies.
+
 ### Phase 10: Volume View and Measured Release Quality
 
 **Goal**: Users can choose an understandable transparent volume view and run the integrated 3D lesson at the measured baseline performance while the existing apps retain their behaviour.
