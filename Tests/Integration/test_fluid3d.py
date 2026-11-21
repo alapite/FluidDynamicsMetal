@@ -126,6 +126,304 @@ LESSON_RECIPE_600 = {
     "checkpointSteps": [100, 200, 300, 400, 500, 600],
     "iterationCap": 320,
 }
+# Larger-blob, square-root display and 3D lesson-length amendment (2026-11-21) items 2-4; equal to
+# the gates dict the evolution-visibility fixture emits.
+LARGER_BLOB_GATES = {
+    "step0SectionAreaMinimum": 250,
+    "step0DisplayVisibleAreaMinimum": 300,
+    "displayLightnessThreshold": 50,
+    "fadeFraction": 0.5,
+    "returnDisplayVisibleAreaMinimum": 150,
+    "returnMaximumLightnessMinimum": 60,
+    "returnTailSteps": 100,
+    "noFadeVisibleAreaMinimum": 150,
+    "noFadeWindowSteps": 1200,
+    "lessonLengthChoices": [1200, 1500, 1800],
+    "checkpointInterval": 50,
+}
+THREE_D_LESSON_HORIZON = {
+    "horizonSteps": 1800,
+    "checkpointInterval": 50,
+    "lessonLengthChoices": [1200, 1500, 1800],
+    "inputDivergenceLimit": 9e-4,
+    "volumePeakMinimum": 0.05,
+    "iterationCap": 320,
+}
+
+
+def _display_lightness(red: int, green: int, blue: int) -> float:
+    """CIE L* of one encoded sRGB pixel (bytes 0-255), as defined by the 2026-11-21 amendment."""
+
+    def linear(byte: int) -> float:
+        value = byte / 255
+        return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+
+    luminance = 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+    if luminance > 216 / 24389:
+        return 116 * luminance ** (1 / 3) - 16
+    return (24389 / 27) * luminance
+
+
+def _read_ppm(path: Path) -> tuple[int, int, bytes]:
+    """Read a binary P6 PPM with maxval 255; returns (width, height, rgb bytes)."""
+    data = path.read_bytes()
+    tokens: list[bytes] = []
+    index = 0
+    while len(tokens) < 4:
+        while index < len(data) and data[index:index + 1].isspace():
+            index += 1
+        if data[index:index + 1] == b"#":
+            while index < len(data) and data[index:index + 1] != b"\n":
+                index += 1
+            continue
+        start = index
+        while index < len(data) and not data[index:index + 1].isspace():
+            index += 1
+        tokens.append(data[start:index])
+    if tokens[0] != b"P6" or tokens[3] != b"255":
+        raise ValueError(f"{path.name} is not a binary P6 PPM with maxval 255")
+    width, height = int(tokens[1]), int(tokens[2])
+    pixels = data[index + 1:index + 1 + width * height * 3]
+    if len(pixels) != width * height * 3:
+        raise ValueError(f"{path.name} has {len(pixels)} pixel bytes, expected {width * height * 3}")
+    return width, height, pixels
+
+
+def _derive_lesson_steps(step0_v50: object, checkpoints: list[dict]) -> dict:
+    """Independently recompute fadeStep, returnStep, R1 and derivedLessonSteps from V50 and max L*."""
+    gates = LARGER_BLOB_GATES
+    v50 = {item["step"]: item.get("displayVisibleAreaL50") for item in checkpoints}
+    lightness = {item["step"]: item.get("sliceMaximumLightness") for item in checkpoints}
+    horizon = THREE_D_LESSON_HORIZON["horizonSteps"]
+    steps = sorted(v50)
+    derived: dict = {"fadeStep": None, "returnStep": None, "r1": False, "derivedLessonSteps": None}
+    if not _is_number(step0_v50) or not all(_is_number(v50[step]) for step in steps):
+        return derived
+    fade = next((step for step in steps if step >= 50 and v50[step] <= gates["fadeFraction"] * step0_v50), None)
+    derived["fadeStep"] = fade
+    if fade is None:
+        window = [step0_v50] + [v50[step] for step in steps if step <= gates["noFadeWindowSteps"]]
+        derived["minimumVisibleAreaThroughNoFadeWindow"] = min(window)
+        derived["r1"] = min(window) >= gates["noFadeVisibleAreaMinimum"]
+        if derived["r1"]:
+            derived["derivedLessonSteps"] = gates["lessonLengthChoices"][0]
+        return derived
+    returned = next(
+        (
+            step for step in steps
+            if step > fade
+            and v50[step] >= gates["returnDisplayVisibleAreaMinimum"]
+            and (step == horizon or (step + 50 in v50 and v50[step] >= v50[step + 50]))
+        ),
+        None,
+    )
+    derived["returnStep"] = returned
+    if returned is not None:
+        derived["returnDisplayVisibleArea"] = v50[returned]
+        derived["returnMaximumLightness"] = lightness[returned]
+        derived["r1"] = (
+            returned + gates["returnTailSteps"] <= horizon
+            and _is_number(lightness[returned])
+            and lightness[returned] >= gates["returnMaximumLightnessMinimum"]
+        )
+        if derived["r1"]:
+            derived["derivedLessonSteps"] = next(
+                (n for n in gates["lessonLengthChoices"] if n >= returned + gates["returnTailSteps"]), None
+            )
+    return derived
+
+
+def _validate_larger_blob_lesson(result: dict, by_step: dict) -> list[str]:
+    """Fail-closed checks of the 2026-11-21 larger-blob gates (S1, S2, R1) and the 1800-step lesson (E7')."""
+    errors: list[str] = []
+    gates = LARGER_BLOB_GATES
+    horizon = THREE_D_LESSON_HORIZON
+    blob = result.get("largerBlobGates")
+    lesson = result.get("threeDLesson")
+    if not isinstance(blob, dict):
+        errors.append("evolution-visibility largerBlobGates is missing")
+    if not isinstance(lesson, dict):
+        errors.append("evolution-visibility threeDLesson is missing")
+    if errors:
+        return errors
+
+    if lesson.get("horizonSteps") != horizon["horizonSteps"]:
+        errors.append(f"evolution-visibility threeDLesson horizonSteps must be {horizon['horizonSteps']}")
+    if lesson.get("stepsValidated") != horizon["horizonSteps"]:
+        errors.append(
+            f"evolution-visibility threeDLesson stepsValidated {lesson.get('stepsValidated')} is not "
+            f"{horizon['horizonSteps']}"
+        )
+    for key in ("projectionFailures", "capHits"):
+        if lesson.get(key) != 0:
+            errors.append(f"evolution-visibility threeDLesson {key} {lesson.get(key)} must be 0")
+    iterations = lesson.get("maximumIterations")
+    if not _is_number(iterations) or iterations >= horizon["iterationCap"]:
+        errors.append(
+            f"evolution-visibility threeDLesson maximum iterations {iterations} do not stay below "
+            f"the {horizon['iterationCap']} cap"
+        )
+    if lesson.get("inputDivergenceMarginLimit") != horizon["inputDivergenceLimit"]:
+        errors.append("evolution-visibility threeDLesson input divergence limit differs from the amendment")
+    maximum_input = lesson.get("maximumInputDivergenceDTInf")
+    if not _is_number(maximum_input) or maximum_input > horizon["inputDivergenceLimit"]:
+        errors.append(
+            f"evolution-visibility threeDLesson maximum input divergence {maximum_input} exceeds "
+            f"{horizon['inputDivergenceLimit']}"
+        )
+    if lesson.get("reductionGateActiveSteps") != 0:
+        errors.append(
+            f"evolution-visibility threeDLesson reduction gate was active on "
+            f"{lesson.get('reductionGateActiveSteps')} steps; it must never be active"
+        )
+    if lesson.get("finite") is not True:
+        errors.append("evolution-visibility threeDLesson is not finite")
+    if lesson.get("volumePeakMinimum") != horizon["volumePeakMinimum"]:
+        errors.append("evolution-visibility threeDLesson volume peak minimum differs from the amendment")
+
+    checkpoints = lesson.get("checkpoints")
+    expected_steps = list(range(horizon["checkpointInterval"], horizon["horizonSteps"] + 1,
+                                horizon["checkpointInterval"]))
+    checkpoints_ok = isinstance(checkpoints, list) and [
+        item.get("step") if isinstance(item, dict) else None for item in checkpoints
+    ] == expected_steps
+    if not checkpoints_ok:
+        errors.append("evolution-visibility threeDLesson checkpoint steps must be 50 to 1800 by 50")
+    else:
+        numeric = ("slicePeak", "sliceAreaAtLeast0_1", "sliceCountAtLeast0_02", "displayVisibleAreaL50",
+                   "sliceMaximumLightness", "volumePeak", "volumeMass")
+        for item in checkpoints:
+            if item.get("finite") is not True or not all(_is_number(item.get(key)) for key in numeric):
+                errors.append(f"evolution-visibility threeDLesson checkpoint step {item['step']} is not finite")
+            if not isinstance(item.get("sliceCapture"), str) or not item["sliceCapture"]:
+                errors.append(f"evolution-visibility threeDLesson checkpoint step {item['step']} has no capture")
+
+    if blob.get("gates") != gates:
+        errors.append("evolution-visibility largerBlobGates gates differ from the amendment constants")
+        return errors
+    observed = blob.get("observed")
+    if not isinstance(observed, dict):
+        errors.append("evolution-visibility largerBlobGates observed values are missing")
+        return errors
+    if blob.get("passed") is not True:
+        errors.append("evolution-visibility largerBlobGates did not report passed")
+
+    step0 = by_step.get(0) if isinstance(by_step.get(0), dict) else {}
+    area0 = step0.get("sliceAreaAtLeast0_1")
+    v50_0 = step0.get("displayVisibleAreaL50")
+    if observed.get("step0SectionArea") != area0:
+        errors.append("evolution-visibility S1 step-0 section area does not match its observation")
+    if not _is_number(area0) or area0 < gates["step0SectionAreaMinimum"]:
+        errors.append(f"evolution-visibility S1 step-0 section area {area0} is below {gates['step0SectionAreaMinimum']}")
+    if observed.get("step0DisplayVisibleArea") != v50_0:
+        errors.append("evolution-visibility S2 step-0 display-visible area does not match its observation")
+    if not _is_number(v50_0) or v50_0 < gates["step0DisplayVisibleAreaMinimum"]:
+        errors.append(
+            f"evolution-visibility S2 step-0 display-visible area {v50_0} is below "
+            f"{gates['step0DisplayVisibleAreaMinimum']}"
+        )
+
+    if not checkpoints_ok:
+        return errors
+    derived = _derive_lesson_steps(v50_0, checkpoints)
+    for key in ("fadeStep", "returnStep"):
+        if observed.get(key) != derived[key]:
+            errors.append(
+                f"evolution-visibility R1 emitted {key} {observed.get(key)} differs from the recomputed {derived[key]}"
+            )
+    if derived["returnStep"] is not None:
+        if observed.get("returnDisplayVisibleArea") != derived["returnDisplayVisibleArea"]:
+            errors.append("evolution-visibility R1 return display-visible area does not match its checkpoint")
+        emitted = observed.get("returnMaximumLightness")
+        if not _is_number(emitted) or abs(emitted - derived["returnMaximumLightness"]) > 1e-9:
+            errors.append("evolution-visibility R1 return maximum lightness does not match its checkpoint")
+    if derived["fadeStep"] is None and (
+        observed.get("minimumVisibleAreaThroughNoFadeWindow") != derived.get("minimumVisibleAreaThroughNoFadeWindow")
+    ):
+        errors.append("evolution-visibility R1 no-fade minimum visible area does not match the checkpoints")
+    if not derived["r1"]:
+        errors.append(
+            f"evolution-visibility R1 failed: fadeStep {derived['fadeStep']}, returnStep {derived['returnStep']}"
+        )
+    lesson_steps = derived["derivedLessonSteps"]
+    for label, value in (
+        ("largerBlobGates", observed.get("derivedLessonSteps")),
+        ("threeDLesson", lesson.get("derivedLessonSteps")),
+        ("result", result.get("derivedLessonSteps")),
+    ):
+        if value != lesson_steps:
+            errors.append(
+                f"evolution-visibility {label} derivedLessonSteps {value} differs from the recomputed {lesson_steps}"
+            )
+    by_checkpoint = {item["step"]: item for item in checkpoints}
+    volume_end = lesson.get("volumePeakAtLessonEnd")
+    if not _is_number(volume_end) or volume_end < horizon["volumePeakMinimum"]:
+        errors.append(
+            f"evolution-visibility threeDLesson volume dye peak at the lesson end {volume_end} is below "
+            f"{horizon['volumePeakMinimum']}"
+        )
+    elif lesson_steps in by_checkpoint and abs(by_checkpoint[lesson_steps]["volumePeak"] - volume_end) > 1e-9:
+        errors.append("evolution-visibility threeDLesson volume peak at the lesson end does not match its checkpoint")
+    volume_horizon = lesson.get("volumePeakAtHorizon")
+    if not _is_number(volume_horizon) or abs(by_checkpoint[horizon["horizonSteps"]]["volumePeak"] - volume_horizon) > 1e-9:
+        errors.append("evolution-visibility threeDLesson volume peak at the horizon does not match its checkpoint")
+    return errors
+
+
+def _validate_evolution_display_captures(result: dict, evidence_dir: Path) -> list[str]:
+    """Recompute V50 and maximum L* from each sliceCapture PPM and require agreement with the emitted values."""
+    errors: list[str] = []
+    threshold = LARGER_BLOB_GATES["displayLightnessThreshold"]
+    lesson = result.get("threeDLesson") if isinstance(result.get("threeDLesson"), dict) else {}
+    items = [("observation", item) for item in result.get("observations") or []]
+    items += [("checkpoint", item) for item in lesson.get("checkpoints") or []]
+    if not items:
+        return ["evolution-visibility has no display captures to check"]
+    cache: dict[str, tuple[int, float]] = {}
+    for kind, item in items:
+        if not isinstance(item, dict):
+            errors.append(f"evolution-visibility {kind} entry is not an object")
+            continue
+        step = item.get("step")
+        name = item.get("sliceCapture")
+        if not isinstance(name, str) or not name:
+            errors.append(f"evolution-visibility {kind} step {step} has no capture")
+            continue
+        if name not in cache:
+            path = evidence_dir / name
+            if not path.is_file():
+                errors.append(f"evolution-visibility {kind} step {step} capture {name} is missing")
+                continue
+            try:
+                width, height, pixels = _read_ppm(path)
+            except (ValueError, IndexError) as error:
+                errors.append(f"evolution-visibility {kind} step {step} capture {name} is unreadable: {error}")
+                continue
+            lightness_by_colour: dict[bytes, float] = {}
+            visible = 0
+            maximum = 0.0
+            for offset in range(0, width * height * 3, 3):
+                colour = pixels[offset:offset + 3]
+                value = lightness_by_colour.get(colour)
+                if value is None:
+                    value = _display_lightness(colour[0], colour[1], colour[2])
+                    lightness_by_colour[colour] = value
+                if value >= threshold:
+                    visible += 1
+                maximum = max(maximum, value)
+            cache[name] = (visible, maximum)
+        visible, maximum = cache[name]
+        if item.get("displayVisibleAreaL50") != visible:
+            errors.append(
+                f"evolution-visibility {kind} step {step} V50 {item.get('displayVisibleAreaL50')} differs from "
+                f"the capture's {visible}"
+            )
+        emitted = item.get("sliceMaximumLightness")
+        if not _is_number(emitted) or abs(emitted - maximum) > 1e-6:
+            errors.append(
+                f"evolution-visibility {kind} step {step} maximum L* {emitted} differs from the capture's {maximum}"
+            )
+    return errors
 
 
 def sha256(path: Path) -> str:
@@ -831,6 +1129,7 @@ def _validate_evolution_calibration(result: dict, by_step: dict) -> list[str]:
             errors.append("evolution-visibility recipe dye decay per step must be 0")
         if recipe.get("velocityReseedAfterReset") is not False:
             errors.append("evolution-visibility recipe velocity reseed after reset must be false")
+    errors.extend(_validate_larger_blob_lesson(result, by_step))
     return errors
 
 
@@ -2936,6 +3235,9 @@ class Fluid3DTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 print(f"RECIPE EVIDENCE: {recipe_path}")
+            if fixture == "evolution-visibility":
+                capture_errors = _validate_evolution_display_captures(report["result"], evidence_dir)
+                self.assertEqual(capture_errors, [], "evolution-visibility display captures disagree with the report")
             print(f"PASS: {fixture}; evidence: {report_path}")
             return result
 
