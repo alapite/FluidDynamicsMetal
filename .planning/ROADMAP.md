@@ -89,7 +89,7 @@ Plans:
 
 **Gap Wave 4** *(blocked on 07-14)*
 
-- [ ] 07-15-PLAN.md — Preregister the S1/S2/R1/E7' and lesson-length amendment, show it RED on the 07-11 recipe, calibrate a larger blob (speed 0.17) through an 1800-step production fixture that derives the 3D lesson length, and add fail-closed capture-level validation.
+- [ ] 07-15-PLAN.md — Preregister the S1/S2/R1/E7' and lesson-length amendment plus item 8, the 2026-11-21 seed-speed decision (speed 0.17 failed E7' over 1800 steps), from the uncommitted Task 1 work, and show it RED on the 07-11 recipe. Then select a lower seed speed (grid 0.15-0.12) and a larger blob by a preregistered candidate sweep with halt rules, through the 1800-step production fixture that derives the 3D lesson length, and add fail-closed capture-level validation. *(Replanned 2026-11-21 after the Task 1 halt; E7', D-17 and the 1000x rule are unchanged.)*
 
 **Gap Wave 5** *(blocked on 07-15)*
 
@@ -97,7 +97,7 @@ Plans:
 
 **Gap Wave 6** *(blocked on 07-16)*
 
-- [ ] 07-17-PLAN.md — Build and identify the exact app, then obtain the user's blocking re-observation of UAT test 2: returning-dye brightness, starting patch size and run length. Records a machine-checkable g07_2_* approval marker set only from the user's response.
+- [ ] 07-17-PLAN.md — Build and identify the exact app, then obtain the user's blocking re-observation of UAT test 2: returning-dye brightness, starting patch size, run length, and early motion at the lowered seed speed. Records a machine-checkable g07_2_* approval marker set only from the user's response.
 
 **Gap Wave 7** *(blocked on 07-17 approval, enforced by a machine-checkable gate; revised 2026-11-21)*
 
