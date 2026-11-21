@@ -334,6 +334,55 @@ final class SimulationStateTests: XCTestCase {
         state.togglePause(); XCTAssertTrue(state.userPaused)
         state.beginReset(); state.finishReset(); XCTAssertFalse(state.complete); XCTAssertTrue(state.canStep)
     }
+    func testThreeDLessonCompletesAtItsOwnLength() {
+        XCTAssertNil(SimulationMode.freePlay.lessonStepLimit, "Free Play must have no lesson limit")
+        for lesson in ExperimentID.allCases {
+            XCTAssertEqual(SimulationMode.experiment(lesson).lessonStepLimit, 600, "2D lesson \(lesson) must stay at 600")
+        }
+        let n = SimulationState.threeDLessonSteps
+        XCTAssertTrue([1200, 1500, 1800].contains(n), "3D lesson length must be a preregistered choice")
+        XCTAssertEqual(SimulationMode.dyeAdvection3D.lessonStepLimit, n)
+
+        // Running past the 2D length.
+        var running = SimulationState()
+        running.selectMode(.dyeAdvection3D); running.finishReset(); running.togglePause()
+        for _ in 0..<600 { XCTAssertTrue(running.consumeStep()) }
+        XCTAssertFalse(running.complete, "3D lesson must not complete at 600")
+        XCTAssertEqual(running.status, "Step 600")
+        XCTAssertTrue(running.shouldAdvance, "3D lesson must keep advancing after 600")
+
+        // The N-1 boundary.
+        for _ in 600..<(n - 1) { XCTAssertTrue(running.consumeStep()) }
+        running.togglePause()
+        XCTAssertEqual(running.stepCount, n - 1); XCTAssertTrue(running.userPaused)
+        XCTAssertEqual(running.status, "Step \(n - 1)")
+        XCTAssertTrue(running.requestSingleStep(), "one step at N-1 must be accepted")
+        XCTAssertFalse(running.requestSingleStep(), "a second queued step at N-1 must be refused")
+        XCTAssertTrue(running.consumeStep())
+        XCTAssertEqual(running.stepCount, n)
+        XCTAssertTrue(running.complete, "3D lesson must complete at N"); XCTAssertTrue(running.userPaused)
+        XCTAssertEqual(running.status, "Experiment complete. Restart to compare.")
+        XCTAssertFalse(running.requestSingleStep()); XCTAssertFalse(running.consumeStep())
+        running.togglePause(); XCTAssertTrue(running.userPaused, "pause toggle must not resume a completed lesson")
+        running.beginReset(); running.finishReset()
+        XCTAssertEqual(running.stepCount, 0); XCTAssertEqual(running.status, "Step 0")
+        XCTAssertFalse(running.complete); XCTAssertTrue(running.canStep)
+
+        // 2D lessons still accept exactly one queued step at 599.
+        var twoD = SimulationState()
+        twoD.selectMode(.experiment(.dyeStretching)); twoD.finishReset(); twoD.togglePause()
+        for _ in 0..<599 { XCTAssertTrue(twoD.consumeStep()) }
+        twoD.togglePause()
+        XCTAssertTrue(twoD.requestSingleStep(), "2D at 599 accepts one step")
+        XCTAssertFalse(twoD.requestSingleStep(), "2D at 599 refuses a second queued step")
+        XCTAssertTrue(twoD.consumeStep()); XCTAssertTrue(twoD.complete); XCTAssertEqual(twoD.stepCount, 600)
+
+        // Free Play never completes.
+        var free = SimulationState()
+        free.selectMode(.freePlay); free.finishReset()
+        for _ in 0..<2000 { XCTAssertTrue(free.consumeStep()) }
+        XCTAssertFalse(free.complete, "Free Play must never complete")
+    }
     func testRetentionIsolation() {
         var tuning = SimulationTuning()
         tuning.setPosition(1, for: .fade)

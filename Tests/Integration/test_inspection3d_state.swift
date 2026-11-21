@@ -200,10 +200,10 @@ private func reference(_ p: SIMD3<Double>, yaw: Double, elevation: Double, zoom:
         check(StateOperationSnapshot(resetting) == resettingBefore && resetting.resetting, "resetting state changed during inspection edit")
 
         var completed = threeDState()
-        for _ in 0..<SimulationState.lessonSteps {
+        for _ in 0..<SimulationMode.dyeAdvection3D.lessonStepLimit! {
             check(completed.requestSingleStep() && completed.consumeStep(), "completion-cap setup")
         }
-        check(completed.complete && completed.stepCount == SimulationState.lessonSteps, "completion cap setup")
+        check(completed.complete && completed.stepCount == SimulationMode.dyeAdvection3D.lessonStepLimit!, "completion cap setup")
         let completedBefore = StateOperationSnapshot(completed)
         let completedInspection = changedInspection(completed.inspection3D)
         completed.setInspection3D(completedInspection)

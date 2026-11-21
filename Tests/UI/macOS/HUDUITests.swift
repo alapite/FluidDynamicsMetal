@@ -1134,6 +1134,37 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["transport.step"].isEnabled)
     }
 
+    func testThreeDLessonRunsPastTwoDLengthAndCompletes() {
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 10))
+        selector.click()
+        selector.menuItems["3D Dye Advection"].click()
+        assertSelectorValue("3D Dye Advection", in: selector)
+        let counter = app.staticTexts["stepCount"]
+        XCTAssertEqual(counter.value as? String, "Step 0")
+        app.buttons["transport.pause"].click()
+
+        let pastTwoD = NSPredicate { object, _ in
+            guard let value = (object as? XCUIElement)?.value as? String, value.hasPrefix("Step "),
+                  let n = Int(value.dropFirst(5)) else { return false }
+            return n > 650
+        }
+        let pastExpectation = XCTNSPredicateExpectation(predicate: pastTwoD, object: counter)
+        XCTAssertEqual(XCTWaiter.wait(for: [pastExpectation], timeout: 120), .completed,
+                       "3D lesson did not show a numeric step past 650; counter was \(String(describing: counter.value))")
+
+        let completion = NSPredicate(format: "value == %@", "Experiment complete. Restart to compare.")
+        let completeExpectation = XCTNSPredicateExpectation(predicate: completion, object: counter)
+        XCTAssertEqual(XCTWaiter.wait(for: [completeExpectation], timeout: 300), .completed,
+                       "3D lesson did not complete; counter was \(String(describing: counter.value))")
+        XCTAssertFalse(app.buttons["transport.step"].isEnabled)
+        XCTAssertFalse(app.buttons["transport.pause"].isEnabled)
+        command("r")
+        let restarted = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "Step 0"), object: counter)
+        XCTAssertEqual(XCTWaiter.wait(for: [restarted], timeout: 10), .completed)
+        XCTAssertTrue(app.buttons["transport.step"].isEnabled)
+    }
+
     private func command(_ key: String) {
         app.activate()
         app.typeKey(key, modifierFlags: .command)
