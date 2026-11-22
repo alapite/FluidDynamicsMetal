@@ -1624,7 +1624,8 @@ def _validate_inspection_independence(result: dict) -> list[str]:
 
     inventory(result.get("inventory"), ("reset",), True)
     inventory(result.get("traceInventory"), ("reset", "traced"), True, True)
-    require(result.get("byteCount") == 33776184, "reset payload bytes")
+    # The total follows the independent layout, so adding a resource there updates it (07-13).
+    require(result.get("byteCount") == sum(r["byteCount"] for r in inspection_inventory()), "reset payload bytes")
     negatives = {f"{kind}/{r['name']}" for r in inspection_inventory()
                  for kind in ("byte", "omission", "rename", "resize")}
     negatives |= {f"{kind}/status/traced/{role}" for kind in ("byte", "omission", "rename", "resize")
@@ -1892,7 +1893,7 @@ def synthetic_inspection_manifest() -> dict:
     statuses = ("reset", "latest", "submitted-2", "submitted-3", "submitted-4")
     fixtures["inspection-independence"]["result"].update({
         "inventory": resources(), "traceInventory": resources(("reset", "traced"), True),
-        "byteCount": 33776184,
+        "byteCount": sum(r["byteCount"] for r in inspection_inventory()),
         "negativeChecks": [
             *[f"{kind}/{r['name']}" for r in inspection_inventory() for kind in ("byte", "omission", "rename", "resize")],
             *[f"{kind}/status/traced/{role}" for kind in ("byte", "omission", "rename", "resize") for role in ("state", "trace")],
