@@ -2746,6 +2746,20 @@ class Fluid3DTests(unittest.TestCase):
             _validate_fixture_metrics("transitions-and-failures", report),
         )
 
+    def test_inspection_reset_payload_total_follows_independent_inventory(self):
+        """07-13: 6571fc5 added the 48-byte projection/iteration-gate buffer to the independent
+        inventory, but the reset payload total stayed pinned at the pre-gate 33776184 bytes."""
+        expected = sum(record["byteCount"] for record in inspection_inventory())
+        self.assertEqual(expected, 33776232)
+        valid = synthetic_inspection_manifest()
+        self.assertEqual(valid["fixtures"]["inspection-independence"]["result"]["byteCount"], expected)
+        self.assertNotIn("inspection-independence: reset payload bytes", validate_inspection_manifest(valid))
+        for wrong in (expected - 48, expected + 4):
+            changed = copy.deepcopy(valid)
+            changed["fixtures"]["inspection-independence"]["result"]["byteCount"] = wrong
+            with self.subTest(byteCount=wrong):
+                self.assertIn("inspection-independence: reset payload bytes", validate_inspection_manifest(changed))
+
     def test_inspection_routing_requires_transactional_tracer_reset_and_step_evidence(self):
         report = {
             "result": {
