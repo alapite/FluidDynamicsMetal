@@ -5,10 +5,10 @@ milestone_name: 3D Teaching Foundation
 current_phase: 7
 current_phase_name: First 3D Fluid Vertical Slice
 status: executing
-stopped_at: Completed 07-17-PLAN.md (G-07-2 approved by user)
+stopped_at: Completed 07-13-PLAN.md (fresh matrix and verification reports)
 last_updated: "2026-11-21T12:49:13.819Z"
 last_activity: 2026-11-21
-last_activity_desc: 07-17 complete (G-07-2 approved); 07-13 next
+last_activity_desc: 07-13 complete; all 17 Phase 7 plans have summaries
 state_head: 845b678beaea020bfd3279f0cb326667add1b4a8
 progress:
   total_phases: 4
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-11-06)
 ## Current Position
 
 Phase: 7 (First 3D Fluid Vertical Slice) — EXECUTING
-Plan: 17 of 17 (07-13 full regression matrix next)
-Status: Ready — 07-13 (gate g07_2_outcome: approved)
-Last activity: 2026-11-21 — 07-17 complete: user typed "approved" for G-07-2 (a-d) on a89f46b; review found and fixed a Mac Step-button shift (1a20dab RED, a89f46b fix)
+Plan: 17 of 17 (all complete)
+Status: Phase 7 plans complete — phase verification / /gsd-verify-work 7 next
+Last activity: 2026-11-22 — 07-13 complete: fresh 7-category matrix all PASS at 1502d69 (53 Mac, 50 integration, 11+11 iOS HUD); both validators PASS; dated gap-closure sections in docs/3d-phase7/8-verification.md; stale inspection reset-payload pin fixed (40c0e70, 1502d69)
 
 Progress: [███░░░░░░░] 25% of currently planned v1.1 plans closed (17/18); Phase 8 is 8/9. The one plan-closed phase in frontmatter is Phase 7, not a human-acceptance claim. No v1.1 phase is fully accepted; Phase 7 manual acceptance remains incomplete.
 
@@ -93,6 +93,7 @@ Progress: [███░░░░░░░] 25% of currently planned v1.1 plans c
 
 - [Phase 07]: 07-16 complete (2026-11-21): SimulationMode.lessonStepLimit (nil Free Play, 600 for 2D, SimulationState.threeDLessonSteps = 1200 for 3D) is the single limit read by complete and requestSingleStep. Gate L1 (Swift fixture + Python, parsing the source constant) keeps the shipped length equal to the evidence-derived one. ROADMAP Phase 9 handoff and a REQUIREMENTS acceptance note record that LES-05/criterion 2 (600) must be reconciled in Phase 9 planning; no requirement text or status changed.
 - [Phase 07]: 07-17 complete (2026-11-21): user approved G-07-2 sub-findings a-d (verbatim "approved") on the rebuilt app at a89f46b (seed 0.155, 3D lesson 1200). During review the Mac Pause title change Run->Resume shifted Step 25 pt so a second Step click resumed the lesson; fixed with a fixed-width Pause button (a89f46b) and regression HUD test (1a20dab). 07-UAT.md and REQUIREMENTS.md unchanged.
+- [Phase 07]: 07-13 complete (2026-11-22): fresh evidence at 1502d69 passes --check-evidence and --verify-inspection-evidence; matrix 7/7 PASS first attempt (2,886.935 s). First run's only failure was a stale validator total (33776184, pre-6571fc5 iteration-gate buffer); by user decision it now sums inspection_inventory(). Requirement statuses and 07-UAT.md untouched; /gsd-verify-work 7 owns acceptance.
 
 ### Pending Todos
 
@@ -166,12 +167,12 @@ The 2026-09-25 pre-close audit found three open artifacts (Phase 1 UAT and verif
 ## Session Continuity
 
 Last session: 2026-11-21T09:15:37.789Z
-Stopped at: Completed 07-17-PLAN.md
+Stopped at: Completed 07-13-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Phase 7 gap closure (2026-11-21): 07-15 (speed 0.155, blob B3) and 07-16 (3D lesson 1200 steps) complete. 07-17 complete: the user approved G-07-2 (a-d) on a89f46b. Next: 07-13 (full regression matrix, including the new HUD test testRepeatedStepClicksAtSamePlaceStayPaused).
+- Phase 7 gap closure (2026-11-21): 07-15 (speed 0.155, blob B3) and 07-16 (3D lesson 1200 steps) complete. 07-17 (G-07-2 approved) and 07-13 (fresh matrix, both validators PASS, report sections) complete. All 17 Phase 7 plans have summaries. Next: phase-level verification / `/gsd-verify-work 7` for UAT results and requirement statuses.
 
 - Phase 7 gap closure: 07-12 recorded G-07-5 human re-observation PASS (and Command-M PASS) but G-07-2 OPEN (3D slice: returning dye very dim, patch small, run length too short; see `07-12-SUMMARY.md`). Do NOT run 07-13. Next: `/gsd-plan-phase 7 --gaps` or `/gsd-verify-work 7` to diagnose and replan G-07-2. UAT results and requirement statuses are owned by `/gsd-verify-work`.
 - Next is 08-09 / Wave 9 mandatory actual human review; do not auto-approve it. Read `08-08-SUMMARY.md`, `08-08-REVIEW.md` and `docs/3d-phase8-verification.md` for the fresh full matrix, retained failures/retries, actual manifest/app/capture paths and unchecked human checklist. Eight of nine plans are complete; 08-09 and phase-level verification remain pending. Keep all five Phase 8 requirements pending; no auto-advance or phase completion was performed.

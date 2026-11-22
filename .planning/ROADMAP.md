@@ -34,7 +34,7 @@ The post-v1.0 educational release (`07703e2`, documented 2026-10-13) established
 3. App inactivity freezes evolution and reactivation introduces no catch-up steps; switching back to 2D restores the established mode-selection/reset behaviour without stale input.
 4. The production encoder passes documented three-axis advection, compatible projection, all-six-face boundary, and finite-value fixtures. Reference results and tolerances are defined before acceptance; both pressure residual and post-projection divergence are measured.
 
-**Plans**: 16/17 plans executed (9 original plans in 8 waves, all closed; 8 UAT gap-closure plans in 7 gap waves)
+**Plans**: 17/17 plans executed (9 original plans in 8 waves, all closed; 8 UAT gap-closure plans in 7 gap waves)
 
 Plans:
 **Wave 1**
@@ -101,7 +101,7 @@ Plans:
 
 **Gap Wave 7** *(blocked on 07-17 approval, enforced by a machine-checkable gate; revised 2026-11-21)*
 
-- [ ] 07-13-PLAN.md — Regenerate fresh Phase 7/Phase 8 evidence through one final matrix and append dated gap-closure sections to both verification reports, covering 07-10 to 07-17.
+- [x] 07-13-PLAN.md — Regenerate fresh Phase 7/Phase 8 evidence through one final matrix and append dated gap-closure sections to both verification reports, covering 07-10 to 07-17.
 
 **Execution status (2026-11-13):** All nine plans are closed across eight waves. Plan 07-09 closed the documentation work, but the human visual/accessibility/native-interaction review was **not performed**; its checklist remains unchecked and this is not a human-review PASS. SIM-04, SIM-05, SIM-06, LES-01, LES-02, and LES-06 remain pending manual acceptance; VER-03 is complete from automated production-kernel evidence. Actual macOS 26 runtime and physical-device multitouch remain **NOT TESTED**; displayed frame pacing remains **NOT MEASURED**.
 
@@ -218,7 +218,7 @@ Planning focus: bounded ray-box sampling, sample-distance-aware opacity, tracer 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 7. First 3D Fluid Vertical Slice | 16/17 | Gap closure in progress (G-07-5 re-observed OK; G-07-2 open after 07-12); acceptance incomplete | — (original plans closed 2026-11-13) |
+| 7. First 3D Fluid Vertical Slice | 17/17 | Gap closure in progress (G-07-5 re-observed OK; G-07-2 open after 07-12); acceptance incomplete | — (original plans closed 2026-11-13) |
 | 8. Spatial Inspection | 8/9 | In Progress — next 08-09 / Wave 9 mandatory human review | — |
 | 9. Repeatable 3D Advection Lesson | 0/TBD | Not started | — |
 | 10. Volume View and Measured Release Quality | 0/TBD | Not started | — |

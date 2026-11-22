@@ -7,6 +7,8 @@ schema fixture or automated result is human approval.
 
 ## Reference environment and freshness
 
+> **Prior run (08-08, 2026-11-15).** The figures in this section and the next are that run's; the current evidence identity is in "Gap-closure re-qualification" at the end of this report.
+
 The real machine-readable evidence namespace is
 `.build/inspection3d-evidence/`. `manifest.json` uses separately versioned
 `kind: fluid3d-inspection`, schema 1, `evidenceClass: actual-production-run`
@@ -41,6 +43,8 @@ results. The exact production configuration is 64³, dt=1/60, 512 i-fastest
 float4 seeds `((i+.5)/8,(j+.5)/8,(k+.5)/8,1)` on an 8³ lattice.
 
 ## Automated regression matrix
+
+> **Prior run (08-08).** The fresh 2026-11-22 matrix is in "Gap-closure re-qualification" below.
 
 **Final automated matrix: PASS**, after the separately retained Mac and iPhone
 failures/retries below. All commands ran at the final code state; only
@@ -259,3 +263,51 @@ observations or launch/interaction acceptance have been recorded in 08-08.
 Historical Phase 7 solver-only and solver-plus-fixed-slice timings retain their
 original labels and date in `3d-phase7-verification.md`; they are not fresh
 spatial workload timings and cannot establish FPS or the Phase 10 30-fps floor.
+
+## Gap-closure re-qualification — 2026-11-22
+
+Phase 7 gap closure (plans 07-10 to 07-17) changed hashed spatial sources and both contracts, so the Phase 8 inspection evidence was regenerated end to end. The fresh run started at **2026-11-22T07:25:56Z** at commit `1502d69`. The manifest was generated at 08:14:09Z.
+
+- **Environment:** Mac15,6 / Apple M3 Pro; macOS **27.2.1 (26B131)**; Xcode **27.2 (27B52)**; Apple Swift **6.4.2**; Metal **32023.922**; Debug/arm64.
+- **Inventories:** the spatial inventory hashes **34 files**, and the legacy fixture inventory stays separately **24 files**.
+
+| Identity | Prior run (08-08) | Fresh (2026-11-22) |
+|---|---|---|
+| Production metallib | `0481040a6a18d577b2a03385b0bf32de65f71b5f21e2810cc5051e3c36e3aaef` | `394571a004e383523dee440ec460d2f20ba1f7432f12ded487dda551dd516b91` |
+| Numerical-contract prefix | `a7768571a996d5b9520aff5095100bb52fb67f96560f99633d081c04a3a9e01b` | unchanged |
+| Full numerical contract | `5fdc33b839d7f135a828ac9e6e3c3b4e7adba03d5341771ddbed4b13767951a8` | `1f396b713eb126c084c71a3cd8465f264f869991db1be23ca6e87bb726aa8aa3` |
+| Inspection contract | `7f793d4ecfff13e7138a96e354f7597a9da9db88853c657d47a23ae09955e0c7` | `ac824cffb3cb3db141cf1c03f9425cd67797db0586246480a258ddd06a502cbb` |
+| Independent inspection oracle | `6fb1e9a948af7fd0bd49131abf8a2292fc12306759f59bd4b9eaf189bb3cf5fc` | `4cf7a496fc5b7b958160075b68563eb0b83c80e964b8245cdf39e7bd85f28718` |
+
+Gap-closure source changes that entered the spatial inventory:
+- `Renderer.swift` and `Sources/macOS/RenderViewController.swift`: the 07-10 paused presentation and panel Command-M, plus the 07-17 fixed-width Pause button.
+- `Tests/UI/macOS/HUDUITests.swift`.
+- `ExperimentRecipes3D.swift`: the 07-15 recipe, seed speed 0.155 with blob B3.
+- `FieldVisualization3D.swift` and `Shaders3D.metal`: the 07-14 square-root transfer and legend.
+- `SimulationState.swift`: the 07-16 3D lesson length of 1200.
+- The integration test files.
+- `docs/3d-inspection-contract.md`, with its dated **square-root display transfer amendment**.
+
+`docs/3d-numerical-contract.md` (the 07-11 and 07-15 amendments) is bound separately through the manifest's `completeContractSHA256`, not through the spatial inventory.
+
+The pressure solver's indirect-dispatch iteration gate (`6571fc5`, 2026-11-19) is also in this inventory. During 07-13 it exposed a stale reset-payload total in the inspection validator, fixed in `40c0e70` and `1502d69`. The first run's failure is retained as `07-13-run1-*`. The 08-09 human reviewer will now see the **square-root palette** on the spatial sheet.
+
+| Command | Outcome | Wall duration | Evidence |
+|---|---|---:|---|
+| Exact Mac Debug arm64 build | PASS, exit 0 | 3.470 s | `logs/07-13/macBuild-attempt-1.log` |
+| Exact generic iOS Simulator build | PASS, exit 0 | 3.780 s | `logs/07-13/iosBuild-attempt-1.log` |
+| Full Mac state/HUD | PASS, exit 0; **53/53** (26 state + 27 UI) | 1,374.419 s | `logs/07-13/macTests-attempt-1.log`, `07-13/macTests-attempt-1.xcresult` |
+| Full integration | PASS, exit 0; **50/50** | 970.910 s | `logs/07-13/integrationTests-attempt-1.log` |
+| iPhone 17 Pro / iOS 26.4 HUD | PASS, exit 0; **11/11** | 282.626 s | `logs/07-13/iphoneHUD-attempt-1.log`, `07-13/iphoneHUD-attempt-1.xcresult` |
+| iPad Pro 13-inch (M5) / iOS 26.4 HUD | PASS, exit 0; **11/11** | 247.524 s | `logs/07-13/ipadHUD-attempt-1.log`, `07-13/ipadHUD-attempt-1.xcresult` |
+| Launchable Mac preparation | PASS, exit 0 | 4.207 s | `logs/07-13/launchableApp-attempt-1.log` |
+
+Paths are relative to `.build/inspection3d-evidence/`. Every category passed on its first attempt, and attempt wall time totals 2,886.935 s.
+
+`python3 Tests/Integration/test_fluid3d.py --verify-inspection-evidence .build/inspection3d-evidence` passes: "PASS: fresh actual inspection evidence and full matrix; human review PENDING; pacing NOT MEASURED." The 08-08 matrix and manifest are retained as `08-08-regression-matrix.retained.json` and `08-08-manifest.retained.json`.
+
+Unchanged boundaries:
+- Every 08-09 human-review checklist item stays unchecked.
+- INS-01 to INS-04 and CTRL-08 remain **PENDING**.
+- VoiceOver, macOS 26 runtime and physical multitouch remain **NOT TESTED**.
+- Displayed frame pacing remains **NOT MEASURED**.
