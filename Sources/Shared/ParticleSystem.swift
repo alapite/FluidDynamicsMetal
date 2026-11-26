@@ -47,18 +47,21 @@ final class ParticleSystem {
         encoder.dispatchThreads(MTLSize(width: Self.count, height: 1, depth: 1), threadsPerThreadgroup: MTLSize(width: 64, height: 1, depth: 1))
         encoder.endEncoding()
     }
-    func encodeDisplay(command: MTLCommandBuffer, destination: MTLTexture, viewport: MTLViewport, pointSize: SIMD2<Float>, trails: Bool) {
+    func encodeDisplay(command: MTLCommandBuffer, destination: MTLTexture, viewport: MTLViewport, pointSize: SIMD2<Float>, trails: Bool, sparse: Bool = false) {
         var parameters = SIMD4<Float>(pointSize.x, pointSize.y, Float(head), Float(sampleCount))
         let encoder = FieldVisualization.encoder(command: command, destination: destination, viewport: viewport, load: .load)
         encoder.setVertexBuffer(positions, offset: 0, index: 0)
         encoder.setVertexBuffer(history, offset: 0, index: 1)
         encoder.setVertexBytes(&parameters, length: 16, index: 2)
+        var sparseFlag: UInt32 = sparse ? 1 : 0
+        encoder.setVertexBytes(&sparseFlag, length: MemoryLayout<UInt32>.size, index: 3)
+        let visibleCount = sparse ? 16 : Self.count
         if trails, sampleCount > 1 {
             encoder.setRenderPipelineState(trailPipeline)
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: Self.count * Int(sampleCount - 1))
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: visibleCount * Int(sampleCount - 1))
         }
         encoder.setRenderPipelineState(markerPipeline)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: Self.count)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: visibleCount)
         encoder.endEncoding()
     }
 }

@@ -13,6 +13,14 @@ import MetalKit
 class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
 
     var renderer: Renderer!
+    private var freePlayPreview: FreePlayPreviewView?
+    private lazy var experimentThumbnails: [String: UIImage] = Dictionary(
+        uniqueKeysWithValues: SimulationMode.twoDimensionalModes.compactMap { mode in
+            guard let image = UIImage(named: mode.thumbnailName), let pixels = image.cgImage else { return nil }
+            let thumbnail = UIImage(cgImage: pixels, scale: 3, orientation: image.imageOrientation)
+            return (mode.thumbnailName, thumbnail.withRenderingMode(.alwaysOriginal))
+        }
+    )
     private let experimentSelector = UIButton(type: .system)
     private let stepButton = UIButton(type: .system)
     private let restartButton = UIButton(type: .system)
@@ -28,6 +36,8 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     private let explanation = UILabel()
     private let aboutButton = UIButton(type: .system)
     private let aboutText = UILabel()
+    private let startingOutlineSwitch = UISwitch()
+    private let startingOutlineRow = UIStackView()
     private var overlaySwitches: [UISwitch] = []
     private let bodyStack = UIStackView()
     private let pinnedStack = UIStackView()
@@ -66,6 +76,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         metalView.isMultipleTouchEnabled = true
 
         installControls()
+        installFreePlayPreview()
         renderer.stateDidChange = { [weak self] in self?.refreshTransport() }
 
         let doubleTapGesture = UITapGestureRecognizer(target: self, action: #selector(doubleTap))
@@ -91,7 +102,34 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(willResignActive), name: UIApplication.willResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateAppearance), name: UIAccessibility.reduceTransparencyStatusDidChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(reduceMotionChanged), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateTextSize), name: UIContentSizeCategory.didChangeNotification, object: nil)
+    }
+
+    private func installFreePlayPreview() {
+        guard FreePlayPreviewPlayback.claimLaunchPreview() else { return }
+        let preview = FreePlayPreviewView(reduceMotion: FreePlayPreviewPlayback.usesStill(
+            reduceMotion: UIAccessibility.isReduceMotionEnabled))
+        preview.frame = metalView.bounds
+        preview.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        metalView.insertSubview(preview, belowSubview: canvasAccessibility)
+        freePlayPreview = preview
+        canvasAccessibility.accessibilityHint = FreePlayPreviewPlayback.instruction
+        updateControlLayout()
+        preview.playback.setActive(UIApplication.shared.applicationState == .active)
+    }
+
+    private func dismissFreePlayPreview() {
+        guard let preview = freePlayPreview else { return }
+        freePlayPreview = nil
+        preview.playback.stop()
+        preview.removeFromSuperview()
+        canvasAccessibility.accessibilityHint = nil
+        if renderer.state.mode == .freePlay { canvasAccessibility.isHidden = true }
+    }
+
+    @objc private func reduceMotionChanged() {
+        if UIAccessibility.isReduceMotionEnabled { freePlayPreview?.playback.showStill() }
     }
 
     private func label(_ label: UILabel, _ text: String, style: UIFont.TextStyle = .subheadline) {
@@ -136,8 +174,12 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         configureButton(pauseButton, title: "Pause", id: "transport.pause", action: #selector(pauseFromHUD(_:)))
         configureButton(stepButton, title: "Step", id: "transport.step", action: #selector(singleStep))
         configureButton(restartButton, title: "Reset fluid", id: "transport.restart", action: #selector(restart))
-        transport.axis = .horizontal; transport.spacing = 8; transport.distribution = .fillEqually
+        transport.axis = .horizontal; transport.spacing = 8
         transport.addArrangedSubview(pauseButton); transport.addArrangedSubview(stepButton); transport.addArrangedSubview(restartButton)
+        NSLayoutConstraint.activate([
+            pauseButton.widthAnchor.constraint(equalTo: stepButton.widthAnchor),
+            restartButton.widthAnchor.constraint(equalTo: stepButton.widthAnchor, multiplier: 1.25)
+        ])
         label(stepLabel, "Step 0", style: .caption1); stepLabel.accessibilityIdentifier = "stepCount"
         for view in [experimentSelector, transport, stepLabel] { pinnedStack.addArrangedSubview(view) }
         label(question, "", style: .headline); question.accessibilityIdentifier = "lesson.question"
@@ -168,6 +210,17 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
             row.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true; bodyStack.addArrangedSubview(row)
         }
         let trailsHint = UILabel(); label(trailsHint, LearningCopy.trails, style: .caption1); bodyStack.addArrangedSubview(trailsHint)
+        let outlineName = UILabel()
+        label(outlineName, "Show starting outline")
+        startingOutlineSwitch.accessibilityLabel = outlineName.text
+        startingOutlineSwitch.accessibilityIdentifier = "overlay.startingOutline"
+        startingOutlineSwitch.addTarget(self, action: #selector(changeStartingOutline), for: .valueChanged)
+        startingOutlineRow.addArrangedSubview(outlineName)
+        startingOutlineRow.addArrangedSubview(startingOutlineSwitch)
+        startingOutlineRow.alignment = .center
+        startingOutlineRow.spacing = 8
+        startingOutlineRow.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        bodyStack.addArrangedSubview(startingOutlineRow)
         configureButton(tuningButton, title: "Show Tuning", id: "tuning.toggle", action: #selector(toggleTuning(_:)))
         bodyStack.addArrangedSubview(tuningButton)
         for control in TuningControl.allCases {
@@ -235,24 +288,45 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
             height = landscape ? safe.height - 32 : min(safe.height * 0.6, max(safe.height * 0.4, pinnedHeight + 72))
         } else { height = min(safe.height - 32, max(pinnedHeight + 100, safe.height * 0.65)) }
         hudHeight?.constant = height
+        let available = landscape
+            ? CGRect(x: safe.minX, y: safe.minY, width: max(1, safe.width - width - 32), height: safe.height)
+            : CGRect(x: safe.minX, y: safe.minY, width: safe.width, height: max(1, safe.height - height - 32))
         if lesson {
-            let available = landscape
-                ? CGRect(x: safe.minX, y: safe.minY, width: max(1, safe.width - width - 32), height: safe.height)
-                : CGRect(x: safe.minX, y: safe.minY, width: safe.width, height: max(1, safe.height - height - 32))
             let side = min(available.width, available.height)
             canvasAccessibility.frame = CGRect(x: available.midX - side / 2, y: available.midY - side / 2, width: side, height: side)
             canvasAccessibility.isHidden = false
             if renderer.lessonAvailableRect != available { renderer.lessonAvailableRect = available }
-        } else { canvasAccessibility.isHidden = true; if renderer.lessonAvailableRect != nil { renderer.lessonAvailableRect = nil } }
+        } else {
+            canvasAccessibility.frame = available
+            canvasAccessibility.isHidden = freePlayPreview == nil
+            if let preview = freePlayPreview {
+                preview.artworkAvailableFrame = metalView.convert(available, to: preview)
+            }
+            if renderer.lessonAvailableRect != nil { renderer.lessonAvailableRect = nil }
+        }
     }
     @objc private func singleStep() { renderer.requestSingleStep() }
-    @objc private func restart() { clearTouches(); renderer.restartCurrentSimulation(); refreshControls() }
+    @objc private func restart() {
+        dismissFreePlayPreview()
+        clearTouches()
+        renderer.restartCurrentSimulation()
+        refreshControls()
+    }
+    @objc private func changeStartingOutline() {
+        renderer.setStartingOutline(startingOutlineSwitch.isOn)
+    }
     @objc private func changeOverlay() {
+        dismissFreePlayPreview()
         renderer.setDisplayOptions(DisplayOptions(arrows: overlaySwitches[0].isOn, particles: overlaySwitches[1].isOn, trails: overlaySwitches[2].isOn)); refreshControls()
     }
     @objc private func toggleAbout() { aboutText.isHidden.toggle(); updateControlLayout() }
     private func refreshTransport() {
         let state = renderer.state
+        if startingOutlineRow.isHidden == state.offersStartingOutline {
+            startingOutlineRow.isHidden = !state.offersStartingOutline
+        }
+        startingOutlineSwitch.isEnabled = state.canToggleStartingOutline
+        startingOutlineSwitch.isOn = state.startingOutlineEnabled
         if stepLabel.text != state.status { stepLabel.text = state.status }
         let title = state.userPaused ? (state.mode.experiment != nil && state.stepCount == 0 ? "Run" : "Resume") : "Pause"
         if pauseButton.title(for: .normal) != title {
@@ -262,8 +336,10 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         if pauseButton.accessibilityLabel != pauseLabel { pauseButton.accessibilityLabel = pauseLabel }
         if pauseButton.isEnabled == state.complete { pauseButton.isEnabled = !state.complete }
         if stepButton.isEnabled != state.canStep { stepButton.isEnabled = state.canStep }
-        let restartTitle = state.mode == .freePlay ? "Reset fluid" : "Restart experiment"
+        let restartTitle = state.mode == .freePlay ? "Reset fluid" : "Restart"
         if restartButton.title(for: .normal) != restartTitle { restartButton.setTitle(restartTitle, for: .normal) }
+        let restartLabel = state.mode == .freePlay ? "Reset fluid" : "Restart experiment"
+        if restartButton.accessibilityLabel != restartLabel { restartButton.accessibilityLabel = restartLabel }
         if lastComplete != state.complete { lastComplete = state.complete; updateControlLayout() }
     }
 
@@ -280,10 +356,14 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         }
         refreshTransport()
         let state = renderer.state
-        experimentSelector.setTitle(state.mode.title + " ▾", for: .normal)
+        experimentSelector.setTitle(state.mode.title + "\u{00A0}▾", for: .normal)
         experimentSelector.menu = UIMenu(title: "Experiments", children: SimulationMode.twoDimensionalModes.map { mode in
-            UIAction(title: mode.title, state: mode == state.mode ? .on : .off) { [weak self] _ in
-                guard let self else { return }; self.clearTouches(); self.renderer.selectMode(mode); self.refreshControls()
+            UIAction(title: mode.title, image: experimentThumbnails[mode.thumbnailName], state: mode == state.mode ? .on : .off) { [weak self] _ in
+                guard let self else { return }
+                self.dismissFreePlayPreview()
+                self.clearTouches()
+                self.renderer.selectMode(mode)
+                self.refreshControls()
             }
         })
         lessonStack.isHidden = state.mode == .freePlay
@@ -313,6 +393,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     @objc private func changeTuning(_ sender: UISlider) {
+        dismissFreePlayPreview()
         guard let control = TuningControl(rawValue: sender.tag) else { return }
         renderer.setTuningPosition(sender.value, for: control)
         refreshTuningValues()
@@ -330,11 +411,13 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
 
     @objc private func selectField(_ sender: UIButton) {
         guard let field = DisplayField(rawValue: sender.tag) else { return }
+        dismissFreePlayPreview()
         renderer.selectField(field)
         refreshControls()
     }
 
     @objc private func pauseFromHUD(_ sender: UIButton) {
+        dismissFreePlayPreview()
         cancelPendingHolds()
         clearTouches()
         renderer.togglePause()
@@ -388,6 +471,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard renderer.state.acceptsInput else { return }
         for touch in touches where !isHUDTouch(touch) {
+            dismissFreePlayPreview()
             if positions[touch] == nil {
                 touchOrder.append(touch)
             }
@@ -459,12 +543,14 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     @objc func changeSource() {
         guard !renderer.state.inactive else { return }
         cancelPendingHolds()
+        dismissFreePlayPreview()
         renderer.nextSlab()
         refreshControls()
     }
 
     @objc final func doubleTap() {
         guard !renderer.state.inactive else { return }
+        dismissFreePlayPreview()
         cancelPendingHolds()
         clearTouches()
         renderer.togglePause()
@@ -475,6 +561,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         guard renderer.state.acceptsInput else { return }
         let point = recognizer.location(in: metalView)
         guard !hud.bounds.contains(recognizer.location(in: hud)) else { return }
+        dismissFreePlayPreview()
         renderer.enqueueTap(at: SIMD2<Float>(Float(point.x), Float(point.y)), in: metalView)
     }
 
@@ -494,11 +581,13 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     @objc final func willResignActive() {
+        freePlayPreview?.playback.setActive(false)
         clearTouches()
         renderer.resignActive()
     }
 
     @objc final func didBecomeActive() {
+        freePlayPreview?.playback.setActive(true)
         renderer.becomeActive()
         refreshControls()
     }

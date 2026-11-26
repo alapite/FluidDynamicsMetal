@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F31000000000000000000011 /* FreePlayPreview.swift in macOS Sources */ = {isa = PBXBuildFile; fileRef = F31000000000000000000001 /* FreePlayPreview.swift */; };
+		F31000000000000000000012 /* FreePlayPreview.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = F31000000000000000000001 /* FreePlayPreview.swift */; };
+		F31000000000000000000021 /* Shared Assets.xcassets in macOS Resources */ = {isa = PBXBuildFile; fileRef = F31000000000000000000002 /* Assets.xcassets */; };
+		F31000000000000000000022 /* Shared Assets.xcassets in iOS Resources */ = {isa = PBXBuildFile; fileRef = F31000000000000000000002 /* Assets.xcassets */; };
+		F31000000000000000000031 /* FreePlayPreview.mp4 in macOS Resources */ = {isa = PBXBuildFile; fileRef = F31000000000000000000003 /* FreePlayPreview.mp4 */; };
+		F31000000000000000000032 /* FreePlayPreview.mp4 in iOS Resources */ = {isa = PBXBuildFile; fileRef = F31000000000000000000003 /* FreePlayPreview.mp4 */; };
 		D80100000000000000000001 /* InspectionState3D.swift in macOS Sources */ = {isa = PBXBuildFile; fileRef = D80000000000000000000001 /* InspectionState3D.swift */; };
 		D80100000000000000000002 /* InspectionState3D.swift in iOS Sources */ = {isa = PBXBuildFile; fileRef = D80000000000000000000001 /* InspectionState3D.swift */; };
 		D80100000000000000000003 /* InspectionState3D.swift in state test Sources */ = {isa = PBXBuildFile; fileRef = D80000000000000000000001 /* InspectionState3D.swift */; };
@@ -88,6 +94,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		F31000000000000000000001 /* FreePlayPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreePlayPreview.swift; sourceTree = "<group>"; };
+		F31000000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F31000000000000000000003 /* FreePlayPreview.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = FreePlayPreview.mp4; sourceTree = "<group>"; };
 		D80000000000000000000001 /* InspectionState3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectionState3D.swift; sourceTree = "<group>"; };
 		D80000000000000000000002 /* Camera3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Camera3D.swift; sourceTree = "<group>"; };
 		D80300000000000000000002 /* InspectionSlider3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectionSlider3D.swift; sourceTree = "<group>"; };
@@ -209,6 +218,9 @@
 			isa = PBXGroup;
 			children = (
 				D80000000000000000000001 /* InspectionState3D.swift */,
+				F31000000000000000000001 /* FreePlayPreview.swift */,
+				F31000000000000000000002 /* Assets.xcassets */,
+				F31000000000000000000003 /* FreePlayPreview.mp4 */,
 				D80000000000000000000002 /* Camera3D.swift */,
 				753C09591F4398C500D67F17 /* ComputeShader.swift */,
 				7594D4371F434ECE00E4AE27 /* RenderShader.swift */,
@@ -398,6 +410,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				75D5209E1FE5539E003525F9 /* Assets.xcassets in Resources */,
+				F31000000000000000000021 /* Shared Assets.xcassets in macOS Resources */,
+				F31000000000000000000031 /* FreePlayPreview.mp4 in macOS Resources */,
 				75D520A11FE5539E003525F9 /* Main.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -408,6 +422,8 @@
 			files = (
 				75F3F0761F311D4A00A3EC4A /* LaunchScreen.storyboard in Resources */,
 				75F3F0731F311D4A00A3EC4A /* Assets.xcassets in Resources */,
+				F31000000000000000000022 /* Shared Assets.xcassets in iOS Resources */,
+				F31000000000000000000032 /* FreePlayPreview.mp4 in iOS Resources */,
 				75F3F0711F311D4A00A3EC4A /* Main.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -423,6 +439,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D80100000000000000000001 /* InspectionState3D.swift in macOS Sources */,
+				F31000000000000000000011 /* FreePlayPreview.swift in macOS Sources */,
 				D80200000000000000000001 /* Camera3D.swift in macOS Sources */,
 				756896A61FEB08A800727447 /* Renderer.swift in Sources */,
 				E100000000000000000000003 /* SimulationTypes.swift in Sources */,
@@ -454,6 +471,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D80100000000000000000002 /* InspectionState3D.swift in iOS Sources */,
+				F31000000000000000000012 /* FreePlayPreview.swift in iOS Sources */,
 				D80200000000000000000002 /* Camera3D.swift in iOS Sources */,
 				756896A51FEB08A800727447 /* Renderer.swift in Sources */,
 				E100000000000000000000002 /* SimulationTypes.swift in Sources */,

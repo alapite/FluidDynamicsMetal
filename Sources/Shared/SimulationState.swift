@@ -21,14 +21,13 @@ enum DisplayField: Int, CaseIterable {
         case .vorticity: return [[0.95,0.38,0.06], [0.88,0.88,0.88], [0.08,0.35,0.85]]
         }
     }
-    var scaleNote: String { self == .density ? "" : "Colour scale adjusts to this frame." }
+    var scaleNote: String { self == .density ? "Brightness uses a square-root scale to reveal faint dye." : "Colour scale adjusts to this frame." }
 }
 
 struct DisplayOptions: Equatable {
     var arrows = false
     var particles = false
     var trails = false
-    static let lesson = DisplayOptions(arrows: true, particles: true, trails: false)
 }
 
 enum SimulationMode: Equatable {
@@ -84,6 +83,14 @@ enum ExperimentID: Int, CaseIterable {
         case .dyeStretching: return .strength(.normal)
         }
     }
+    var defaultDisplayOptions: DisplayOptions {
+        switch self {
+        case .advection: return DisplayOptions(particles: true, trails: true)
+        case .interactingVortices: return DisplayOptions(arrows: true)
+        case .dyeStretching: return DisplayOptions()
+        }
+    }
+    var supportsStartingOutline: Bool { self == .advection || self == .dyeStretching }
     var defaultField: DisplayField { self == .interactingVortices ? .vorticity : .density }
 }
 enum FlowSpeed: Float, CaseIterable { case slow = 0.5, normal = 1, fast = 1.5 }
@@ -163,6 +170,7 @@ struct SimulationState {
     private(set) var mode: SimulationMode = .freePlay
     private(set) var adjustment: ExperimentAdjustment?
     private(set) var displayOptions = DisplayOptions()
+    private(set) var startingOutlineEnabled = false
     private(set) var inspection3D = InspectionState3D()
     private(set) var stepCount = 0
     private(set) var pendingSteps = 0
@@ -185,6 +193,14 @@ struct SimulationState {
     }
     var shouldAdvance: Bool { !userPaused && !inactive && !resetting && !complete }
     var canStep: Bool { userPaused && !inactive && !resetting && !complete }
+    var offersStartingOutline: Bool { mode.experiment?.supportsStartingOutline == true && field == .density }
+    var canToggleStartingOutline: Bool { offersStartingOutline && userPaused && stepCount > 0 && !resetting && !inactive }
+    var showsStartingOutline: Bool { startingOutlineEnabled && offersStartingOutline && userPaused && stepCount > 0 && !resetting }
+    @discardableResult mutating func setStartingOutline(_ enabled: Bool) -> Bool {
+        guard canToggleStartingOutline, startingOutlineEnabled != enabled else { return false }
+        startingOutlineEnabled = enabled
+        return true
+    }
     var acceptsInput: Bool { mode == .freePlay && shouldAdvance }
     var status: String { complete ? "Experiment complete. Restart to compare." : "Step \(stepCount)" }
     mutating func nextField() {
@@ -233,9 +249,10 @@ struct SimulationState {
     mutating func selectMode(_ mode: SimulationMode) {
         if self.mode == .freePlay { freePlayTuning = tuning; freePlayField = field; freePlayOptions = displayOptions }
         self.mode = mode
+        startingOutlineEnabled = false
         if let lesson = mode.experiment {
             adjustment = lesson.defaultAdjustment; tuning = .lesson
-            field = lesson.defaultField; displayOptions = .lesson; userPaused = true
+            field = lesson.defaultField; displayOptions = lesson.defaultDisplayOptions; userPaused = true
         } else if mode.is3D {
             adjustment = nil; userPaused = true; inspection3D = InspectionState3D()
         } else {

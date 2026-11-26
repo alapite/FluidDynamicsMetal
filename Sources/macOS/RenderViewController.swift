@@ -34,7 +34,7 @@ private final class SimulationControlsPanel: NSPanel {
     }
 }
 
-class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValidation {
+class RenderViewController: NSViewController, NSWindowDelegate, NSMenuDelegate, NSMenuItemValidation {
     private enum InspectionSliderKind: Int {
         case depth
         case orbit
@@ -51,7 +51,19 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     ]
 
     var renderer: Renderer!
+    private var freePlayPreview: FreePlayPreviewView?
+    private var canvasAccessibilityBeforePreview: (isElement: Bool, role: NSAccessibility.Role?)?
     private let experimentSelector = NSPopUpButton()
+    private lazy var experimentThumbnails: [String: NSImage] = Dictionary(
+        uniqueKeysWithValues: Self.selectableModes.compactMap { entry in
+            guard let image = NSImage(named: NSImage.Name(entry.mode.thumbnailName))?.copy() as? NSImage else {
+                return nil
+            }
+            image.size = NSSize(width: 32, height: 32)
+            image.isTemplate = false
+            return (entry.identity, image)
+        }
+    )
     private let stepButton = NSButton(title: "Step", target: nil, action: nil)
     private let restartButton = NSButton(title: "Reset fluid", target: nil, action: nil)
     private let stepLabel = NSTextField(wrappingLabelWithString: "Step 0")
@@ -98,6 +110,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private let orientationGuide = OrientationGuide3DView(frame: .zero)
     private let aboutButton = NSButton(title: "About this simulation", target: nil, action: nil)
     private let aboutText = NSTextField(wrappingLabelWithString: LearningCopy.about)
+    private let startingOutlineButton = NSButton(checkboxWithTitle: "Show starting outline", target: nil, action: nil)
     private var overlayButtons: [NSButton] = []
     private let bodyStack = NSStackView()
     private let pinnedStack = NSStackView()
@@ -155,6 +168,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         metalView.delegate = renderer
 
         installControls()
+        installFreePlayPreview()
         renderer.stateDidChange = { [weak self] in
             self?.refreshTransport()
             self?.refreshInspectionControls()
@@ -202,6 +216,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
 
     override func viewDidAppear() {
         super.viewDidAppear()
+        freePlayPreview?.playback.setActive(NSApp.isActive)
         view.window?.contentMinSize = NSSize(width: 320, height: 240)
         if let window = view.window {
             fitCanvasWindowToScreenOnce(window)
@@ -209,6 +224,51 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
                                                    name: NSWindow.didBecomeMainNotification, object: window)
             if window.isMainWindow { showControlsPanel() }
         }
+    }
+
+    private func installFreePlayPreview() {
+        guard FreePlayPreviewPlayback.claimLaunchPreview() else { return }
+        let preview = FreePlayPreviewView(reduceMotion: FreePlayPreviewPlayback.usesStill(
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion))
+        preview.frame = metalView.bounds
+        preview.autoresizingMask = [.width, .height]
+        metalView.addSubview(preview, positioned: .below, relativeTo: nil)
+        canvasAccessibilityBeforePreview = (metalView.isAccessibilityElement(), metalView.accessibilityRole())
+        metalView.setAccessibilityElement(true)
+        metalView.setAccessibilityRole(.image)
+        metalView.setAccessibilityIdentifier("freePlayCanvas")
+        freePlayPreview = preview
+        refreshCanvasAccessibility()
+    }
+
+    private func refreshCanvasAccessibility() {
+        if freePlayPreview != nil {
+            metalView.setAccessibilityLabel("Fluid simulation canvas")
+            metalView.setAccessibilityHelp(FreePlayPreviewPlayback.instruction)
+        } else if !renderer.state.mode.is3D {
+            metalView.setAccessibilityLabel(nil)
+            metalView.setAccessibilityHelp(nil)
+        }
+    }
+
+    @discardableResult
+    private func dismissFreePlayPreview() -> Bool {
+        guard let preview = freePlayPreview else { return false }
+        freePlayPreview = nil
+        preview.playback.stop()
+        preview.removeFromSuperview()
+        if let beforePreview = canvasAccessibilityBeforePreview {
+            metalView.setAccessibilityElement(beforePreview.isElement)
+            metalView.setAccessibilityRole(beforePreview.role)
+            metalView.setAccessibilityIdentifier(nil)
+            canvasAccessibilityBeforePreview = nil
+        }
+        refreshCanvasAccessibility()
+        return true
+    }
+
+    @objc private func reduceMotionChanged() {
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { freePlayPreview?.playback.showStill() }
     }
 
     /// The storyboard positions the canvas with struts designed for a smaller
@@ -263,6 +323,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     @objc private func canvasWillClose() {
+        dismissFreePlayPreview()
         mouseHeld = false
         rebaseDrag = false
         clearInspectionDrag()
@@ -271,6 +332,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     @objc private func canvasWillMinimize() {
+        freePlayPreview?.playback.setActive(false)
         mouseHeld = false
         rebaseDrag = false
         clearInspectionDrag()
@@ -281,12 +343,16 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     @objc private func canvasDidRestore() {
-        if NSApp.isActive { renderer.becomeActive() }
+        if NSApp.isActive {
+            freePlayPreview?.playback.setActive(true)
+            renderer.becomeActive()
+        }
         if restorePanelAfterMinimize { showControlsPanel() }
         updateCanvasCursor()
     }
 
     @objc private func resignActive() {
+        freePlayPreview?.playback.setActive(false)
         mouseHeld = false
         rebaseDrag = false
         clearInspectionDrag()
@@ -295,7 +361,10 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
 
     @objc private func becomeActive() {
-        if view.window?.isMiniaturized != true { renderer.becomeActive() }
+        if view.window?.isMiniaturized != true {
+            freePlayPreview?.playback.setActive(true)
+            renderer.becomeActive()
+        }
         updateCanvasCursor()
     }
 
@@ -430,6 +499,19 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         }
     }
 
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        for item in menu.items {
+            guard let identity = item.representedObject as? String else { continue }
+            item.image = experimentThumbnails[identity]
+        }
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        // A native pop-up mirrors the selected item's image onto its closed
+        // button, so keep the artwork on the items only while the menu is open.
+        for item in menu.items { item.image = nil }
+    }
+
     @objc private func toggleControlsPanel(_ sender: Any?) {
         if controlsPanel?.isVisible == true {
             controlsPanel?.orderOut(nil)
@@ -513,6 +595,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
                         menuActions: false)
         experimentMenu.addItem(.separator())
         appendModeGroup("3D", modes: [.dyeAdvection3D], to: experimentMenu, menuActions: false)
+        experimentMenu.delegate = self
         experimentSelector.menu = experimentMenu
         experimentSelector.target = self; experimentSelector.action = #selector(selectExperiment(_:))
         experimentSelector.setAccessibilityLabel("Experiments"); experimentSelector.setAccessibilityIdentifier("experimentSelector")
@@ -618,6 +701,10 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             item.tag = index; item.setAccessibilityIdentifier("overlay.\(index)"); overlayButtons.append(item); twoDBodyStack.addArrangedSubview(item)
         }
         twoDBodyStack.addArrangedSubview(NSTextField(wrappingLabelWithString: LearningCopy.trails))
+        startingOutlineButton.target = self
+        startingOutlineButton.action = #selector(changeStartingOutline(_:))
+        startingOutlineButton.setAccessibilityIdentifier("overlay.startingOutline")
+        twoDBodyStack.addArrangedSubview(startingOutlineButton)
         button(tuningButton, #selector(toggleTuning(_:)), "tuning.toggle")
         twoDBodyStack.addArrangedSubview(tuningButton)
         for control in TuningControl.allCases {
@@ -661,6 +748,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             bodyStack.widthAnchor.constraint(equalTo: controlsScroll.contentView.widthAnchor)
         ])
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(updateAppearance), name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(reduceMotionChanged), name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         updateAppearance()
         refreshControls()
     }
@@ -1042,6 +1130,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
     private func changeMode(_ mode: SimulationMode) {
         guard !modeTransitionInProgress else { return }
+        dismissFreePlayPreview()
         modeTransitionSource = renderer.state.mode
         modeTransitionInProgress = true
         refreshTransport()
@@ -1059,6 +1148,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     }
     @objc private func restart(_ sender: Any?) {
         guard !modeTransitionInProgress else { return }
+        dismissFreePlayPreview()
         if renderer.state.mode.is3D {
             modeTransitionSource = renderer.state.mode
             modeTransitionInProgress = true
@@ -1077,12 +1167,19 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         guard !renderer.state.mode.is3D, let lesson = renderer.state.mode.experiment else { return }
         renderer.setExperimentAdjustment(lesson.choices[sender.indexOfSelectedItem]); refreshControls()
     }
+    @objc private func changeStartingOutline(_ sender: NSButton) {
+        renderer.setStartingOutline(sender.state == .on)
+    }
     @objc private func changeOverlay(_ sender: NSButton) {
+        dismissFreePlayPreview()
         renderer.setDisplayOptions(DisplayOptions(arrows: overlayButtons[0].state == .on, particles: overlayButtons[1].state == .on, trails: overlayButtons[2].state == .on)); refreshControls()
     }
     @objc private func toggleAbout(_ sender: Any?) { aboutText.isHidden.toggle(); updateControlLayout() }
     private func refreshTransport() {
         let state = renderer.state
+        startingOutlineButton.isHidden = !state.offersStartingOutline
+        startingOutlineButton.isEnabled = !modeTransitionInProgress && state.canToggleStartingOutline
+        startingOutlineButton.state = state.startingOutlineEnabled ? .on : .off
         stepLabel.stringValue = state.status
         pauseButton.title = state.userPaused ? (state.mode.isLesson && state.stepCount == 0 ? "Run" : "Resume") : "Pause"
         pauseButton.setAccessibilityLabel(state.userPaused ? "Resume simulation" : "Pause simulation")
@@ -1097,6 +1194,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     @objc private func selectField(_ sender: NSButton) {
         guard !renderer.state.mode.is3D else { return }
         guard let field = DisplayField(rawValue: sender.tag) else { return }
+        dismissFreePlayPreview()
         renderer.selectField(field)
         refreshControls()
     }
@@ -1115,6 +1213,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
 
     @objc private func changeTuning(_ sender: NSSlider) {
         guard let control = TuningControl(rawValue: sender.tag) else { return }
+        dismissFreePlayPreview()
         renderer.setTuningPosition(Float(sender.doubleValue), for: control)
         refreshTuningValues()
     }
@@ -1206,8 +1305,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             updateInspectionFocusOrder()
         } else {
             restartButton.nextKeyView = nil
-            metalView.setAccessibilityLabel(nil)
-            metalView.setAccessibilityHelp(nil)
+            refreshCanvasAccessibility()
         }
         orientationGuide.isHidden = !isThreeD
         refreshInspectionControls()
@@ -1271,13 +1369,35 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             return
         }
 
+        guard event.window === metalView.window else { return }
+        let point = metalView.convert(event.locationInWindow, from: nil)
+        guard metalView.bounds.contains(point) else { return }
+        let dismissedPreview = dismissFreePlayPreview()
         mouseHeld = true
         rebaseDrag = false
         guard renderer.state.shouldAdvance else { return }
-        let point = metalView.convert(event.locationInWindow, from: nil)
 
         let position = SIMD2<Float>(Float(point.x), Float(metalView.bounds.height - point.y))
+        // If this click ends before the next display tick, the queued tap carries
+        // its original contact. A held mouse's normal contact takes precedence.
+        if dismissedPreview { renderer.enqueueTap(at: position, in: metalView) }
         renderer.updateMouseInteraction(position: position, in: metalView)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        dismissPreviewForSecondaryClick(event)
+        super.rightMouseDown(with: event)
+    }
+
+    override func otherMouseDown(with event: NSEvent) {
+        dismissPreviewForSecondaryClick(event)
+        super.otherMouseDown(with: event)
+    }
+
+    private func dismissPreviewForSecondaryClick(_ event: NSEvent) {
+        guard freePlayPreview != nil, event.window === metalView.window else { return }
+        let point = metalView.convert(event.locationInWindow, from: nil)
+        if metalView.bounds.contains(point) { dismissFreePlayPreview() }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -1413,12 +1533,14 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
 
     private func changeSource() {
         guard !renderer.state.mode.is3D else { return }
+        dismissFreePlayPreview()
         renderer.nextSlab()
         refreshControls()
     }
 
     private func changePauseState() {
         guard !modeTransitionInProgress else { return }
+        dismissFreePlayPreview()
         renderer.togglePause()
         if mouseHeld { rebaseDrag = true }
         refreshControls()

@@ -182,6 +182,11 @@ final class Renderer: NSObject, MTKViewDelegate {
     func nextSlab() { state.nextField(); redrawIfPaused(); stateDidChange?() }
     func selectField(_ field: DisplayField) { state.selectField(field); redrawIfPaused(); stateDidChange?() }
     func setDisplayOptions(_ options: DisplayOptions) { state.setDisplayOptions(options); redrawIfPaused(); stateDidChange?() }
+    func setStartingOutline(_ enabled: Bool) {
+        guard state.setStartingOutline(enabled) else { return }
+        redrawIfPaused()
+        stateDidChange?()
+    }
     func setInspection3D(_ inspection: InspectionState3D) {
         let previous = state.inspection3D
         state.setInspection3D(inspection)
@@ -203,7 +208,11 @@ final class Renderer: NSObject, MTKViewDelegate {
         state.togglePause()
         clearInput()
         updateScheduling()
-        if state.mode.is3D { requestInspectionRedraw() }
+        if state.mode.is3D {
+            requestInspectionRedraw()
+        } else if state.showsStartingOutline {
+            redrawIfPaused()
+        }
         stateDidChange?()
     }
     func setTuningPosition(_ position: Float, for control: TuningControl) {
@@ -594,16 +603,13 @@ final class Renderer: NSObject, MTKViewDelegate {
     }
     private func renderTwoD(command: MTLCommandBuffer, drawable: CAMetalDrawable, view: MTKView) {
         let viewport = viewport(in: view)
-        visualization.encodeField(command: command, simulation: simulation, destination: drawable.texture, viewport: viewport, field: state.field)
-        let scale = Float(view.drawableSize.width / max(1, view.bounds.width))
-        let pointSize = SIMD2<Float>(Float(viewport.width) / scale, Float(viewport.height) / scale)
-        if state.displayOptions.particles {
-            simulation.particles.encodeDisplay(command: command, destination: drawable.texture, viewport: viewport, pointSize: pointSize, trails: state.displayOptions.trails)
-        }
-        if state.displayOptions.arrows || state.field == .velocity {
-            visualization.encodeArrows(command: command, simulation: simulation, destination: drawable.texture, viewport: viewport,
-                                       pointSize: SIMD2<Float>(Float(viewport.width) / scale, Float(viewport.height) / scale))
-        }
+        let scaleX = view.drawableSize.width / max(1, view.bounds.width)
+        let scaleY = view.drawableSize.height / max(1, view.bounds.height)
+        let pointSize = SIMD2<Float>(Float(viewport.width / scaleX), Float(viewport.height / scaleY))
+        visualization.encodePresentation(command: command, simulation: simulation, destination: drawable.texture,
+                                         viewport: viewport, pointSize: pointSize, mode: state.mode,
+                                         field: state.field, options: state.displayOptions,
+                                         showsStartingOutline: state.showsStartingOutline)
     }
 
     func draw(in view: MTKView) {

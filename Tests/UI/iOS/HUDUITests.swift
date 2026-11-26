@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 @MainActor
@@ -88,12 +89,11 @@ final class HUDUITests: XCTestCase {
         rotate(to: .landscapeLeft)
         defer { XCUIDevice.shared.orientation = .portrait }
         let fade = app.sliders["Dye fading"]
-        for _ in 0..<8 where !fade.isHittable {
-            app.scrollViews.firstMatch.swipeUp()
-        }
+        reveal(fade)
         XCTAssertTrue(fade.isHittable, "Fade must be scroll-reachable in landscape")
         fade.adjust(toNormalizedSliderPosition: 0.8)
-        XCTAssertNotEqual(fade.value as? String, "17%")
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value != %@", "17%"), object: fade)
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 5), .completed)
         for _ in 0..<8 where !app.buttons["Pause simulation"].isHittable {
             app.scrollViews.firstMatch.swipeDown()
         }
@@ -139,8 +139,12 @@ final class HUDUITests: XCTestCase {
     }
     private func chooseLesson(_ title: String) {
         app.buttons["experimentSelector"].tap()
-        app.buttons[title].tap()
-        XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 0")
+        let lesson = app.buttons[title]
+        let menu = app.collectionViews.firstMatch
+        for _ in 0..<5 where !lesson.isHittable && menu.exists { menu.swipeUp() }
+        XCTAssertTrue(lesson.isHittable, "\(title) must be reachable in the experiment menu")
+        lesson.tap()
+        XCTAssertTrue(app.staticTexts["Step 0"].waitForExistence(timeout: 5))
     }
     func testEveryLessonWorkflowAndSquareLayout() {
         XCTAssertTrue(app.buttons["experimentSelector"].waitForExistence(timeout: 15))
@@ -150,7 +154,13 @@ final class HUDUITests: XCTestCase {
             XCTAssertTrue(app.staticTexts["Step 1"].waitForExistence(timeout: 5))
             tap(app.buttons["field.1"])
             XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 1")
-            reveal(app.switches["overlay.2"]); app.switches["overlay.2"].tap()
+            let particles = app.switches["overlay.1"]
+            reveal(particles)
+            if particles.value as? String == "0" { particles.tap() }
+            let trails = app.switches["overlay.2"]
+            reveal(trails)
+            XCTAssertTrue(trails.isEnabled)
+            trails.tap()
             XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 1")
             app.buttons["transport.restart"].tap()
             XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 0")
@@ -176,7 +186,117 @@ final class HUDUITests: XCTestCase {
         XCTAssertFalse(app.buttons["transport.step"].isEnabled)
     }
 
+    func testStartingOutlineControlFollowsDyeLessonTransport() {
+        let outline = app.switches["overlay.startingOutline"]
+        XCTAssertFalse(outline.exists)
+        chooseLesson("Dye carried by a flow")
+        reveal(outline)
+        XCTAssertFalse(outline.isEnabled)
+
+        app.buttons["transport.step"].tap()
+        XCTAssertTrue(app.staticTexts["Step 1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(outline.isEnabled)
+        XCTAssertEqual(outline.value as? String, "0")
+        outline.tap()
+        XCTAssertEqual(outline.value as? String, "1")
+        XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 1")
+
+        app.buttons["transport.pause"].tap()
+        XCTAssertFalse(outline.isEnabled)
+        app.buttons["transport.pause"].tap()
+        XCTAssertTrue(outline.isEnabled)
+        XCTAssertEqual(outline.value as? String, "1")
+
+        tap(app.buttons["field.1"])
+        XCTAssertFalse(outline.exists)
+        tap(app.buttons["field.0"])
+        reveal(outline)
+        XCTAssertEqual(outline.value as? String, "1")
+        app.buttons["transport.restart"].tap()
+        XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 0")
+        XCTAssertFalse(outline.isEnabled)
+
+        chooseLesson("Stretching dye by stirring")
+        reveal(outline)
+        XCTAssertEqual(outline.value as? String, "0")
+        XCTAssertFalse(outline.isEnabled)
+        chooseLesson("Two interacting vortices")
+        XCTAssertFalse(outline.exists)
+    }
+
+    func testFreePlayPreviewDismissesOnFirstTapAndDoesNotReturn() throws {
+        app.terminate()
+        app.launchArguments += ["--free-play-preview-reduce-motion"]
+        app.launch()
+        let preview = app.images["lessonCanvas"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        let still = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        still.name = "iPhone Free Play Reduce Motion still"
+        still.lifetime = .keepAlways
+        add(still)
+
+        let scroll = app.scrollViews["controlsBody"]
+        scroll.swipeUp()
+        XCTAssertTrue(preview.exists, "Scrolling the controls must preserve the preview")
+        let contact = CGVector(dx: 0.24, dy: 0.20)
+        app.coordinate(withNormalizedOffset: contact).tap()
+        XCTAssertTrue(preview.waitForNonExistence(timeout: 5))
+        let window = app.windows.firstMatch
+        var hasDye = false
+        for _ in 0..<8 {
+            if try dyeNear(contact, in: window.screenshot()) {
+                hasDye = true
+                break
+            }
+        }
+        XCTAssertTrue(hasDye, "The tap that dismissed the preview must deposit blue dye in the live canvas")
+        app.buttons["transport.restart"].tap()
+        XCTAssertFalse(preview.exists)
+        chooseLesson("Dye carried by a flow")
+        app.buttons["experimentSelector"].tap()
+        app.buttons["Free Play"].tap()
+        XCTAssertFalse(preview.exists)
+    }
+
+    func testFirstFreePlayDragDepositsDyeAtItsStart() throws {
+        let preview = app.images["lessonCanvas"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        let start = CGVector(dx: 0.23, dy: 0.17)
+        let end = CGVector(dx: 0.68, dy: 0.24)
+        app.coordinate(withNormalizedOffset: start).press(
+            forDuration: 0.5, thenDragTo: app.coordinate(withNormalizedOffset: end),
+            withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertTrue(preview.waitForNonExistence(timeout: 5))
+        app.buttons["transport.pause"].tap()
+
+        let frame = app.windows.firstMatch.screenshot()
+        XCTAssertTrue(try dyeNear(start, in: frame), "The first drag must leave dye at its starting contact")
+        let capture = XCTAttachment(screenshot: frame)
+        capture.name = "First Free Play drag"
+        capture.lifetime = .keepAlways
+        add(capture)
+    }
+
+    private func dyeNear(_ point: CGVector, in screenshot: XCUIScreenshot) throws -> Bool {
+        let image = try XCTUnwrap(screenshot.image.cgImage)
+        let x = Double(image.width) * point.dx
+        let y = Double(image.height) * point.dy
+        let crop = try XCTUnwrap(image.cropping(to: CGRect(x: x - 20, y: y - 20, width: 40, height: 40)))
+        var pixels = [UInt8](repeating: 0, count: 16 * 16 * 4)
+        return try pixels.withUnsafeMutableBytes { bytes in
+            let context = try XCTUnwrap(CGContext(data: bytes.baseAddress, width: 16, height: 16, bitsPerComponent: 8,
+                bytesPerRow: 16 * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+            context.draw(crop, in: CGRect(x: 0, y: 0, width: 16, height: 16))
+            return stride(from: 0, to: bytes.count, by: 4).contains { offset in
+                let blue = Int(bytes[offset + 2])
+                return blue > Int(bytes[offset]) + 20 && blue > Int(bytes[offset + 1]) + 10
+            }
+        }
+    }
+
     func testExperimentMenuRemainsTwoDOnly() {
+        rotate(to: .portrait)
         let selector = app.buttons["experimentSelector"]
         XCTAssertTrue(selector.waitForExistence(timeout: 15))
         selector.tap()
@@ -184,11 +304,15 @@ final class HUDUITests: XCTestCase {
         for title in ["Free Play", "Dye carried by a flow", "Two interacting vortices", "Stretching dye by stirring"] {
             XCTAssertTrue(app.buttons[title].waitForExistence(timeout: 5), "The existing 2D mode \(title) must remain available")
         }
+        let capture = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        capture.name = "iOS illustrated experiment chooser"
+        capture.lifetime = .keepAlways
+        add(capture)
         XCTAssertFalse(app.buttons["3D Dye Advection"].exists)
         XCTAssertFalse(app.staticTexts["3D"].exists)
 
         app.buttons["Dye carried by a flow"].tap()
-        XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 0")
+        XCTAssertTrue(app.staticTexts["Step 0"].waitForExistence(timeout: 5))
         app.buttons["transport.step"].tap()
         XCTAssertTrue(app.staticTexts["Step 1"].waitForExistence(timeout: 5))
 
@@ -208,11 +332,20 @@ final class HUDUITests: XCTestCase {
     func testLargeTextLessonLayout() {
         app.terminate()
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
-        app.launch(); chooseLesson("Stretching dye by stirring")
+        app.launch()
+        rotate(to: .landscapeLeft)
+        chooseLesson("Stretching dye by stirring")
         for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
             rotate(to: orientation)
             XCTAssertTrue(app.buttons["transport.step"].isHittable)
             let controls = app.otherElements["simulationControls"]
+            let restart = app.buttons["transport.restart"]
+            XCTAssertEqual(restart.label, "Restart experiment")
+            let restartText = restart.staticTexts["Restart"]
+            let stepText = app.buttons["transport.step"].staticTexts["Step"]
+            XCTAssertTrue(restartText.exists && stepText.exists)
+            XCTAssertLessThanOrEqual(restartText.frame.height, stepText.frame.height + 1,
+                                     "Restart should remain on one line at the largest text size")
             for identifier in ["experimentSelector", "transport.pause", "transport.step", "transport.restart"] {
                 let button = app.buttons[identifier]
                 XCTAssertTrue(controls.frame.contains(button.frame), "Pinned controls must fit inside their panel")

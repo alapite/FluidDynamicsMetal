@@ -2,6 +2,7 @@ import Foundation
 import Metal
 import MetalKit
 import AppKit
+import ImageIO
 import simd
 
 /// Records every MTKView draw() and every currentDrawable read made outside a draw() cycle.
@@ -75,12 +76,15 @@ import simd
             target.getBytes(&data, bytesPerRow: target.width * 4, from: MTLRegionMake2D(0, 0, target.width, target.height), mipmapLevel: 0)
             return data
         }
-        func save(_ target: MTLTexture, _ name: String) throws {
+        func renderedBitmap(_ target: MTLTexture) -> NSBitmapImageRep {
             let data = imageBytes(target)
             let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: target.width, pixelsHigh: target.height, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: target.width * 4, bitsPerPixel: 32)!
             let bytes = bitmap.bitmapData!
             for i in stride(from: 0, to: data.count, by: 4) { bytes[i] = data[i + 2]; bytes[i + 1] = data[i + 1]; bytes[i + 2] = data[i]; bytes[i + 3] = 255 }
-            try bitmap.representation(using: .png, properties: [:])!.write(to: output.appendingPathComponent(name + ".png"))
+            return bitmap
+        }
+        func save(_ target: MTLTexture, _ name: String) throws {
+            try renderedBitmap(target).representation(using: .png, properties: [:])!.write(to: output.appendingPathComponent(name + ".png"))
         }
         func snapshot(_ simulation: FluidSimulation) -> [Float] { simulation.allTextures.flatMap { texture($0) } + buffer(simulation.particles.positions) + buffer(simulation.particles.history) }
         func reset(_ simulation: FluidSimulation, _ lesson: ExperimentID?, _ adjustment: ExperimentAdjustment? = nil) {
@@ -94,6 +98,75 @@ import simd
                     visualization.encodeArrows(command: cmd, simulation: simulation, destination: target, viewport: viewport(target), pointSize: [256,256])
                 }
             }
+        }
+        if CommandLine.arguments.dropFirst(3).contains("--capture-advection") {
+            let target = imageTexture(640, 640)
+            let simulation = FluidSimulation(width: 256, height: 256, metal: metal)
+            let mode = SimulationMode.experiment(.advection)
+            var state = SimulationState()
+            state.selectMode(mode)
+            reset(simulation, .advection)
+
+            let gifURL = output.appendingPathComponent("advection-running.gif")
+            let frameCount = 30
+            guard let gif = CGImageDestinationCreateWithURL(gifURL as CFURL, "com.compuserve.gif" as CFString, frameCount, nil) else {
+                fatalError("Could not create advection animation")
+            }
+            CGImageDestinationSetProperties(gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+            let frameProperties = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.05]] as CFDictionary
+            for step in 0..<300 {
+                if step >= 240 && step.isMultiple(of: 2) {
+                    _ = command { cmd in
+                        visualization.encodePresentation(command: cmd, simulation: simulation, destination: target,
+                            viewport: viewport(target), pointSize: [320, 320], mode: state.mode,
+                            field: state.field, options: state.displayOptions)
+                    }
+                    let bitmap = renderedBitmap(target)
+                    if step == 240 {
+                        try save(target, "advection-step-240")
+                    }
+                    CGImageDestinationAddImage(gif, bitmap.cgImage!, frameProperties)
+                }
+                _ = command { cmd in
+                    simulation.encodeStep(command: cmd, tuning: state.tuning, mode: mode, adjustment: state.adjustment, step: step)
+                }
+            }
+            require(CGImageDestinationFinalize(gif), "Write advection animation")
+            return
+        }
+        func checkOutline(_ simulation: FluidSimulation, state: SimulationState, lesson: ExperimentID) throws {
+            let target = imageTexture(768, 512)
+            let canvas = MTLViewport(originX: 128, originY: 0, width: 512, height: 512, znear: 0, zfar: 1)
+            func render(showsOutline: Bool) -> [UInt8] {
+                _ = command { cmd in
+                    visualization.encodePresentation(command: cmd, simulation: simulation, destination: target,
+                        viewport: canvas, pointSize: [256, 256], mode: state.mode, field: state.field,
+                        options: state.displayOptions, showsStartingOutline: showsOutline)
+                }
+                return imageBytes(target)
+            }
+
+            let before = snapshot(simulation)
+            let withoutOutline = render(showsOutline: false)
+            var outlined = state
+            require(outlined.setStartingOutline(true), "Comparison capture must support the paused starting outline")
+            let withOutline = render(showsOutline: outlined.showsStartingOutline)
+            let segments = ExperimentRecipes.startingOutline(lesson)
+            var changedPixels = 0
+            for offset in stride(from: 0, to: withOutline.count, by: 4) {
+                guard withoutOutline[offset..<offset + 4] != withOutline[offset..<offset + 4] else { continue }
+                changedPixels += 1
+                let x = offset / 4 % target.width
+                let y = offset / 4 / target.width
+                require(x >= 128 && x < 640, "Outline must stay inside the letterboxed canvas")
+                let position = SIMD2<Float>((Float(x - 128) + 0.5) / 512, (Float(y) + 0.5) / 512)
+                require(segments.contains { simd_distance($0.start, position) < 5 / 512.0 },
+                        "Outline must register with the recipe in drawable coordinates")
+            }
+            require(changedPixels > 50, "Outline must be visible")
+            require(outlined.stepCount == state.stepCount && snapshot(simulation) == before,
+                    "Rendering the starting outline must leave the fluid and step count identical")
+            try save(target, "starting-outline-\(lesson.rawValue)-step-\(state.stepCount)")
         }
         // Exercise the actual view-facing scheduler with no window or drawable.
         let hiddenView = MTKView(frame: .zero, device: device)
@@ -110,8 +183,13 @@ import simd
         hiddenView.frame = CGRect(x: 0, y: 0, width: 640, height: 480)
         renderer.mtkView(hiddenView, drawableSizeWillChange: CGSize(width: 1280, height: 960))
         require(renderer.simulation === originalSimulation && renderer.state.stepCount == 17, "Lesson resize must keep the same GPU resources and step")
+        let beforeOutlineToggle = snapshot(originalSimulation)
+        renderer.setStartingOutline(true)
+        require(renderer.state.showsStartingOutline && renderer.state.stepCount == 17, "Outline toggle presents without stepping")
+        require(snapshot(originalSimulation) == beforeOutlineToggle, "Outline toggle leaves fluid and particles identical")
         renderer.requestSingleStep(); renderer.restartCurrentSimulation()
         require(renderer.state.stepCount == 0 && renderer.state.pendingSteps == 0, "Renderer restart cancels queued steps")
+        require(renderer.state.startingOutlineEnabled && !renderer.state.showsStartingOutline, "Restart hides outline at step zero")
         let emptyView = MTKView(frame: .zero, device: device)
         let freeRenderer = Renderer(metalView: emptyView, metal: metal)
         freeRenderer.enqueueTap(at: [0,0], in: emptyView)
@@ -155,6 +233,28 @@ import simd
         require(spyRenderer.state.stepCount == 4 && spyRenderer.state.pendingSteps == 0,
                 "The pending Step must be drained exactly once (step \(spyRenderer.state.stepCount), pending \(spyRenderer.state.pendingSteps))")
         require(spyView.outsideDrawableReads == 0, "Presentation redraws read currentDrawable outside MTKView.draw() \(spyView.outsideDrawableReads) time(s)")
+        spyRenderer.selectField(.density)
+        spyRenderer.requestSingleStep()
+        let drawsBeforeOutline = spyView.drawCalls
+        spyRenderer.setStartingOutline(true)
+        require(spyRenderer.state.showsStartingOutline && spyView.drawCalls > drawsBeforeOutline,
+                "Toggling outline must present through MTKView.draw()")
+        require(spyRenderer.state.stepCount == 4 && spyRenderer.state.pendingSteps == 1,
+                "Outline presentation must preserve a queued Step")
+        pump()
+        require(spyRenderer.state.stepCount == 5 && spyRenderer.state.showsStartingOutline,
+                "Single Step preserves the visible starting outline")
+        spyRenderer.togglePause()
+        require(!spyRenderer.state.showsStartingOutline, "Resume hides the starting outline")
+        let drawsBeforePause = spyView.drawCalls
+        spyRenderer.togglePause()
+        require(spyRenderer.state.showsStartingOutline && spyView.drawCalls > drawsBeforePause,
+                "Pausing must present the starting outline immediately")
+        let drawsBeforeResize = spyView.drawCalls
+        spyView.frame.size = CGSize(width: 96, height: 64)
+        spyRenderer.mtkView(spyView, drawableSizeWillChange: spyView.drawableSize)
+        require(spyView.drawCalls > drawsBeforeResize && spyRenderer.state.stepCount == 5,
+                "Resizing must redraw the starting outline without stepping")
         let stepsBeforeReactivation = spyRenderer.state.stepCount
         spyRenderer.resignActive()
         var drawsBefore = spyView.drawCalls
@@ -192,6 +292,23 @@ import simd
             for channel in 0..<4 { require(abs(Int(bytes[channel]) - Int(expected[channel])) <= 1, "Neutral zero display \(field)") }
             close(buffer(visualization.statistics), [0, 1e-5, 1e-5, 1e-5], "Finite zero statistics", absolute: 1e-7)
         }
+        // These concentrations exercise black, both sides of the palette midpoint, and bright dye.
+        let concentrations: [Float] = [0, 0.01, 0.125, 1, 4]
+        fill(sim.density.ping) { x, _ in [concentrations[min(x / 51, 4)], 0] }
+        _ = draw(sim, target, .density)
+        let dyePixels = imageBytes(target)
+        var lastBrightness = -1
+        for (band, input) in concentrations.enumerated() {
+            let c = Float(Float16(input))
+            let t = sqrt(c / (1 + c))
+            let blue: Float = t < 0.5 ? 0.85 * 2 * t : 0.85 + 0.15 * (2 * t - 1)
+            let offset = (band * 51 + 25) * 4
+            require(abs(Int(dyePixels[offset]) - Int((blue * 255).rounded())) <= 1, "Square-root dye brightness")
+            let brightness = dyePixels[offset..<offset + 3].reduce(0) { $0 + Int($1) }
+            require(brightness > lastBrightness, "Dye brightness must increase with concentration")
+            lastBrightness = brightness
+        }
+        reset(sim, nil)
         _ = draw(sim, target, .density); let zeroImage = imageBytes(target)
         _ = command { visualization.encodeArrows(command: $0, simulation: sim, destination: target, viewport: viewport(target), pointSize: [256,256]) }
         require(zeroImage == imageBytes(target), "Zero velocity must suppress arrows")
@@ -201,7 +318,7 @@ import simd
         for _ in 0..<70 { _ = command { sim.particles.encodeAdvance(command: $0, velocity: sim.velocity.ping) } }
         let moved = buffer(sim.particles.positions), history = buffer(sim.particles.history)
         close(Array(moved[0..<2]), [0.1 + 70 / 256, 0.1 + 35 / 256], "Uniform velocity displacement")
-        require(sim.particles.sampleCount == 64 && sim.particles.head == 7, "Ring indices")
+        require(sim.particles.sampleCount == 64 && sim.particles.head == 70 % UInt32(ParticleSystem.historyLength), "Ring indices")
         for sample in 0..<64 {
             let slot = (Int(sim.particles.head) + 1 + sample) % 64
             close(Array(history[(slot * 2)..<(slot * 2 + 2)]), [0.1 + Float(sample + 7) / 256, 0.1 + Float(sample + 7) / 512], "History chronological")
@@ -214,6 +331,22 @@ import simd
         let over = imageBytes(target)
         require(Array(base[0..<4]) == Array(over[0..<4]), "Overlay must preserve untouched base pixels")
         require(base != over, "Markers must composite")
+        _ = command { cmd in
+            visualization.encodePresentation(command: cmd, simulation: sim, destination: target,
+                viewport: viewport(target), pointSize: [256, 256], mode: .experiment(.advection),
+                field: .density, options: ExperimentID.advection.defaultDisplayOptions)
+        }
+        let sparseMarkers = imageBytes(target)
+        for row in 0..<16 {
+            for column in 0..<16 {
+                let x = Int((0.1 + 0.8 * Double(column) / 15) * 256)
+                let y = Int((0.1 + 0.8 * Double(row) / 15) * 256)
+                let offset = (y * 256 + x) * 4
+                require((sparseMarkers[offset] > 0) == (row % 4 == 1 && column % 4 == 1),
+                        "Advection should show only the selected seed lattice markers")
+            }
+        }
+        report.append("PASS square-root dye brightness and sparse advection markers")
         report.append("PASS uniform particle displacement, ring wrap ordering, reset history, overlay compositing")
         // Independent advection channels, with transport disabled by a zero advecting field.
         reset(sim, nil); fill(sim.density.ping) { _,_ in [1, 0.5] }
@@ -269,9 +402,18 @@ import simd
                 for step in 0...600 {
                     if [0,120,240,600].contains(step) {
                         _ = draw(sim, target, lesson.defaultField, overlays: true)
+                        try save(target, "stress-\(lesson.rawValue)-\(lesson.choices.firstIndex(of: adjustment)!)-step-\(step)")
+                        _ = command { cmd in
+                            visualization.encodePresentation(command: cmd, simulation: sim, destination: target,
+                                viewport: viewport(target), pointSize: [256, 256], mode: state.mode,
+                                field: state.field, options: state.displayOptions)
+                        }
                         try save(target, "lesson-\(lesson.rawValue)-\(lesson.choices.firstIndex(of: adjustment)!)-step-\(step)")
                         _ = draw(sim, target, lesson.defaultField)
                         try save(target, "field-\(lesson.rawValue)-\(lesson.choices.firstIndex(of: adjustment)!)-step-\(step)")
+                    }
+                    if step == 240, lesson.supportsStartingOutline, adjustment == lesson.defaultAdjustment {
+                        try checkOutline(sim, state: state, lesson: lesson)
                     }
                     if step == 120 { at120 = snapshot(sim); at120Dye = texture(sim.density.ping) }
                     if step == 600 { break }

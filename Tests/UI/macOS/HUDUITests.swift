@@ -89,11 +89,16 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Resume simulation"].exists)
     }
 
-    func testTuningRemainsOpenAfterCanvasAndFieldChanges() {
+    func testTuningRemainsOpenAfterCanvasAndFieldChanges() throws {
         XCTAssertTrue(app.buttons["Show Tuning"].waitForExistence(timeout: 10))
         app.buttons["Show Tuning"].click()
         app.checkBoxes["Velocity"].click()
-        app.windows["FluidDynamicsMetalOSX"].coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        let panel = app.windows["Simulation Controls"].frame
+        let contact = try XCTUnwrap([0.8, 0.2].first { fraction in
+            !panel.contains(CGPoint(x: canvas.frame.minX + canvas.frame.width * fraction, y: canvas.frame.midY))
+        })
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: contact, dy: 0.5)).click()
         XCTAssertTrue(app.buttons["Hide Tuning"].exists)
         XCTAssertTrue(app.sliders["Dye fading"].exists)
         XCTAssertEqual(app.checkBoxes["Velocity"].value as? String, "Selected")
@@ -167,10 +172,12 @@ final class HUDUITests: XCTestCase {
             return count
         }
 
-        XCTAssertEqual(try dyePixels(), 0, "A fresh density field must start empty")
+        let preview = canvas.images["freePlayCanvas"]
+        XCTAssertTrue(preview.exists, "The launch canvas must expose the preview instruction")
         let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.4))
         let end = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.6))
         start.click(forDuration: 0.5, thenDragTo: end)
+        XCTAssertFalse(preview.exists, "The first drag must dismiss the preview")
         canvas.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
         XCTAssertGreaterThan(try dyePixels(), 10, "Real mouse input must deposit visible dye")
 
@@ -184,6 +191,51 @@ final class HUDUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Resume simulation"].waitForExistence(timeout: 5))
         app.buttons["Resume simulation"].click()
         XCTAssertTrue(app.buttons["Pause simulation"].exists)
+    }
+
+    func testStartingOutlineStaysInPausedCanvasAfterResize() {
+        let panel = app.windows["Simulation Controls"]
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        command("4")
+        command("p")
+        let counter = app.staticTexts["stepCount"]
+        let progressed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value MATCHES %@", "Step [1-5][0-9]{2}"),
+                                                    object: counter)
+        XCTAssertEqual(XCTWaiter.wait(for: [progressed], timeout: 15), .completed)
+        command("p")
+        let pausedStep = counter.value as? String
+        XCTAssertTrue(app.buttons["Resume simulation"].exists)
+
+        let outline = app.checkBoxes["overlay.startingOutline"]
+        let scroll = panel.scrollViews.firstMatch
+        for _ in 0..<6 where !outline.isHittable { scroll.swipeUp() }
+        XCTAssertTrue(outline.isHittable)
+        XCTAssertTrue(outline.isEnabled)
+        outline.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+            .withOffset(CGVector(dx: 8, dy: 0)).click()
+        XCTAssertEqual(outline.value as? Int, 1)
+
+        panel.buttons[XCUIIdentifierCloseWindow].click()
+        func capture(_ name: String) {
+            let attachment = XCTAttachment(screenshot: canvas.screenshot())
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        capture("Paused starting outline before resize")
+        let before = canvas.frame.size
+        // The bottom edge can sit against the screen boundary after the window
+        // is fitted to the display. Use the straight left edge for resizing.
+        let edge = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
+            .withOffset(CGVector(dx: 1, dy: 0))
+        edge.click(forDuration: 0.2, thenDragTo: edge.withOffset(CGVector(dx: 280, dy: 0)))
+        XCTAssertNotEqual(canvas.frame.size, before)
+        capture("Paused starting outline after resize")
+        app.typeKey("k", modifierFlags: [.command, .option])
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        XCTAssertEqual(counter.value as? String, pausedStep)
+        XCTAssertEqual(outline.value as? Int, 1)
     }
 
     func testEveryLessonWorkflowAndKeyboardCommands() {
@@ -617,6 +669,35 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 1")
         XCTAssertTrue(app.buttons["Resume simulation"].exists,
                       "Reset Camera must preserve the paused transport state at Step 1")
+    }
+
+    func testFreePlayStillAndIllustratedExperimentChooser() {
+        app.terminate()
+        app.launchArguments += ["--free-play-preview-reduce-motion"]
+        app.launch()
+
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        let preview = canvas.images["freePlayCanvas"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        let still = XCTAttachment(screenshot: canvas.screenshot())
+        still.name = "Mac Free Play Reduce Motion still"
+        still.lifetime = .keepAlways
+        add(still)
+
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertEqual(selector.value as? String, "Free Play")
+        selector.click()
+        let menu = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        menu.name = "Mac illustrated experiment chooser"
+        menu.lifetime = .keepAlways
+        add(menu)
+        XCTAssertTrue(preview.exists, "Opening the chooser must leave the preview visible until selection")
+        selector.menuItems["Two interacting vortices"].click()
+        XCTAssertEqual(selector.value as? String, "Two interacting vortices")
+        XCTAssertFalse(preview.exists)
+        command("1")
+        XCTAssertEqual(selector.value as? String, "Free Play")
+        XCTAssertFalse(preview.exists)
     }
 
     func testSpatialInspectionLayoutAndModeReturn() throws {
@@ -1074,9 +1155,12 @@ final class HUDUITests: XCTestCase {
             XCTAssertTrue(app.buttons["transport.pause"].label.contains("Pause"))
             XCTAssertTrue(app.windows["FluidDynamicsMetalOSX"].exists)
             alert.buttons["Continue in 2D"].click()
-
+            XCTAssertTrue(alert.waitForNonExistence(timeout: 10))
+            XCTAssertTrue(selector.waitForExistence(timeout: 10))
             selector.click()
-            selector.menuItems["3D Dye Advection"].click()
+            let retry = selector.menuItems["3D Dye Advection"]
+            XCTAssertTrue(retry.waitForExistence(timeout: 5))
+            retry.click()
             XCTAssertEqual(selector.value as? String, "3D Dye Advection",
                            "The 3D lesson must be retryable after \(stage) failure")
         }

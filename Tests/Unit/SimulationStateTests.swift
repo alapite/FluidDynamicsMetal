@@ -1,4 +1,5 @@
 import XCTest
+import simd
 
 final class SimulationStateTests: XCTestCase {
     func testSliderPositionsPreserveOriginalDefaultsAndBounds() {
@@ -321,8 +322,125 @@ final class SimulationStateTests: XCTestCase {
         XCTAssertEqual(state.field, .vorticity)
         XCTAssertEqual(state.adjustment, .rotation(.same))
         XCTAssertEqual(state.tuning, .lesson)
-        XCTAssertEqual(state.displayOptions, .lesson)
+        XCTAssertEqual(state.displayOptions, DisplayOptions(arrows: true))
         XCTAssertFalse(state.acceptsInput)
+    }
+
+    func testLessonOverlayDefaultsAndOverrides() {
+        let presets: [(ExperimentID, DisplayOptions)] = [
+            (.advection, DisplayOptions(particles: true, trails: true)),
+            (.interactingVortices, DisplayOptions(arrows: true)),
+            (.dyeStretching, DisplayOptions())
+        ]
+        var state = SimulationState()
+        let override = DisplayOptions(arrows: true, particles: true, trails: true)
+        for (lesson, expected) in presets {
+            state.selectMode(.experiment(lesson))
+            state.finishReset()
+            XCTAssertEqual(state.displayOptions, expected)
+            state.selectField(.pressure)
+            state.setDisplayOptions(override)
+            state.beginReset()
+            state.finishReset()
+            XCTAssertEqual(state.displayOptions, override)
+            XCTAssertEqual(state.field, .pressure)
+            XCTAssertTrue(state.setExperimentAdjustment(lesson.choices[0]))
+            state.finishReset()
+            XCTAssertEqual(state.displayOptions, override)
+            XCTAssertEqual(state.field, .pressure)
+        }
+    }
+
+    func testStartingOutlineGeometry() {
+        let advection = ExperimentRecipes.startingOutline(.advection)
+        let radius = ExperimentRecipes.advectionDyeSigma * sqrt(2 * log(Float(2)))
+        XCTAssertFalse(advection.isEmpty)
+        for segment in advection {
+            XCTAssertEqual(simd_distance(segment.start, ExperimentRecipes.advectionDye), radius, accuracy: 0.00015)
+        }
+
+        let stretching = ExperimentRecipes.startingOutline(.dyeStretching)
+        let stroke = stretching.map(\.start)
+        let size = ExperimentRecipes.gridSize
+        let seed = ExperimentRecipes.seed(.dyeStretching, adjustment: .strength(.normal)).dye
+        func halfMaximumBounds(_ samples: [Float]) -> ClosedRange<Float> {
+            let first = samples.firstIndex { $0 >= 0.5 }!
+            let last = samples.lastIndex { $0 >= 0.5 }!
+            func crossing(after index: Int) -> Float {
+                let fraction = (0.5 - samples[index]) / (samples[index + 1] - samples[index])
+                return (Float(index) + 0.5 + fraction) / Float(size)
+            }
+            return crossing(after: first - 1)...crossing(after: last)
+        }
+        let horizontal = halfMaximumBounds((0..<size).map { seed[size * (size / 2) + $0].x })
+        let vertical = halfMaximumBounds((0..<size).map { seed[size * $0 + size / 2].x })
+        XCTAssertEqual(stroke.map(\.x).min() ?? 0, horizontal.lowerBound, accuracy: 0.000001)
+        XCTAssertEqual(stroke.map(\.x).max() ?? 0, horizontal.upperBound, accuracy: 0.000001)
+        XCTAssertEqual(stroke.map(\.y).min() ?? 0, vertical.lowerBound, accuracy: 0.000001)
+        XCTAssertEqual(stroke.map(\.y).max() ?? 0, vertical.upperBound, accuracy: 0.000001)
+        XCTAssertTrue(ExperimentRecipes.startingOutline(.interactingVortices).isEmpty)
+        for segments in [advection, stretching] {
+            XCTAssertTrue(segments.first?.start == segments.last?.end)
+            for (current, next) in zip(segments, segments.dropFirst()) {
+                XCTAssertEqual(current.end, next.start)
+                XCTAssertEqual(current.distanceAtStart + simd_distance(current.start, current.end),
+                               next.distanceAtStart, accuracy: 0.000001)
+            }
+        }
+    }
+
+    func testStartingOutlineVisibilityAndPersistence() {
+        var state = SimulationState()
+        XCTAssertFalse(state.offersStartingOutline)
+        state.selectMode(.experiment(.advection))
+        state.finishReset()
+        XCTAssertTrue(state.offersStartingOutline)
+        XCTAssertFalse(state.setStartingOutline(true))
+
+        XCTAssertTrue(state.requestSingleStep())
+        XCTAssertTrue(state.consumeStep())
+        XCTAssertTrue(state.setStartingOutline(true))
+        XCTAssertEqual(state.stepCount, 1)
+        XCTAssertTrue(state.showsStartingOutline)
+        XCTAssertTrue(state.requestSingleStep())
+        XCTAssertTrue(state.consumeStep())
+        XCTAssertTrue(state.showsStartingOutline)
+
+        state.togglePause()
+        XCTAssertFalse(state.canToggleStartingOutline)
+        XCTAssertFalse(state.showsStartingOutline)
+        state.togglePause()
+        XCTAssertTrue(state.showsStartingOutline)
+        state.selectField(.pressure)
+        XCTAssertFalse(state.offersStartingOutline)
+        XCTAssertFalse(state.showsStartingOutline)
+        state.selectField(.density)
+        XCTAssertTrue(state.showsStartingOutline)
+
+        state.beginReset()
+        state.finishReset()
+        XCTAssertTrue(state.startingOutlineEnabled)
+        XCTAssertFalse(state.showsStartingOutline)
+        XCTAssertFalse(state.canToggleStartingOutline)
+        XCTAssertTrue(state.setExperimentAdjustment(.speed(.fast)))
+        state.finishReset()
+        XCTAssertTrue(state.startingOutlineEnabled)
+        state.togglePause()
+        for _ in 0..<SimulationState.lessonSteps { XCTAssertTrue(state.consumeStep()) }
+        XCTAssertTrue(state.complete)
+        XCTAssertTrue(state.canToggleStartingOutline)
+        XCTAssertTrue(state.showsStartingOutline)
+        XCTAssertTrue(state.setStartingOutline(false))
+        XCTAssertTrue(state.setStartingOutline(true))
+
+        state.selectMode(.experiment(.dyeStretching))
+        state.finishReset()
+        XCTAssertTrue(state.offersStartingOutline)
+        XCTAssertFalse(state.startingOutlineEnabled)
+        state.selectMode(.experiment(.interactingVortices))
+        state.finishReset()
+        state.selectField(.density)
+        XCTAssertFalse(state.offersStartingOutline)
     }
 
     func testCompletionAndRestart() {
