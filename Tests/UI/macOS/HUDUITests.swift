@@ -167,10 +167,12 @@ final class HUDUITests: XCTestCase {
             return count
         }
 
-        XCTAssertEqual(try dyePixels(), 0, "A fresh density field must start empty")
+        let preview = canvas.images["freePlayCanvas"]
+        XCTAssertTrue(preview.exists, "The launch canvas must expose the preview instruction")
         let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.4))
         let end = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.6))
         start.click(forDuration: 0.5, thenDragTo: end)
+        XCTAssertFalse(preview.exists, "The first drag must dismiss the preview")
         canvas.typeKey(XCUIKeyboardKey.space, modifierFlags: [])
         XCTAssertGreaterThan(try dyePixels(), 10, "Real mouse input must deposit visible dye")
 
@@ -617,6 +619,35 @@ final class HUDUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["stepCount"].value as? String, "Step 1")
         XCTAssertTrue(app.buttons["Resume simulation"].exists,
                       "Reset Camera must preserve the paused transport state at Step 1")
+    }
+
+    func testFreePlayStillAndIllustratedExperimentChooser() {
+        app.terminate()
+        app.launchArguments += ["--free-play-preview-reduce-motion"]
+        app.launch()
+
+        let canvas = app.windows["FluidDynamicsMetalOSX"]
+        let preview = canvas.images["freePlayCanvas"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        let still = XCTAttachment(screenshot: canvas.screenshot())
+        still.name = "Mac Free Play Reduce Motion still"
+        still.lifetime = .keepAlways
+        add(still)
+
+        let selector = app.popUpButtons["experimentSelector"]
+        XCTAssertEqual(selector.value as? String, "Free Play")
+        selector.click()
+        let menu = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        menu.name = "Mac illustrated experiment chooser"
+        menu.lifetime = .keepAlways
+        add(menu)
+        XCTAssertTrue(preview.exists, "Opening the chooser must leave the preview visible until selection")
+        selector.menuItems["Two interacting vortices"].click()
+        XCTAssertEqual(selector.value as? String, "Two interacting vortices")
+        XCTAssertFalse(preview.exists)
+        command("1")
+        XCTAssertEqual(selector.value as? String, "Free Play")
+        XCTAssertFalse(preview.exists)
     }
 
     func testSpatialInspectionLayoutAndModeReturn() throws {

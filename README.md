@@ -57,7 +57,7 @@ Run build-setting checks with `python3 -m unittest Tests.Integration.test_phase0
 
 ## Learning with the simulation
 
-Launch opens an empty, running **Free Play** dye canvas with Tuning collapsed. Drag on the canvas to add dye and motion. Choose **Experiments** to explore:
+Launch opens a running **Free Play** canvas with Tuning collapsed. A short demonstration shows two dye strokes curling into a vortex, then holds the final image. With Reduce Motion enabled, the final image appears immediately. Touch or click the canvas to dismiss the demonstration and start with fresh fluid, or choose a simulation control. Drag to add dye and motion. Choose a lesson from the illustrated **Experiments** menu:
 
 - **Dye carried by a flow:** predict where a patch travels, then compare the three initial speeds after the same number of steps.
 - **Two interacting vortices:** compare same and opposite rotation.
@@ -134,13 +134,13 @@ On iPhone/iPad, Free Play keeps an overlay HUD. Lessons reserve controls below t
 
 For each platform:
 
-1. Check the initial empty canvas and tuning defaults. Inject dye, pause, change all four views and overlays, and confirm the step counter remains unchanged. Step once, then reset; tuning and presentation choices must remain.
-2. Select each lesson. Predict its behaviour, run, pause, step, change an adjustment, and restart. Verify step zero, the 600-step completion message, and disabled Run/Step at completion. Return to Free Play and check restored preferences.
-3. Confirm HUD interactions do not inject fluid. On Mac, test all menu shortcuts, focused-control Space handling, panel movement/closing/reopening, and a paused window resize.
+1. Launch and watch the Free Play preview play once and hold the final image. With Reduce Motion enabled, check that the final image appears immediately. Use the first tap or drag to dismiss the preview and deposit dye at the contact. Pause, change all four views and overlays, and confirm the step counter remains unchanged. Step once, then reset and confirm that Free Play is empty, the preview stays dismissed, and tuning and presentation choices remain.
+2. Open **Experiments** and check that the thumbnails and titles are legible. Select each lesson. Predict its behaviour, run, pause, step, change an adjustment, and restart. Verify step zero, the 600-step completion message, and disabled Run/Step at completion. Return to Free Play and check restored preferences.
+3. Confirm scrolling the HUD or moving the Mac controls panel leaves the preview visible and does not inject fluid. On Mac, test all menu shortcuts, focused-control Space handling, panel movement/closing/reopening, and a paused window resize.
 4. On **both iPhone and iPad**, repeat in portrait and landscape, including accessibility text sizes, VoiceOver, increased contrast, and reduced transparency. Controls must not cover the square; all body controls must be scroll-reachable.
 5. On physical iPhone/iPad hardware, check concurrent touches and the two-finger shortcut. Simulator results alone do not establish physical multitouch behaviour.
 
-See [educational release verification](docs/educational-release-verification.md) for actual environments, measurements, results, and unavailable coverage. macOS 27 testing does not establish macOS 26 runtime behaviour. Mark unavailable hardware checks **NOT TESTED**.
+See [preview and thumbnail regeneration](Tests/Integration/presentation-assets.md) for the capture recipes. See [educational release verification](docs/educational-release-verification.md) for actual environments, measurements, results, and unavailable coverage. macOS 27 testing does not establish macOS 26 runtime behaviour. Mark unavailable hardware checks **NOT TESTED**.
 
 The production GPU harness loads the freshly built Mac Metal library and compares floating-point state with relative `1e-3` plus absolute `1e-4` tolerance. Under `.build/educational-evidence` it saves hardware timings and captures at steps 0/120/240/600. The `lesson-` captures use the opening presentation, `field-` shows the field alone, and `stress-` enables all overlays. The same test writes a step-240 still and short advection animation under `.build/visual-presentation/after`.
 

@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 @MainActor
@@ -220,6 +221,58 @@ final class HUDUITests: XCTestCase {
         XCTAssertFalse(outline.exists)
     }
 
+    func testFreePlayPreviewDismissesOnFirstTapAndDoesNotReturn() throws {
+        app.terminate()
+        app.launchArguments += ["--free-play-preview-reduce-motion"]
+        app.launch()
+        let preview = app.images["lessonCanvas"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        let still = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        still.name = "iPhone Free Play Reduce Motion still"
+        still.lifetime = .keepAlways
+        add(still)
+
+        let scroll = app.scrollViews["controlsBody"]
+        scroll.swipeUp()
+        XCTAssertTrue(preview.exists, "Scrolling the controls must preserve the preview")
+        let contact = CGVector(dx: 0.24, dy: 0.20)
+        app.coordinate(withNormalizedOffset: contact).tap()
+        XCTAssertTrue(preview.waitForNonExistence(timeout: 5))
+        let window = app.windows.firstMatch
+        var hasDye = false
+        for _ in 0..<8 {
+            if try dyeNear(contact, in: window.screenshot()) {
+                hasDye = true
+                break
+            }
+        }
+        XCTAssertTrue(hasDye, "The tap that dismissed the preview must deposit blue dye in the live canvas")
+        app.buttons["transport.restart"].tap()
+        XCTAssertFalse(preview.exists)
+        chooseLesson("Dye carried by a flow")
+        app.buttons["experimentSelector"].tap()
+        app.buttons["Free Play"].tap()
+        XCTAssertFalse(preview.exists)
+    }
+
+    private func dyeNear(_ point: CGVector, in screenshot: XCUIScreenshot) throws -> Bool {
+        let image = try XCTUnwrap(screenshot.image.cgImage)
+        let x = Double(image.width) * point.dx
+        let y = Double(image.height) * point.dy
+        let crop = try XCTUnwrap(image.cropping(to: CGRect(x: x - 20, y: y - 20, width: 40, height: 40)))
+        var pixels = [UInt8](repeating: 0, count: 16 * 16 * 4)
+        return try pixels.withUnsafeMutableBytes { bytes in
+            let context = try XCTUnwrap(CGContext(data: bytes.baseAddress, width: 16, height: 16, bitsPerComponent: 8,
+                bytesPerRow: 16 * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+            context.draw(crop, in: CGRect(x: 0, y: 0, width: 16, height: 16))
+            return stride(from: 0, to: bytes.count, by: 4).contains { offset in
+                let blue = Int(bytes[offset + 2])
+                return blue > Int(bytes[offset]) + 20 && blue > Int(bytes[offset + 1]) + 10
+            }
+        }
+    }
+
     func testExperimentMenuRemainsTwoDOnly() {
         let selector = app.buttons["experimentSelector"]
         XCTAssertTrue(selector.waitForExistence(timeout: 15))
@@ -228,6 +281,10 @@ final class HUDUITests: XCTestCase {
         for title in ["Free Play", "Dye carried by a flow", "Two interacting vortices", "Stretching dye by stirring"] {
             XCTAssertTrue(app.buttons[title].waitForExistence(timeout: 5), "The existing 2D mode \(title) must remain available")
         }
+        let capture = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        capture.name = "iOS illustrated experiment chooser"
+        capture.lifetime = .keepAlways
+        add(capture)
         XCTAssertFalse(app.buttons["3D Dye Advection"].exists)
         XCTAssertFalse(app.staticTexts["3D"].exists)
 
