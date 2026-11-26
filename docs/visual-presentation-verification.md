@@ -1,6 +1,6 @@
 # Visual presentation release verification
 
-Verification on 26 November 2026 covered the revised 2D lesson rendering, the paused starting outline, and the Free Play preview and experiment chooser. The full suites ran on `e10a59d` on `feature/lesson-visual-presentation`. A focused simulator run covers the subsequent mobile transport layout adjustment. [Final simulator result](../.build/visual-presentation-release/ios-final.xcresult)
+Verification on 26 November 2026 covered the revised 2D lesson rendering, the paused starting outline, and the Free Play preview and experiment chooser. The full suites ran on `e10a59d` on `feature/lesson-visual-presentation`. Focused simulator runs cover the mobile transport layout adjustment in commit `49ddb91`.
 
 ## Environment
 
@@ -8,7 +8,7 @@ Verification on 26 November 2026 covered the revised 2D lesson rendering, the pa
 |---|---|
 | Mac and Metal | Apple M3 Pro MacBook Pro, macOS 27.2.1 (26B131), Xcode 27.2 (27B52), arm64 Debug |
 | iPhone | iPhone 17 Pro simulator, iOS 26.4, Debug |
-| iPad | iPad Pro 13-inch (M5) simulator, iPadOS 26.4, Debug |
+| iPad | iPad Pro 13-inch (M5) for the full suite and iPad (A16) for the final landscape checks, both iPadOS 26.4 Debug |
 
 ## Automated results
 
@@ -16,6 +16,7 @@ Verification on 26 November 2026 covered the revised 2D lesson rendering, the pa
 - All 58 Mac cases passed across the full run and targeted retries. The full run passed 55 cases, including all 29 state and contact tests. The remaining HUD cases passed after clicking the native checkbox, choosing a canvas point outside the floating panel, waiting for the 3D recovery dialog to close, and resizing from the straight window edge. [Full run](../.build/visual-presentation-release/mac.xcresult) · [HUD retry](../.build/visual-presentation-release/mac-retest.xcresult) · [Outline resize retry](../.build/visual-presentation-release/mac-outline.xcresult)
 - Integration discovery passed all 50 tests, including the educational Metal harness, the production 3D GPU fixtures, and the independent CPU reference tests. The 2D GPU comparisons used the existing relative tolerance of `1e-3` and absolute tolerance of `1e-4`.
 - The full simulator suite passed all 14 cases on iPad and 11 of 14 on iPhone. The three iPhone checks passed after waiting for a committed menu selection, scrolling the fade slider fully into view, and scrolling the native menu at the largest text size. [Full simulator run](../.build/visual-presentation-release/ios.xcresult) · [iPhone retry](../.build/visual-presentation-release/iphone-retest.xcresult)
+- On the final build, all four focused iPhone checks passed. The iPad Pro passed the chooser and stayed in portrait during the remaining three checks, including on retry. The same three checks passed on the iPad (A16), including landscape layout and the largest text size. [Focused iPhone and iPad Pro run](../.build/visual-presentation-release/ios-final.xcresult) · [iPad A16 run](../.build/visual-presentation-release/ipad-a16-final.xcresult)
 - The recorded iPhone first-drag test verified that dye appeared at the original contact after that drag dismissed the launch preview. [XCTest result](../.build/visual-presentation-release/first-drag.xcresult)
 
 ## Visual evidence
@@ -28,7 +29,7 @@ The Mac window narrowed from 993 to 717 points while paused. The captured contou
 
 The native menus keep the titles and selection marks legible beside the full-color thumbnails. Mac also shows the 3D group. [Mac chooser](../.build/visual-presentation-release/mac-chooser.png) · [iPhone chooser](../.build/visual-presentation-release/iphone-chooser.png) · [iPad chooser](../.build/visual-presentation-release/ipad-chooser.png)
 
-The iPhone and iPad lesson canvases remained square and clear of the controls in portrait and landscape. The largest Dynamic Type setting kept the pinned transport inside the panel. The final simulator check measures the visible mobile label **Restart** against the height of **Step** and checks that its accessibility label is **Restart experiment**. [iPhone portrait](../.build/visual-presentation-release/iphone-advection-portrait.png) · [iPhone landscape](../.build/visual-presentation-release/iphone-advection-landscape.png) · [iPhone largest text](../.build/visual-presentation-release/iphone-large-text-landscape.png) · [iPad largest text](../.build/visual-presentation-release/ipad-large-text-landscape.png)
+The iPhone and iPad lesson canvases remained square and clear of the controls in portrait and landscape. The largest Dynamic Type setting kept the pinned transport inside the panel. On the final build, the visible mobile label **Restart** fits on one line and retains **Restart experiment** as its accessibility label. [iPhone portrait](../.build/visual-presentation-release/iphone-advection-portrait.png) · [iPhone landscape](../.build/visual-presentation-release/iphone-advection-landscape.png) · [iPhone largest text](../.build/visual-presentation-release/iphone-large-text-landscape.png) · [iPad largest text](../.build/visual-presentation-release/ipad-large-text-landscape.png)
 
 The eight-second iPhone recording starts at launch, shows the preview disappear on contact, and follows the live dye from the starting point through the drag. [First drag MP4](../.build/visual-presentation-release/first-drag.mp4)
 
