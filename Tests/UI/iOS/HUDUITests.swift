@@ -89,12 +89,11 @@ final class HUDUITests: XCTestCase {
         rotate(to: .landscapeLeft)
         defer { XCUIDevice.shared.orientation = .portrait }
         let fade = app.sliders["Dye fading"]
-        for _ in 0..<8 where !fade.isHittable {
-            app.scrollViews.firstMatch.swipeUp()
-        }
+        reveal(fade)
         XCTAssertTrue(fade.isHittable, "Fade must be scroll-reachable in landscape")
         fade.adjust(toNormalizedSliderPosition: 0.8)
-        XCTAssertNotEqual(fade.value as? String, "17%")
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value != %@", "17%"), object: fade)
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 5), .completed)
         for _ in 0..<8 where !app.buttons["Pause simulation"].isHittable {
             app.scrollViews.firstMatch.swipeDown()
         }
@@ -140,8 +139,12 @@ final class HUDUITests: XCTestCase {
     }
     private func chooseLesson(_ title: String) {
         app.buttons["experimentSelector"].tap()
-        app.buttons[title].tap()
-        XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 0")
+        let lesson = app.buttons[title]
+        let menu = app.collectionViews.firstMatch
+        for _ in 0..<5 where !lesson.isHittable && menu.exists { menu.swipeUp() }
+        XCTAssertTrue(lesson.isHittable, "\(title) must be reachable in the experiment menu")
+        lesson.tap()
+        XCTAssertTrue(app.staticTexts["Step 0"].waitForExistence(timeout: 5))
     }
     func testEveryLessonWorkflowAndSquareLayout() {
         XCTAssertTrue(app.buttons["experimentSelector"].waitForExistence(timeout: 15))
@@ -255,6 +258,25 @@ final class HUDUITests: XCTestCase {
         XCTAssertFalse(preview.exists)
     }
 
+    func testFirstFreePlayDragDepositsDyeAtItsStart() throws {
+        let preview = app.images["lessonCanvas"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 10))
+        let start = CGVector(dx: 0.23, dy: 0.17)
+        let end = CGVector(dx: 0.68, dy: 0.24)
+        app.coordinate(withNormalizedOffset: start).press(
+            forDuration: 0.5, thenDragTo: app.coordinate(withNormalizedOffset: end),
+            withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertTrue(preview.waitForNonExistence(timeout: 5))
+        app.buttons["transport.pause"].tap()
+
+        let frame = app.windows.firstMatch.screenshot()
+        XCTAssertTrue(try dyeNear(start, in: frame), "The first drag must leave dye at its starting contact")
+        let capture = XCTAttachment(screenshot: frame)
+        capture.name = "First Free Play drag"
+        capture.lifetime = .keepAlways
+        add(capture)
+    }
+
     private func dyeNear(_ point: CGVector, in screenshot: XCUIScreenshot) throws -> Bool {
         let image = try XCTUnwrap(screenshot.image.cgImage)
         let x = Double(image.width) * point.dx
@@ -274,6 +296,7 @@ final class HUDUITests: XCTestCase {
     }
 
     func testExperimentMenuRemainsTwoDOnly() {
+        rotate(to: .portrait)
         let selector = app.buttons["experimentSelector"]
         XCTAssertTrue(selector.waitForExistence(timeout: 15))
         selector.tap()
@@ -289,7 +312,7 @@ final class HUDUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["3D"].exists)
 
         app.buttons["Dye carried by a flow"].tap()
-        XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 0")
+        XCTAssertTrue(app.staticTexts["Step 0"].waitForExistence(timeout: 5))
         app.buttons["transport.step"].tap()
         XCTAssertTrue(app.staticTexts["Step 1"].waitForExistence(timeout: 5))
 
@@ -309,11 +332,20 @@ final class HUDUITests: XCTestCase {
     func testLargeTextLessonLayout() {
         app.terminate()
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
-        app.launch(); chooseLesson("Stretching dye by stirring")
+        app.launch()
+        rotate(to: .landscapeLeft)
+        chooseLesson("Stretching dye by stirring")
         for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
             rotate(to: orientation)
             XCTAssertTrue(app.buttons["transport.step"].isHittable)
             let controls = app.otherElements["simulationControls"]
+            let restart = app.buttons["transport.restart"]
+            XCTAssertEqual(restart.label, "Restart experiment")
+            let restartText = restart.staticTexts["Restart"]
+            let stepText = app.buttons["transport.step"].staticTexts["Step"]
+            XCTAssertTrue(restartText.exists && stepText.exists)
+            XCTAssertLessThanOrEqual(restartText.frame.height, stepText.frame.height + 1,
+                                     "Restart should remain on one line at the largest text size")
             for identifier in ["experimentSelector", "transport.pause", "transport.step", "transport.restart"] {
                 let button = app.buttons[identifier]
                 XCTAssertTrue(controls.frame.contains(button.frame), "Pinned controls must fit inside their panel")

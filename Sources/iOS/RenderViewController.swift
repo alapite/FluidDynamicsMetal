@@ -174,8 +174,12 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         configureButton(pauseButton, title: "Pause", id: "transport.pause", action: #selector(pauseFromHUD(_:)))
         configureButton(stepButton, title: "Step", id: "transport.step", action: #selector(singleStep))
         configureButton(restartButton, title: "Reset fluid", id: "transport.restart", action: #selector(restart))
-        transport.axis = .horizontal; transport.spacing = 8; transport.distribution = .fillEqually
+        transport.axis = .horizontal; transport.spacing = 8
         transport.addArrangedSubview(pauseButton); transport.addArrangedSubview(stepButton); transport.addArrangedSubview(restartButton)
+        NSLayoutConstraint.activate([
+            pauseButton.widthAnchor.constraint(equalTo: stepButton.widthAnchor),
+            restartButton.widthAnchor.constraint(equalTo: stepButton.widthAnchor, multiplier: 1.25)
+        ])
         label(stepLabel, "Step 0", style: .caption1); stepLabel.accessibilityIdentifier = "stepCount"
         for view in [experimentSelector, transport, stepLabel] { pinnedStack.addArrangedSubview(view) }
         label(question, "", style: .headline); question.accessibilityIdentifier = "lesson.question"
@@ -332,8 +336,10 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         if pauseButton.accessibilityLabel != pauseLabel { pauseButton.accessibilityLabel = pauseLabel }
         if pauseButton.isEnabled == state.complete { pauseButton.isEnabled = !state.complete }
         if stepButton.isEnabled != state.canStep { stepButton.isEnabled = state.canStep }
-        let restartTitle = state.mode == .freePlay ? "Reset fluid" : "Restart experiment"
+        let restartTitle = state.mode == .freePlay ? "Reset fluid" : "Restart"
         if restartButton.title(for: .normal) != restartTitle { restartButton.setTitle(restartTitle, for: .normal) }
+        let restartLabel = state.mode == .freePlay ? "Reset fluid" : "Restart experiment"
+        if restartButton.accessibilityLabel != restartLabel { restartButton.accessibilityLabel = restartLabel }
         if lastComplete != state.complete { lastComplete = state.complete; updateControlLayout() }
     }
 
@@ -350,7 +356,7 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
         }
         refreshTransport()
         let state = renderer.state
-        experimentSelector.setTitle(state.mode.title + " ▾", for: .normal)
+        experimentSelector.setTitle(state.mode.title + "\u{00A0}▾", for: .normal)
         experimentSelector.menu = UIMenu(title: "Experiments", children: SimulationMode.twoDimensionalModes.map { mode in
             UIAction(title: mode.title, image: experimentThumbnails[mode.thumbnailName], state: mode == state.mode ? .on : .off) { [weak self] _ in
                 guard let self else { return }
