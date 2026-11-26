@@ -366,7 +366,7 @@ fragment float4 displayField(VertexOut in [[stage_in]], texture2d<float> field [
     float2 value = field.sample(s, in.textureCoorinates).xy;
     float3 color;
     if (choice == 0) {
-        float concentration = max(0.0f, value.x), t = concentration / (1 + concentration);
+        float concentration = max(0.0f, value.x), t = sqrt(concentration / (1 + concentration));
         color = t < 0.5 ? mix(float3(0), float3(0.02, 0.32, 0.85), t * 2) : mix(float3(0.02, 0.32, 0.85), float3(0.8, 1, 1), (t - 0.5) * 2);
     } else if (choice == 2) {
         float t = saturate(length(value) / stats.y);
@@ -417,16 +417,23 @@ kernel void advanceParticles(device float2 *positions [[buffer(0)]], device floa
     // Invalid values are deliberately not hidden: regression readback checks finiteness.
     positions[i] = p; history[i * 64 + slot] = p;
 }
-vertex OverlayOut particleVertex(uint vid [[vertex_id]], uint i [[instance_id]], device const float2 *positions [[buffer(0)]], constant float4 &p [[buffer(2)]]) {
-    float2 local = quadCorners[vid]; float2 xy = (positions[i] + local * 3.5 / p.xy) * 2 - 1;
+// Sample rows and columns 1, 5, 9 and 13 of the 16-by-16 seed lattice.
+inline uint displayedParticle(uint instance, uint sparse) {
+    return sparse ? (1 + 4 * (instance / 4)) * 16 + 1 + 4 * (instance % 4) : instance;
+}
+vertex OverlayOut particleVertex(uint vid [[vertex_id]], uint i [[instance_id]], device const float2 *positions [[buffer(0)]], constant float4 &p [[buffer(2)]], constant uint &sparse [[buffer(3)]]) {
+    float2 local = quadCorners[vid];
+    float radius = sparse ? 2.0f : 3.5f;
+    float2 xy = (positions[displayedParticle(i, sparse)] + local * radius / p.xy) * 2 - 1;
     return {float4(xy.x, -xy.y, 0, 1), local, 1};
 }
 fragment float4 particleFragment(OverlayOut in [[stage_in]]) {
     float radius = length(in.local);
     return float4(float3(1 - smoothstep(0.45, 0.65, radius)), 1 - smoothstep(0.85, 1.0, radius));
 }
-vertex OverlayOut trailVertex(uint vid [[vertex_id]], uint instance [[instance_id]], device const float2 *history [[buffer(1)]], constant float4 &p [[buffer(2)]]) {
-    uint count = uint(p.w), segment = instance % (count - 1), particle = instance / (count - 1);
+vertex OverlayOut trailVertex(uint vid [[vertex_id]], uint instance [[instance_id]], device const float2 *history [[buffer(1)]], constant float4 &p [[buffer(2)]], constant uint &sparse [[buffer(3)]]) {
+    uint count = uint(p.w), segment = instance % (count - 1);
+    uint particle = displayedParticle(instance / (count - 1), sparse);
     uint oldest = (uint(p.z) + 64 - count + 1) % 64;
     float2 a = history[particle * 64 + (oldest + segment) % 64];
     float2 b = history[particle * 64 + (oldest + segment + 1) % 64];
@@ -434,11 +441,62 @@ vertex OverlayOut trailVertex(uint vid [[vertex_id]], uint instance [[instance_i
     float lengthPixels = length(delta);
     float2 normal = lengthPixels > 1e-6 ? float2(-delta.y, delta.x) / lengthPixels : float2(0);
     float2 local = quadCorners[vid];
-    float2 point = mix(a, b, (local.x + 1) * 0.5) + normal * local.y * 1.5 / p.xy;
+    float along = (local.x + 1) * 0.5;
+    float halfWidth = sparse ? 0.75f : 1.5f;
+    float2 point = mix(a, b, along) + normal * local.y * halfWidth / p.xy;
     float2 xy = point * 2 - 1;
-    return {float4(xy.x, -xy.y, 0, 1), local, lengthPixels > 1e-6 ? (0.1 + 0.65 * float(segment + 1) / float(count - 1)) : 0.0f};
+    float alpha = sparse ? 0.35f * (float(segment) + along) / float(count - 1)
+                         : 0.1f + 0.65f * float(segment + 1) / float(count - 1);
+    return {float4(xy.x, -xy.y, 0, 1), local, lengthPixels > 1e-6 ? alpha : 0.0f};
 }
 fragment float4 trailFragment(OverlayOut in [[stage_in]]) {
     float d = abs(in.local.y);
     return float4(float3(1 - smoothstep(0.3, 0.7, d)), in.alpha * (1 - smoothstep(0.7, 1.0, d)));
+}
+
+// Same layout as StartingOutlineSegment in ExperimentRecipes.swift.
+struct StartingOutlineSegment {
+    float2 start;
+    float2 end;
+    float2 startMiter;
+    float2 endMiter;
+    float distanceAtStart;
+    float contourLength;
+};
+
+struct StartingOutlineOut {
+    float4 position [[position]];
+    float2 local;
+    float distanceAtStart [[flat]];
+    float period [[flat]];
+};
+
+vertex StartingOutlineOut startingOutlineVertex(
+    uint vid [[vertex_id]], uint instance [[instance_id]],
+    const device StartingOutlineSegment *segments [[buffer(0)]],
+    constant float2 &pointSize [[buffer(1)]]) {
+    StartingOutlineSegment segment = segments[instance];
+    float2 corner = quadCorners[vid];
+    float across = corner.y * 1.5f;
+    bool atEnd = corner.x > 0;
+    float scale = min(pointSize.x, pointSize.y);
+    float2 center = atEnd ? segment.end : segment.start;
+    float2 miter = atEnd ? segment.endMiter : segment.startMiter;
+    float2 uv = center + miter * across / scale;
+    float along = atEnd ? distance(segment.start, segment.end) * scale : 0;
+
+    // Fit a whole number of dashes around each contour so the seam joins.
+    float perimeter = segment.contourLength * scale;
+    float period = perimeter / max(1.0f, round(perimeter / 8.0f));
+    return {float4(uv.x * 2 - 1, 1 - uv.y * 2, 0, 1), float2(along, across),
+            segment.distanceAtStart * scale, period};
+}
+
+fragment float4 startingOutlineFragment(StartingOutlineOut in [[stage_in]]) {
+    float phase = (in.distanceAtStart + in.local.x) / in.period;
+    float distanceToDash = abs(fract(phase + 0.5f) - 0.5f) * in.period;
+    float edge = max(abs(in.local.y), distanceToDash - in.period * 0.27f);
+    float core = 1.0f - smoothstep(0.25f, 0.75f, edge);
+    float alpha = 1.0f - smoothstep(0.75f, 1.5f, edge);
+    return float4(float3(mix(0.06f, 0.83f, core)), alpha * 0.65f);
 }

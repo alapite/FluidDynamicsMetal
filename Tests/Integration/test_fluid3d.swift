@@ -692,7 +692,7 @@ private struct Fluid3DChecks {
                             && renderer.state.userPaused
                             && renderer.state.adjustment == experiment.defaultAdjustment
                             && renderer.state.field == experiment.defaultField
-                            && renderer.state.displayOptions == .lesson,
+                            && renderer.state.displayOptions == experiment.defaultDisplayOptions,
                             "3D-to-\(mode.title) must restore documented 2D lesson defaults")
             }
         }

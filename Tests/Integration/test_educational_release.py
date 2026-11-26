@@ -37,5 +37,9 @@ class EducationalReleaseTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             print(result.stdout)
             self.assertIn('PASS: educational production engine', result.stdout)
+            capture = subprocess.run([str(executable), str(library),
+                str(ROOT / '.build/visual-presentation/after'), '--capture-advection'],
+                capture_output=True, text=True, timeout=60)
+            self.assertEqual(capture.returncode, 0, capture.stdout + capture.stderr)
 
 if __name__ == '__main__': unittest.main()

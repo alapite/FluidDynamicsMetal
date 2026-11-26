@@ -98,6 +98,7 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
     private let orientationGuide = OrientationGuide3DView(frame: .zero)
     private let aboutButton = NSButton(title: "About this simulation", target: nil, action: nil)
     private let aboutText = NSTextField(wrappingLabelWithString: LearningCopy.about)
+    private let startingOutlineButton = NSButton(checkboxWithTitle: "Show starting outline", target: nil, action: nil)
     private var overlayButtons: [NSButton] = []
     private let bodyStack = NSStackView()
     private let pinnedStack = NSStackView()
@@ -618,6 +619,10 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
             item.tag = index; item.setAccessibilityIdentifier("overlay.\(index)"); overlayButtons.append(item); twoDBodyStack.addArrangedSubview(item)
         }
         twoDBodyStack.addArrangedSubview(NSTextField(wrappingLabelWithString: LearningCopy.trails))
+        startingOutlineButton.target = self
+        startingOutlineButton.action = #selector(changeStartingOutline(_:))
+        startingOutlineButton.setAccessibilityIdentifier("overlay.startingOutline")
+        twoDBodyStack.addArrangedSubview(startingOutlineButton)
         button(tuningButton, #selector(toggleTuning(_:)), "tuning.toggle")
         twoDBodyStack.addArrangedSubview(tuningButton)
         for control in TuningControl.allCases {
@@ -1077,12 +1082,18 @@ class RenderViewController: NSViewController, NSWindowDelegate, NSMenuItemValida
         guard !renderer.state.mode.is3D, let lesson = renderer.state.mode.experiment else { return }
         renderer.setExperimentAdjustment(lesson.choices[sender.indexOfSelectedItem]); refreshControls()
     }
+    @objc private func changeStartingOutline(_ sender: NSButton) {
+        renderer.setStartingOutline(sender.state == .on)
+    }
     @objc private func changeOverlay(_ sender: NSButton) {
         renderer.setDisplayOptions(DisplayOptions(arrows: overlayButtons[0].state == .on, particles: overlayButtons[1].state == .on, trails: overlayButtons[2].state == .on)); refreshControls()
     }
     @objc private func toggleAbout(_ sender: Any?) { aboutText.isHidden.toggle(); updateControlLayout() }
     private func refreshTransport() {
         let state = renderer.state
+        startingOutlineButton.isHidden = !state.offersStartingOutline
+        startingOutlineButton.isEnabled = !modeTransitionInProgress && state.canToggleStartingOutline
+        startingOutlineButton.state = state.startingOutlineEnabled ? .on : .off
         stepLabel.stringValue = state.status
         pauseButton.title = state.userPaused ? (state.mode.isLesson && state.stepCount == 0 ? "Run" : "Resume") : "Pause"
         pauseButton.setAccessibilityLabel(state.userPaused ? "Resume simulation" : "Pause simulation")

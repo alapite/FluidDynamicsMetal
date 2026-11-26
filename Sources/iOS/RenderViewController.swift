@@ -28,6 +28,8 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     private let explanation = UILabel()
     private let aboutButton = UIButton(type: .system)
     private let aboutText = UILabel()
+    private let startingOutlineSwitch = UISwitch()
+    private let startingOutlineRow = UIStackView()
     private var overlaySwitches: [UISwitch] = []
     private let bodyStack = UIStackView()
     private let pinnedStack = UIStackView()
@@ -168,6 +170,17 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
             row.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true; bodyStack.addArrangedSubview(row)
         }
         let trailsHint = UILabel(); label(trailsHint, LearningCopy.trails, style: .caption1); bodyStack.addArrangedSubview(trailsHint)
+        let outlineName = UILabel()
+        label(outlineName, "Show starting outline")
+        startingOutlineSwitch.accessibilityLabel = outlineName.text
+        startingOutlineSwitch.accessibilityIdentifier = "overlay.startingOutline"
+        startingOutlineSwitch.addTarget(self, action: #selector(changeStartingOutline), for: .valueChanged)
+        startingOutlineRow.addArrangedSubview(outlineName)
+        startingOutlineRow.addArrangedSubview(startingOutlineSwitch)
+        startingOutlineRow.alignment = .center
+        startingOutlineRow.spacing = 8
+        startingOutlineRow.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        bodyStack.addArrangedSubview(startingOutlineRow)
         configureButton(tuningButton, title: "Show Tuning", id: "tuning.toggle", action: #selector(toggleTuning(_:)))
         bodyStack.addArrangedSubview(tuningButton)
         for control in TuningControl.allCases {
@@ -247,12 +260,20 @@ class RenderViewController: UIViewController, UIGestureRecognizerDelegate {
     }
     @objc private func singleStep() { renderer.requestSingleStep() }
     @objc private func restart() { clearTouches(); renderer.restartCurrentSimulation(); refreshControls() }
+    @objc private func changeStartingOutline() {
+        renderer.setStartingOutline(startingOutlineSwitch.isOn)
+    }
     @objc private func changeOverlay() {
         renderer.setDisplayOptions(DisplayOptions(arrows: overlaySwitches[0].isOn, particles: overlaySwitches[1].isOn, trails: overlaySwitches[2].isOn)); refreshControls()
     }
     @objc private func toggleAbout() { aboutText.isHidden.toggle(); updateControlLayout() }
     private func refreshTransport() {
         let state = renderer.state
+        if startingOutlineRow.isHidden == state.offersStartingOutline {
+            startingOutlineRow.isHidden = !state.offersStartingOutline
+        }
+        startingOutlineSwitch.isEnabled = state.canToggleStartingOutline
+        startingOutlineSwitch.isOn = state.startingOutlineEnabled
         if stepLabel.text != state.status { stepLabel.text = state.status }
         let title = state.userPaused ? (state.mode.experiment != nil && state.stepCount == 0 ? "Run" : "Resume") : "Pause"
         if pauseButton.title(for: .normal) != title {

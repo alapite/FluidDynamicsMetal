@@ -63,7 +63,7 @@ Launch opens an empty, running **Free Play** dye canvas with Tuning collapsed. D
 - **Two interacting vortices:** compare same and opposite rotation.
 - **Stretching dye by stirring:** compare gentle, normal, and strong stirring of a narrow stripe.
 
-Each of the three existing 2D lessons opens paused at **Step 0**, with its question and explanation visible. **Run**, **Pause/Resume**, and **Step** let you inspect its progress. These 2D lessons stop at 600 steps. **Restart experiment** preserves the adjustment and display choices, resets everything, and pauses. Changing the adjustment also restarts. Freehand injection is disabled in lessons; canvas pause and field-cycle gestures remain available.
+Advection opens with sparse particles and trails, the vortex lesson opens with sparse arrows, and stretching opens with the field alone. The dye view uses a square-root brightness scale to reveal faint dye. Each of the three 2D lessons opens paused at **Step 0**, with its question and explanation visible. **Run**, **Pause/Resume**, and **Step** let you inspect its progress. These 2D lessons stop at 600 steps. **Restart experiment** preserves the adjustment and display choices, resets everything, and pauses. Changing the adjustment also restarts. Freehand injection is disabled in lessons; canvas pause and field-cycle gestures remain available. In advection and stretching, pause after at least one step and turn on **Show starting outline** in the **Dye concentration** view to compare the dye with its original shape.
 
 **Reset fluid** clears Free Play fluid, particles, trails, and pending input while preserving tuning, views, and the pause choice. Returning from a lesson creates an empty running Free Play canvas and restores this session's Free Play preferences. Settings reset at launch; the Mac panel position remains persistent.
 
@@ -142,7 +142,7 @@ For each platform:
 
 See [educational release verification](docs/educational-release-verification.md) for actual environments, measurements, results, and unavailable coverage. macOS 27 testing does not establish macOS 26 runtime behaviour. Mark unavailable hardware checks **NOT TESTED**.
 
-The production GPU harness loads the freshly built Mac Metal library, writes lesson captures at steps 0/120/240/600 and hardware timings under `.build/educational-evidence`, and compares floating-point state with relative `1e-3` plus absolute `1e-4` tolerance:
+The production GPU harness loads the freshly built Mac Metal library and compares floating-point state with relative `1e-3` plus absolute `1e-4` tolerance. Under `.build/educational-evidence` it saves hardware timings and captures at steps 0/120/240/600. The `lesson-` captures use the opening presentation, `field-` shows the field alone, and `stress-` enables all overlays. The same test writes a step-240 still and short advection animation under `.build/visual-presentation/after`.
 
 ```bash
 python3 -m unittest Tests.Integration.test_educational_release

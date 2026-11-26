@@ -150,7 +150,13 @@ final class HUDUITests: XCTestCase {
             XCTAssertTrue(app.staticTexts["Step 1"].waitForExistence(timeout: 5))
             tap(app.buttons["field.1"])
             XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 1")
-            reveal(app.switches["overlay.2"]); app.switches["overlay.2"].tap()
+            let particles = app.switches["overlay.1"]
+            reveal(particles)
+            if particles.value as? String == "0" { particles.tap() }
+            let trails = app.switches["overlay.2"]
+            reveal(trails)
+            XCTAssertTrue(trails.isEnabled)
+            trails.tap()
             XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 1")
             app.buttons["transport.restart"].tap()
             XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 0")
@@ -174,6 +180,44 @@ final class HUDUITests: XCTestCase {
         }
         app.buttons["experimentSelector"].tap(); app.buttons["Free Play"].tap()
         XCTAssertFalse(app.buttons["transport.step"].isEnabled)
+    }
+
+    func testStartingOutlineControlFollowsDyeLessonTransport() {
+        let outline = app.switches["overlay.startingOutline"]
+        XCTAssertFalse(outline.exists)
+        chooseLesson("Dye carried by a flow")
+        reveal(outline)
+        XCTAssertFalse(outline.isEnabled)
+
+        app.buttons["transport.step"].tap()
+        XCTAssertTrue(app.staticTexts["Step 1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(outline.isEnabled)
+        XCTAssertEqual(outline.value as? String, "0")
+        outline.tap()
+        XCTAssertEqual(outline.value as? String, "1")
+        XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 1")
+
+        app.buttons["transport.pause"].tap()
+        XCTAssertFalse(outline.isEnabled)
+        app.buttons["transport.pause"].tap()
+        XCTAssertTrue(outline.isEnabled)
+        XCTAssertEqual(outline.value as? String, "1")
+
+        tap(app.buttons["field.1"])
+        XCTAssertFalse(outline.exists)
+        tap(app.buttons["field.0"])
+        reveal(outline)
+        XCTAssertEqual(outline.value as? String, "1")
+        app.buttons["transport.restart"].tap()
+        XCTAssertEqual(app.staticTexts["stepCount"].label, "Step 0")
+        XCTAssertFalse(outline.isEnabled)
+
+        chooseLesson("Stretching dye by stirring")
+        reveal(outline)
+        XCTAssertEqual(outline.value as? String, "0")
+        XCTAssertFalse(outline.isEnabled)
+        chooseLesson("Two interacting vortices")
+        XCTAssertFalse(outline.exists)
     }
 
     func testExperimentMenuRemainsTwoDOnly() {
